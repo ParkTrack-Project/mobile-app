@@ -1,0 +1,50 @@
+name: mobile
+description: "ParkTrack — мобильное приложение для поиска парковок"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State management
+  flutter_riverpod: ^2.6.1
+  riverpod_annotation: ^2.6.1
+
+  # Navigation
+  go_router: ^14.6.3
+
+  # HTTP
+  dio: ^5.8.0+1
+
+  # Models
+  freezed_annotation: ^2.4.4
+  json_annotation: ^4.9.0
+
+  # Secure storage
+  flutter_secure_storage: ^9.2.4
+
+  # Map & Location
+  yandex_mapkit: ^3.4.0
+  geolocator: ^13.0.3
+
+  # Deeplink
+  url_launcher: ^6.3.1
+
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  build_runner: ^2.4.14
+  freezed: ^2.5.8
+  json_serializable: ^6.9.4
+  riverpod_generator: ^2.6.1
+
+flutter:
+  uses-material-design: true
