@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import '../../domain/models/user.dart';
@@ -39,10 +41,15 @@ class AuthNotifier extends StateNotifier<AuthState> {
     if (_isCheckingSession || _sessionChecked) return;
     _isCheckingSession = true;
     try {
-      final user = await _ref.read(authRepositoryProvider).getMe();
+      final user = await _ref
+          .read(authRepositoryProvider)
+          .getMe()
+          .timeout(const Duration(seconds: 8));
       state = user != null
           ? AuthState.authenticated(user)
           : const AuthState.unauthenticated();
+    } on TimeoutException {
+      state = const AuthState.unauthenticated();
     } catch (_) {
       state = const AuthState.unauthenticated();
     } finally {

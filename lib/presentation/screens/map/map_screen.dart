@@ -69,10 +69,26 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       return null;
     }
     try {
-      final pos = await Geolocator.getCurrentPosition();
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          timeLimit: Duration(seconds: 10),
+        ),
+      );
       _userPosition = pos;
       return pos;
+    } on TimeoutException {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Не удалось быстро получить геопозицию')),
+        );
+      }
+      return null;
     } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Не удалось получить геопозицию')),
+        );
+      }
       return null;
     }
   }
@@ -177,6 +193,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final zonesAsync = ref.watch(rawZonesProvider);
     final routingState = ref.watch(routingProvider);
     final destination = ref.watch(destinationProvider);
+    final isRoutingLoading = routingState.maybeWhen(
+      searching: () => true,
+      orElse: () => false,
+    );
 
     ref.listen(timeSelectorProvider, (_, __) => _fetchZones());
 
@@ -358,33 +378,72 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               ],
             ),
           ),
-          Positioned(
-            bottom: 24,
-            left: 16,
-            child: FloatingActionButton.extended(
-              heroTag: 'find_parking',
-              onPressed: _findParking,
-              backgroundColor: AppColors.primary,
-              icon: const Icon(Icons.local_parking, color: Colors.white),
-              label: Text(
-                destination == null ? 'Где припарковаться?' : 'Парковка рядом',
-                style: const TextStyle(color: Colors.white),
+            Positioned(
+              bottom: 24,
+              left: 16,
+              child: FloatingActionButton.extended(
+                heroTag: 'find_parking',
+                onPressed: isRoutingLoading ? null : _findParking,
+                backgroundColor: AppColors.primary,
+                icon: const Icon(Icons.local_parking, color: Colors.white),
+                label: Text(
+                  isRoutingLoading
+                      ? 'Ищем...'
+                      : destination == null
+                          ? 'Где припарковаться?'
+                          : 'Парковка рядом',
+                  style: const TextStyle(color: Colors.white),
+                ),
               ),
             ),
-          ),
           if (zonesAsync is AsyncLoading)
             const Positioned(
               top: 100,
               left: 0,
               right: 0,
               child: Center(
-                child: SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+                  child: SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
                 ),
               ),
-            ),
+            if (isRoutingLoading)
+              Positioned(
+                top: 148,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.1),
+                          blurRadius: 8,
+                        ),
+                      ],
+                    ),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          SizedBox(width: 8),
+                          Text('Поиск маршрута...'),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
         ],
       ),
     );

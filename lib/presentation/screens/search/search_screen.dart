@@ -87,7 +87,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     );
     _suggestSession?.close();
     _suggestSession = resultWithSession.session;
-    final result = await resultWithSession.result;
+    final result = await resultWithSession.result.timeout(
+      const Duration(seconds: 8),
+    );
     return result.items ?? [];
   }
 
@@ -102,7 +104,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     );
     _searchSession?.close();
     _searchSession = resultWithSession.session;
-    final result = await resultWithSession.result;
+    final result = await resultWithSession.result.timeout(
+      const Duration(seconds: 8),
+    );
     return result.items?.firstOrNull?.geometry.firstOrNull?.point;
   }
 
@@ -123,9 +127,18 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         _suggestions = items;
         _loading = false;
       });
+    } on TimeoutException {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Поиск занял слишком много времени')),
+      );
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось выполнить поиск')),
+      );
     }
   }
 
@@ -200,8 +213,18 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           name: item.title,
         ),
       );
+    } on TimeoutException {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Определение точки заняло слишком много времени')),
+      );
     } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось определить координаты места')),
+      );
     }
   }
 
