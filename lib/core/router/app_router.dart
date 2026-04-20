@@ -17,14 +17,20 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isAuth = authState.maybeWhen(authenticated: (_) => true, orElse: () => false);
       final isUnauth = authState.maybeWhen(unauthenticated: () => true, orElse: () => false);
 
-      if (isLoading) return '/';
+      if (isLoading) {
+        return state.matchedLocation == '/' ? null : '/';
+      }
 
-      final isAuthRoute = state.matchedLocation == '/login' ||
-          state.matchedLocation == '/register' ||
-          state.matchedLocation == '/';
+      final isLoginRoute = state.matchedLocation == '/login';
+      final isRegisterRoute = state.matchedLocation == '/register';
+      final isSplashRoute = state.matchedLocation == '/';
 
-      if (isUnauth && !isAuthRoute) return '/login';
-      if (isAuth && isAuthRoute) return '/map';
+      if (isUnauth) {
+        if (isSplashRoute) return '/login';
+        if (!isLoginRoute && !isRegisterRoute) return '/login';
+      }
+
+      if (isAuth && (isSplashRoute || isLoginRoute || isRegisterRoute)) return '/map';
 
       return null;
     },

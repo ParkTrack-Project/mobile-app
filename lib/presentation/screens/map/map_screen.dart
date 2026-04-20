@@ -38,11 +38,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   Future<void> _fetchZones() async {
     if (_mapController == null) return;
-    final visibleRegion = await _mapController!.getVisibleRegion();
-    final bbox =
-        '${visibleRegion.bottomLeft.longitude},${visibleRegion.bottomLeft.latitude},'
-        '${visibleRegion.topRight.longitude},${visibleRegion.topRight.latitude}';
-    ref.read(rawZonesProvider.notifier).fetchZones(bbox);
+    try {
+      final visibleRegion = await _mapController!.getVisibleRegion();
+      final bbox =
+          '${visibleRegion.bottomLeft.longitude},${visibleRegion.bottomLeft.latitude},'
+          '${visibleRegion.topRight.longitude},${visibleRegion.topRight.latitude}';
+      await ref.read(rawZonesProvider.notifier).fetchZones(bbox);
+    } catch (e, st) {
+      ref.read(rawZonesProvider.notifier).setErrorState(e, st);
+    }
   }
 
   Future<void> _goToMyLocation() async {

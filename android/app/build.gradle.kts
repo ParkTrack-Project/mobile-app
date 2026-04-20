@@ -39,6 +39,10 @@ android {
     }
 }
 
+dependencies {
+    implementation("com.yandex.android:maps.mobile:4.4.0-full")
+}
+
 flutter {
     source = "../.."
 }
