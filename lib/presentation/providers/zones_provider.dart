@@ -10,7 +10,7 @@ final rawZonesProvider =
 );
 
 class ZonesNotifier extends StateNotifier<AsyncValue<List<Zone>>> {
-  ZonesNotifier(this._ref) : super(const AsyncValue.loading());
+  ZonesNotifier(this._ref) : super(const AsyncValue.data([]));
 
   final Ref _ref;
   String? _lastBbox;
@@ -35,6 +35,10 @@ class ZonesNotifier extends StateNotifier<AsyncValue<List<Zone>>> {
   Future<void> refresh() async {
     if (_lastBbox != null) await fetchZones(_lastBbox!);
   }
+
+  void setErrorState(Object error, StackTrace stackTrace) {
+    state = AsyncValue.error(error, stackTrace);
+  }
 }
 
 final filteredZonesProvider = Provider<List<Zone>>((ref) {
@@ -48,6 +52,7 @@ final filteredZonesProvider = Provider<List<Zone>>((ref) {
       if (z.confidence < filters.minConfidence) return false;
       if (filters.maxPayPerHour != null && z.pay > filters.maxPayPerHour!) return false;
       if (filters.hidePrivate && (z.isPrivate ?? false)) return false;
+      if (filters.hideInaccessible && (z.isAccessible == false)) return false;
       if (z.locationType != null) {
         final typeKey = _locationTypeKey(z.locationType!);
         if (filters.hiddenLocationTypes.contains(typeKey)) return false;

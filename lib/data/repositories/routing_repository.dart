@@ -14,6 +14,7 @@ class RoutingRepository {
     double? destinationLat,
     double? destinationLon,
     int? maxPay,
+    int? minFreeCount,
     double? minConfidence,
   }) async {
     final request = RoutingSearchRequestDto(
@@ -23,6 +24,7 @@ class RoutingRepository {
           ? LocationDto(latitude: destinationLat, longitude: destinationLon!)
           : null,
       maxPay: maxPay,
+      minFreeCount: minFreeCount,
       minConfidence: minConfidence,
     );
     final response = await _api.searchParking(request);

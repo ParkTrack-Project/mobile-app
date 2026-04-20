@@ -6,6 +6,7 @@ import '../../presentation/screens/auth/login_screen.dart';
 import '../../presentation/screens/auth/register_screen.dart';
 import '../../presentation/screens/map/map_screen.dart';
 import '../../presentation/screens/profile/profile_screen.dart';
+import '../../presentation/screens/search/search_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authStateProvider);
@@ -17,14 +18,20 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isAuth = authState.maybeWhen(authenticated: (_) => true, orElse: () => false);
       final isUnauth = authState.maybeWhen(unauthenticated: () => true, orElse: () => false);
 
-      if (isLoading) return '/';
+      if (isLoading) {
+        return state.matchedLocation == '/' ? null : '/';
+      }
 
-      final isAuthRoute = state.matchedLocation == '/login' ||
-          state.matchedLocation == '/register' ||
-          state.matchedLocation == '/';
+      final isLoginRoute = state.matchedLocation == '/login';
+      final isRegisterRoute = state.matchedLocation == '/register';
+      final isSplashRoute = state.matchedLocation == '/';
 
-      if (isUnauth && !isAuthRoute) return '/login';
-      if (isAuth && isAuthRoute) return '/map';
+      if (isUnauth) {
+        if (isSplashRoute) return '/login';
+        if (!isLoginRoute && !isRegisterRoute) return '/login';
+      }
+
+      if (isAuth && (isSplashRoute || isLoginRoute || isRegisterRoute)) return '/map';
 
       return null;
     },
@@ -34,6 +41,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/register', builder: (_, __) => const RegisterScreen()),
       GoRoute(path: '/map', builder: (_, __) => const MapScreen()),
       GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
+      GoRoute(path: '/search', builder: (_, __) => const SearchScreen()),
     ],
   );
 });

@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import '../../domain/models/route_result.dart';
 import 'app_providers.dart';
+import 'filters_provider.dart';
 
 part 'routing_provider.freezed.dart';
 
@@ -25,6 +26,20 @@ class Destination with _$Destination {
 
 final destinationProvider = StateProvider<Destination?>((ref) => null);
 
+enum DestinationMode { routeToAddress, nearestParking }
+
+final destinationModeProvider =
+    StateProvider<DestinationMode>((ref) => DestinationMode.nearestParking);
+
+class SearchBias {
+  const SearchBias({required this.latitude, required this.longitude});
+
+  final double latitude;
+  final double longitude;
+}
+
+final searchBiasProvider = StateProvider<SearchBias?>((ref) => null);
+
 class RoutingNotifier extends StateNotifier<RoutingState> {
   RoutingNotifier(this._ref) : super(const RoutingState.idle());
 
@@ -37,11 +52,15 @@ class RoutingNotifier extends StateNotifier<RoutingState> {
     state = const RoutingState.searching();
     try {
       final destination = _ref.read(destinationProvider);
+      final filters = _ref.read(filtersProvider);
       final candidates = await _ref.read(routingRepositoryProvider).searchParking(
             originLat: originLat,
             originLon: originLon,
             destinationLat: destination?.latitude,
             destinationLon: destination?.longitude,
+            maxPay: filters.maxPayPerHour,
+            minConfidence: filters.minConfidence,
+            minFreeCount: filters.hideNoFreeSpots ? 1 : null,
           );
       state = RoutingState.candidates(candidates);
     } catch (e) {
