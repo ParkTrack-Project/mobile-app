@@ -10,7 +10,7 @@ final rawZonesProvider =
 );
 
 class ZonesNotifier extends StateNotifier<AsyncValue<List<Zone>>> {
-  ZonesNotifier(this._ref) : super(const AsyncValue.data([]));
+  ZonesNotifier(this._ref) : super(const AsyncValue.loading());
 
   final Ref _ref;
   String? _lastBbox;
@@ -34,10 +34,6 @@ class ZonesNotifier extends StateNotifier<AsyncValue<List<Zone>>> {
 
   Future<void> refresh() async {
     if (_lastBbox != null) await fetchZones(_lastBbox!);
-  }
-
-  void setErrorState(Object error, StackTrace stackTrace) {
-    state = AsyncValue.error(error, stackTrace);
   }
 }
 

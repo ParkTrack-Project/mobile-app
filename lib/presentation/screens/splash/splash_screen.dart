@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../providers/auth_provider.dart';
 import '../../../core/theme/app_colors.dart';
 
@@ -21,6 +22,18 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<AuthState>(authStateProvider, (_, next) {
+      next.maybeWhen(
+        authenticated: (_) {
+          if (mounted) context.go('/map');
+        },
+        unauthenticated: () {
+          if (mounted) context.go('/login');
+        },
+        orElse: () {},
+      );
+    });
+
     return const Scaffold(
       backgroundColor: AppColors.primary,
       body: Center(

@@ -19,8 +19,6 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   final Ref _ref;
-  bool _isCheckingSession = false;
-  bool _sessionChecked = false;
 
   @override
   void dispose() {
@@ -36,8 +34,6 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> checkSession() async {
-    if (_isCheckingSession || _sessionChecked) return;
-    _isCheckingSession = true;
     try {
       final user = await _ref.read(authRepositoryProvider).getMe();
       state = user != null
@@ -45,9 +41,6 @@ class AuthNotifier extends StateNotifier<AuthState> {
           : const AuthState.unauthenticated();
     } catch (_) {
       state = const AuthState.unauthenticated();
-    } finally {
-      _isCheckingSession = false;
-      _sessionChecked = true;
     }
   }
 

@@ -25,15 +25,6 @@ class Destination with _$Destination {
 
 final destinationProvider = StateProvider<Destination?>((ref) => null);
 
-class SearchBias {
-  const SearchBias({required this.latitude, required this.longitude});
-
-  final double latitude;
-  final double longitude;
-}
-
-final searchBiasProvider = StateProvider<SearchBias?>((ref) => null);
-
 class RoutingNotifier extends StateNotifier<RoutingState> {
   RoutingNotifier(this._ref) : super(const RoutingState.idle());
 
