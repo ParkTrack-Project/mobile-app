@@ -1,6 +1,4 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../presentation/providers/time_selector_provider.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -13,15 +11,13 @@ class TimeSelectorWidget extends ConsumerStatefulWidget {
 }
 
 class _TimeSelectorWidgetState extends ConsumerState<TimeSelectorWidget> {
-  static const _itemWidth = 64.0;
   static const _step = Duration(minutes: 30);
   static const _hoursBefore = 24;
   static const _hoursAfter = 24;
 
   late final List<DateTime> _ticks;
   late final int _centerIndex;
-  late final ScrollController _controller;
-  Timer? _snapTimer;
+  late final PageController _controller;
   int _selectedIndex = 0;
 
   @override
@@ -41,40 +37,19 @@ class _TimeSelectorWidgetState extends ConsumerState<TimeSelectorWidget> {
     ];
     _centerIndex = _hoursBefore * 2;
     _selectedIndex = _centerIndex;
-    _controller = ScrollController();
+    _controller = PageController(
+      viewportFraction: 0.17,
+      initialPage: _centerIndex,
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _jumpToIndex(_centerIndex);
       _applyTimeMode(_centerIndex);
     });
   }
 
   @override
   void dispose() {
-    _snapTimer?.cancel();
     _controller.dispose();
     super.dispose();
-  }
-
-  void _jumpToIndex(int index) {
-    _controller.jumpTo(index * _itemWidth);
-  }
-
-  void _animateToIndex(int index) {
-    _controller.animateTo(
-      index * _itemWidth,
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOut,
-    );
-  }
-
-  void _onScrollEnd() {
-    final rawIndex = (_controller.offset / _itemWidth).round();
-    final clamped = rawIndex.clamp(0, _ticks.length - 1);
-    _animateToIndex(clamped);
-    if (_selectedIndex != clamped) {
-      setState(() => _selectedIndex = clamped);
-      _applyTimeMode(clamped);
-    }
   }
 
   void _applyTimeMode(int index) {
@@ -84,9 +59,7 @@ class _TimeSelectorWidgetState extends ConsumerState<TimeSelectorWidget> {
     final diff = selected.difference(now).inMinutes;
     if (diff.abs() < 15) {
       notifier.setNow();
-      return;
-    }
-    if (diff < 0) {
+    } else if (diff < 0) {
       notifier.setPast(selected);
     } else {
       notifier.setFuture(selected);
@@ -96,86 +69,70 @@ class _TimeSelectorWidgetState extends ConsumerState<TimeSelectorWidget> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 84,
+      height: 62,
       margin: const EdgeInsets.symmetric(horizontal: 12),
-      padding: const EdgeInsets.symmetric(vertical: 10),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.12),
-            blurRadius: 10,
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 8,
           ),
         ],
       ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          NotificationListener<ScrollNotification>(
-            onNotification: (notification) {
-              if (notification is ScrollEndNotification) {
-                _onScrollEnd();
-              } else if (notification is UserScrollNotification &&
-                  notification.direction == ScrollDirection.idle) {
-                _snapTimer?.cancel();
-                _snapTimer = Timer(const Duration(milliseconds: 80), _onScrollEnd);
-              }
-              return false;
-            },
-            child: ListView.builder(
-              controller: _controller,
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              itemCount: _ticks.length,
-              itemBuilder: (_, index) {
-                final tick = _ticks[index];
-                final isSelected = index == _selectedIndex;
-                final isNow = index == _centerIndex;
-                return SizedBox(
-                  width: _itemWidth,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 140),
-                        width: isSelected ? 3 : 2,
-                        height: isSelected ? 18 : 12,
-                        decoration: BoxDecoration(
-                          color: isSelected ? AppColors.primary : Colors.grey[400],
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        isNow ? 'Сейчас' : _formatTick(tick),
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: isSelected
-                              ? AppColors.primary
-                              : AppColors.textSecondary,
-                          fontWeight:
-                              isSelected ? FontWeight.w700 : FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-          ),
-          IgnorePointer(
-            child: Container(
-              width: _itemWidth,
-              height: 58,
+      child: PageView.builder(
+        controller: _controller,
+        physics: const BouncingScrollPhysics(),
+        itemCount: _ticks.length,
+        onPageChanged: (index) {
+          if (_selectedIndex != index) {
+            setState(() => _selectedIndex = index);
+            _applyTimeMode(index);
+          }
+        },
+        itemBuilder: (_, index) {
+          final tick = _ticks[index];
+          final isSelected = index == _selectedIndex;
+          final isNow = index == _centerIndex;
+          return Center(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 120),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
-                color: AppColors.primary.withValues(alpha: 0.06),
+                color: isSelected
+                    ? AppColors.primary.withValues(alpha: 0.12)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: isSelected ? 3 : 2,
+                    height: isSelected ? 14 : 10,
+                    decoration: BoxDecoration(
+                      color: isSelected ? AppColors.primary : Colors.grey[400],
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    isNow ? 'Сейчас' : _formatTick(tick),
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: isSelected
+                          ? AppColors.primary
+                          : AppColors.textSecondary,
+                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }

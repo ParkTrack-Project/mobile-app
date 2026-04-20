@@ -489,6 +489,14 @@ class _FiltersSheet extends ConsumerWidget {
               'Минимальная уверенность',
               style: TextStyle(fontWeight: FontWeight.w600),
             ),
+            const SizedBox(height: 4),
+            Text(
+              '${(filters.minConfidence * 100).round()}%',
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
             Slider(
               value: filters.minConfidence,
               min: 0,
@@ -506,13 +514,25 @@ class _FiltersSheet extends ConsumerWidget {
               },
             ),
             if (hasPayLimit)
-              Slider(
-                value: payValue.toDouble(),
-                min: 0,
-                max: 500,
-                divisions: 20,
-                label: '$payValue ₽/ч',
-                onChanged: (value) => notifier.setMaxPay(value.round()),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '$payValue ₽/ч',
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  Slider(
+                    value: payValue.toDouble(),
+                    min: 0,
+                    max: 500,
+                    divisions: 20,
+                    label: '$payValue ₽/ч',
+                    onChanged: (value) => notifier.setMaxPay(value.round()),
+                  ),
+                ],
               ),
             const Divider(),
             const Text(
