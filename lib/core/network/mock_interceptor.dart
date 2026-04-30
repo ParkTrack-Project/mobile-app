@@ -94,14 +94,19 @@ class MockInterceptor extends Interceptor {
       }));
     }
     if (method == 'POST' && path == '/routing/new') {
+      final body = options.data as Map<String, dynamic>? ?? {};
+      final zoneId = body['selected_zone_id'] as int? ?? 101;
+      final zone = zoneId == 102
+          ? {'lat': 55.7495, 'lon': 37.622, 'time': '14:37'}
+          : {'lat': 55.7520, 'lon': 37.612, 'time': '14:35'};
       return handler.resolve(_response(options, {
-        'routeId': 1,
+        'routeId': zoneId,
         'status': 'active',
         'mode': 'find_parking',
-        'selectedZoneId': 101,
-        'arrivalTime': '14:35',
+        'selectedZoneId': zoneId,
+        'arrivalTime': zone['time'],
         'deeplinkUrl':
-            'yandexnavi://build_route_on_map?lat_to=55.7558&lon_to=37.6173&appmetrica_tracking_id=1178268795219767552',
+            'yandexnavi://build_route_on_map?lat_to=${zone['lat']}&lon_to=${zone['lon']}&appmetrica_tracking_id=1178268795219767552',
         'routeGeometry': null,
         'candidates': [],
       }));

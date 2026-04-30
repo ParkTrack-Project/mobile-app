@@ -1,21 +1,19 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../domain/models/zone.dart';
 import '../../../../core/theme/app_colors.dart';
 
-void showParkingCard(BuildContext context, WidgetRef ref, Zone zone) {
-  showModalBottomSheet(
+Future<void> showParkingCard(BuildContext context, Zone zone) {
+  return showModalBottomSheet(
     context: context,
     isScrollControlled: true,
-    builder: (_) => _ParkingCardSheet(zone: zone, ref: ref),
+    builder: (_) => _ParkingCardSheet(zone: zone),
   );
 }
 
 class _ParkingCardSheet extends StatelessWidget {
   final Zone zone;
-  final WidgetRef ref;
 
-  const _ParkingCardSheet({required this.zone, required this.ref});
+  const _ParkingCardSheet({required this.zone});
 
   @override
   Widget build(BuildContext context) {

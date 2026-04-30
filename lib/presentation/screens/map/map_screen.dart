@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'dart:math' as math;
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
@@ -28,10 +31,25 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Timer? _debounce;
   Position? _userPosition;
   Point? _lastCameraTarget;
+  double _currentAzimuth = 0;
+  Uint8List? _destinationPinBytes;
+  Uint8List? _userLocationBytes;
 
   bool _isSelectingOnMap = false;
   bool _isCandidatesSheetOpen = false;
   bool _isRouteSheetOpen = false;
+  bool _isParkingCardOpen = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _buildDestinationPinBitmap().then((b) {
+      if (mounted) setState(() => _destinationPinBytes = b);
+    });
+    _buildUserLocationBitmap().then((b) {
+      if (mounted) setState(() => _userLocationBytes = b);
+    });
+  }
 
   @override
   void dispose() {
@@ -39,10 +57,49 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     super.dispose();
   }
 
+  Future<Uint8List> _buildDestinationPinBitmap() async {
+    const size = 48.0;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    canvas.drawCircle(
+      const Offset(size / 2, size / 2),
+      size / 2 - 2,
+      Paint()..color = AppColors.primary,
+    );
+    canvas.drawCircle(
+      const Offset(size / 2, size / 2),
+      size / 2 - 2,
+      Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3,
+    );
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(size.toInt(), size.toInt());
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    return byteData!.buffer.asUint8List();
+  }
+
+  Future<Uint8List> _buildUserLocationBitmap() async {
+    const size = 48.0;
+    const center = Offset(size / 2, size / 2);
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    canvas.drawCircle(center, size / 2 - 1, Paint()..color = Colors.white);
+    canvas.drawCircle(center, size / 2 - 5, Paint()..color = const Color(0xFF007AFF));
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(size.toInt(), size.toInt());
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    return byteData!.buffer.asUint8List();
+  }
+
   void _onCameraPositionChanged(CameraPosition position, _, __) {
     _lastCameraTarget = position.target;
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 400), _fetchZones);
+    if ((position.azimuth - _currentAzimuth).abs() > 0.5) {
+      setState(() => _currentAzimuth = position.azimuth);
+    }
   }
 
   Future<void> _fetchZones() async {
@@ -69,9 +126,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       return null;
     }
     try {
+      final cached = await Geolocator.getLastKnownPosition();
+      if (cached != null) {
+        _userPosition = cached;
+        return cached;
+      }
       final pos = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
-          timeLimit: Duration(seconds: 10),
+          timeLimit: Duration(seconds: 5),
         ),
       );
       _userPosition = pos;
@@ -96,6 +158,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Future<void> _goToMyLocation() async {
     final pos = await _getCurrentPosition();
     if (pos == null) return;
+    if (mounted) setState(() {});
     await _mapController?.moveCamera(
       CameraUpdate.newCameraPosition(
         CameraPosition(
@@ -104,6 +167,54 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         ),
       ),
       animation: const MapAnimation(duration: 0.8),
+    );
+  }
+
+  Future<void> _resetNorth() async {
+    if (_mapController == null) return;
+    final pos = await _mapController!.getCameraPosition();
+    await _mapController!.moveCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(
+          target: pos.target,
+          zoom: pos.zoom,
+          azimuth: 0,
+          tilt: 0,
+        ),
+      ),
+      animation: const MapAnimation(duration: 0.4),
+    );
+  }
+
+  Future<void> _zoomIn() async {
+    if (_mapController == null) return;
+    final pos = await _mapController!.getCameraPosition();
+    await _mapController!.moveCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(
+          target: pos.target,
+          zoom: pos.zoom + 1,
+          azimuth: pos.azimuth,
+          tilt: pos.tilt,
+        ),
+      ),
+      animation: const MapAnimation(duration: 0.2),
+    );
+  }
+
+  Future<void> _zoomOut() async {
+    if (_mapController == null) return;
+    final pos = await _mapController!.getCameraPosition();
+    await _mapController!.moveCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(
+          target: pos.target,
+          zoom: pos.zoom - 1,
+          azimuth: pos.azimuth,
+          tilt: pos.tilt,
+        ),
+      ),
+      animation: const MapAnimation(duration: 0.2),
     );
   }
 
@@ -146,17 +257,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             : null;
     ref.read(searchBiasProvider.notifier).state = bias;
     await context.push('/search');
-
-    if (!mounted) return;
-    final destination = ref.read(destinationProvider);
-    final mode = ref.read(destinationModeProvider);
-    if (destination == null) return;
-
-    if (mode == DestinationMode.routeToAddress) {
-      await openYandexNavigator(destination.latitude, destination.longitude);
-      return;
-    }
-    await _findParking();
   }
 
   Future<void> _findParking() async {
@@ -189,6 +289,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   @override
   Widget build(BuildContext context) {
+    const bottomInset = 0.0;
     final zones = ref.watch(filteredZonesProvider);
     final zonesAsync = ref.watch(rawZonesProvider);
     final routingState = ref.watch(routingProvider);
@@ -275,19 +376,53 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       orElse: () => <int>{},
     );
 
-    final mapObjects = buildZoneMapObjects(
+    final zoneObjects = buildZoneMapObjects(
       zones: zones,
       onTap: (zone) {
         if (_isSelectingOnMap && candidateIds.contains(zone.zoneId)) {
           _buildRouteForZone(zone.zoneId);
           return;
         }
-        showParkingCard(context, ref, zone);
+        if (_isParkingCardOpen) return;
+        setState(() => _isParkingCardOpen = true);
+        showParkingCard(context, zone).then((_) {
+          if (mounted) setState(() => _isParkingCardOpen = false);
+        });
       },
     );
 
+    final mapObjects = <MapObject>[
+      ...zoneObjects,
+      if (_userPosition != null && _userLocationBytes != null)
+        PlacemarkMapObject(
+          mapId: const MapObjectId('user_location'),
+          point: Point(
+            latitude: _userPosition!.latitude,
+            longitude: _userPosition!.longitude,
+          ),
+          icon: PlacemarkIcon.single(PlacemarkIconStyle(
+            image: BitmapDescriptor.fromBytes(_userLocationBytes!),
+            scale: 1.0,
+          )),
+        ),
+      if (destination != null && _destinationPinBytes != null)
+        PlacemarkMapObject(
+          mapId: const MapObjectId('destination_pin'),
+          point: Point(
+            latitude: destination.latitude,
+            longitude: destination.longitude,
+          ),
+          icon: PlacemarkIcon.single(PlacemarkIconStyle(
+            image: BitmapDescriptor.fromBytes(_destinationPinBytes!),
+            scale: 1.0,
+          )),
+        ),
+    ];
+
+    final isRotated = _currentAzimuth.abs() > 1;
+
     return Scaffold(
-      body: Stack(
+      body: SafeArea(child: Stack(
         children: [
           YandexMap(
             mapObjects: mapObjects,
@@ -304,6 +439,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             },
             onCameraPositionChanged: _onCameraPositionChanged,
           ),
+          // ─── Top bar ───────────────────────────────────────────────
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(12),
@@ -329,14 +465,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.search, color: AppColors.textSecondary),
+                            const Icon(Icons.search,
+                                color: AppColors.textSecondary),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
                                 destination?.name ?? 'Найти место назначения',
                                 style: const TextStyle(
-                                  color: AppColors.textSecondary,
-                                ),
+                                    color: AppColors.textSecondary),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -347,114 +483,243 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  _MapButton(icon: Icons.tune, onTap: () => _showFilters(context)),
+                  _MapButton(
+                      icon: Icons.tune,
+                      onTap: () => _showFilters(context)),
                   const SizedBox(width: 4),
-                  _MapButton(icon: Icons.person_outlined, onTap: () => context.push('/profile')),
+                  _MapButton(
+                      icon: Icons.person_outlined,
+                      onTap: () => context.push('/profile')),
                 ],
               ),
             ),
           ),
-          Positioned(
-            bottom: 108,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: const TimeSelectorWidget(),
-            ),
-          ),
-          Positioned(
-            bottom: 24,
-            right: 16,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                FloatingActionButton.small(
-                  heroTag: 'my_location',
-                  onPressed: _goToMyLocation,
-                  backgroundColor: Colors.white,
-                  foregroundColor: AppColors.primary,
-                  child: const Icon(Icons.my_location),
-                ),
-              ],
-            ),
-          ),
+          // ─── Нижняя строка: FAB слева + кнопки справа ─────────────
+          if (destination == null)
             Positioned(
-              bottom: 24,
-              left: 16,
+              bottom: bottomInset + 12,
+              left: 12,
               child: FloatingActionButton.extended(
                 heroTag: 'find_parking',
                 onPressed: isRoutingLoading ? null : _findParking,
                 backgroundColor: AppColors.primary,
                 icon: const Icon(Icons.local_parking, color: Colors.white),
                 label: Text(
-                  isRoutingLoading
-                      ? 'Ищем...'
-                      : destination == null
-                          ? 'Где припарковаться?'
-                          : 'Парковка рядом',
+                  isRoutingLoading ? 'Ищем...' : 'Где припарковаться?',
                   style: const TextStyle(color: Colors.white),
                 ),
               ),
             ),
+          Positioned(
+            right: 12,
+            top: 0,
+            bottom: 0,
+            child: Align(
+              alignment: Alignment.center,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (isRotated) ...[
+                    _MapButton(
+                      onTap: _resetNorth,
+                      child: Transform.rotate(
+                        angle: -_currentAzimuth * math.pi / 180,
+                        child: const Icon(Icons.navigation_outlined,
+                            size: 22, color: Color(0xFF424242)),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                  ],
+                  _MapButton(icon: Icons.add, onTap: _zoomIn),
+                  const SizedBox(height: 4),
+                  _MapButton(icon: Icons.remove, onTap: _zoomOut),
+                  const SizedBox(height: 4),
+                  _MapButton(icon: Icons.my_location, onTap: _goToMyLocation),
+                ],
+              ),
+            ),
+          ),
+          // ─── Таймлайн: полная ширина, своя строка выше кнопок ──────
+          if (destination == null)
+            Positioned(
+              bottom: bottomInset + 76,
+              left: 0,
+              right: 0,
+              child: const TimeSelectorWidget(),
+            ),
+          // ─── Карточка назначения ────────────────────────────────────
+          if (destination != null)
+            Positioned(
+              bottom: bottomInset + 76,
+              left: 12,
+              right: 12,
+              child: _DestinationCard(
+                destination: destination,
+                onFindParking: isRoutingLoading ? null : _findParking,
+                onNavigate: () => openYandexNavigator(
+                    destination.latitude, destination.longitude),
+                onClear: () {
+                  ref.read(destinationProvider.notifier).state = null;
+                  ref.read(routingProvider.notifier).reset();
+                },
+              ),
+            ),
+          // ─── Loading indicators ─────────────────────────────────────
           if (zonesAsync is AsyncLoading)
             const Positioned(
               top: 100,
               left: 0,
               right: 0,
               child: Center(
-                  child: SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
                 ),
               ),
-            if (isRoutingLoading)
-              Positioned(
-                top: 148,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.1),
-                          blurRadius: 8,
+            ),
+          if (isRoutingLoading)
+            Positioned(
+              top: 148,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.1),
+                        blurRadius: 8,
+                      ),
+                    ],
+                  ),
+                  child: const Padding(
+                    padding:
+                        EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
                         ),
+                        SizedBox(width: 8),
+                        Text('Поиск маршрута...'),
                       ],
                     ),
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                          SizedBox(width: 8),
-                          Text('Поиск маршрута...'),
-                        ],
-                      ),
-                    ),
                   ),
                 ),
               ),
+            ),
+        ],
+      )),
+    );
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+
+class _DestinationCard extends StatelessWidget {
+  const _DestinationCard({
+    required this.destination,
+    required this.onFindParking,
+    required this.onNavigate,
+    required this.onClear,
+  });
+
+  final Destination destination;
+  final VoidCallback? onFindParking;
+  final VoidCallback onNavigate;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 12,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.place, size: 16, color: AppColors.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  destination.name ?? 'Выбранное место',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+              ),
+              GestureDetector(
+                onTap: onClear,
+                child: const Padding(
+                  padding: EdgeInsets.all(8),
+                  child: Icon(Icons.close,
+                      size: 18, color: AppColors.textSecondary),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                flex: 3,
+                child: FilledButton.icon(
+                  onPressed: onFindParking,
+                  icon: const Icon(Icons.local_parking, size: 16),
+                  label: const Text('Искать парковку рядом'),
+                  style: FilledButton.styleFrom(
+                    textStyle: const TextStyle(fontSize: 13),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 2,
+                child: FilledButton.tonal(
+                  onPressed: onNavigate,
+                  style: FilledButton.styleFrom(
+                    textStyle: const TextStyle(fontSize: 13),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                  ),
+                  child: const Text('Ехать туда'),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
   }
 }
 
-class _MapButton extends StatelessWidget {
-  const _MapButton({required this.icon, required this.onTap});
+// ───────────────────────────────────────────────────────────────────────────
 
-  final IconData icon;
+class _MapButton extends StatelessWidget {
+  const _MapButton({this.icon, required this.onTap, this.child});
+
+  final IconData? icon;
   final VoidCallback onTap;
+  final Widget? child;
 
   @override
   Widget build(BuildContext context) {
@@ -472,11 +737,14 @@ class _MapButton extends StatelessWidget {
             ),
           ],
         ),
-        child: Icon(icon, size: 22, color: const Color(0xFF424242)),
+        child: child ??
+            Icon(icon!, size: 22, color: const Color(0xFF424242)),
       ),
     );
   }
 }
+
+// ───────────────────────────────────────────────────────────────────────────
 
 class _FiltersSheet extends ConsumerWidget {
   const _FiltersSheet();
@@ -499,7 +767,8 @@ class _FiltersSheet extends ConsumerWidget {
         ),
         child: ListView(
           controller: controller,
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          padding: EdgeInsets.fromLTRB(
+              20, 12, 20, MediaQuery.of(context).padding.bottom + 24),
           children: [
             Center(
               child: Container(
@@ -517,10 +786,13 @@ class _FiltersSheet extends ConsumerWidget {
                 const Expanded(
                   child: Text(
                     'Фильтры',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                 ),
-                TextButton(onPressed: notifier.reset, child: const Text('Сбросить')),
+                TextButton(
+                    onPressed: notifier.reset,
+                    child: const Text('Сбросить')),
               ],
             ),
             SwitchListTile(
@@ -589,7 +861,8 @@ class _FiltersSheet extends ConsumerWidget {
                     max: 500,
                     divisions: 20,
                     label: '$payValue ₽/ч',
-                    onChanged: (value) => notifier.setMaxPay(value.round()),
+                    onChanged: (value) =>
+                        notifier.setMaxPay(value.round()),
                   ),
                 ],
               ),
@@ -609,9 +882,15 @@ class _FiltersSheet extends ConsumerWidget {
               CheckboxListTile(
                 title: Text(entry.value),
                 value: !filters.hiddenLocationTypes.contains(entry.key),
-                onChanged: (_) => notifier.toggleLocationType(entry.key),
+                onChanged: (_) =>
+                    notifier.toggleLocationType(entry.key),
                 dense: true,
               ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Применить'),
+            ),
           ],
         ),
       ),

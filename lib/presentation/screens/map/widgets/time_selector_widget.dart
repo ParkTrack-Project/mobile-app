@@ -41,6 +41,16 @@ class _TimeSelectorWidgetState extends ConsumerState<TimeSelectorWidget> {
       viewportFraction: 0.17,
       initialPage: _centerIndex,
     );
+
+    _controller.addListener(() {
+      final p = _controller.page;
+      if (p == null) return;
+      final rounded = p.round().clamp(0, _ticks.length - 1);
+      if (rounded != _selectedIndex) {
+        setState(() => _selectedIndex = rounded);
+      }
+    });
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _applyTimeMode(_centerIndex);
     });
@@ -66,74 +76,139 @@ class _TimeSelectorWidgetState extends ConsumerState<TimeSelectorWidget> {
     }
   }
 
+  void _resetToNow() {
+    _controller.animateToPage(
+      _centerIndex,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeInOut,
+    );
+    setState(() => _selectedIndex = _centerIndex);
+    _applyTimeMode(_centerIndex);
+  }
+
+  void _selectIndex(int index) {
+    _controller.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+    setState(() => _selectedIndex = index);
+    _applyTimeMode(index);
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 62,
-      margin: const EdgeInsets.symmetric(horizontal: 12),
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 8,
-          ),
-        ],
-      ),
-      child: PageView.builder(
-        controller: _controller,
-        physics: const BouncingScrollPhysics(),
-        itemCount: _ticks.length,
-        onPageChanged: (index) {
-          if (_selectedIndex != index) {
-            setState(() => _selectedIndex = index);
-            _applyTimeMode(index);
-          }
-        },
-        itemBuilder: (_, index) {
-          final tick = _ticks[index];
-          final isSelected = index == _selectedIndex;
-          final isNow = index == _centerIndex;
-          return Center(
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 120),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? AppColors.primary.withValues(alpha: 0.12)
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    width: isSelected ? 3 : 2,
-                    height: isSelected ? 14 : 10,
-                    decoration: BoxDecoration(
-                      color: isSelected ? AppColors.primary : Colors.grey[400],
-                      borderRadius: BorderRadius.circular(2),
+    final isOffCenter = _selectedIndex != _centerIndex;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AnimatedOpacity(
+          opacity: isOffCenter ? 1.0 : 0.0,
+          duration: const Duration(milliseconds: 200),
+          child: IgnorePointer(
+            ignoring: !isOffCenter,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.1),
+                      blurRadius: 6,
                     ),
+                  ],
+                ),
+                child: TextButton.icon(
+                  onPressed: _resetToNow,
+                  icon: const Icon(Icons.restore, size: 16),
+                  label: const Text('Сейчас'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    textStyle: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w600),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    minimumSize: Size.zero,
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    isNow ? 'Сейчас' : _formatTick(tick),
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: isSelected
-                          ? AppColors.primary
-                          : AppColors.textSecondary,
-                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
-          );
-        },
-      ),
+          ),
+        ),
+        Container(
+          height: 62,
+          margin: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.1),
+                blurRadius: 8,
+              ),
+            ],
+          ),
+          child: PageView.builder(
+            controller: _controller,
+            physics: const BouncingScrollPhysics(),
+            itemCount: _ticks.length,
+            onPageChanged: (index) => _applyTimeMode(index),
+            itemBuilder: (_, index) {
+              final tick = _ticks[index];
+              final isSelected = index == _selectedIndex;
+              final isNow = index == _centerIndex;
+              return GestureDetector(
+                onTap: () => _selectIndex(index),
+                child: Center(
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 120),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? AppColors.primary.withValues(alpha: 0.12)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: isSelected ? 3 : 2,
+                          height: isSelected ? 14 : 10,
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? AppColors.primary
+                                : Colors.grey[400],
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          isNow ? 'Сейчас' : _formatTick(tick),
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: isSelected
+                                ? AppColors.primary
+                                : AppColors.textSecondary,
+                            fontWeight: isSelected
+                                ? FontWeight.w700
+                                : FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 

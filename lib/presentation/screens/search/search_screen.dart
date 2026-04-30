@@ -14,11 +14,14 @@ class SearchScreen extends ConsumerStatefulWidget {
 }
 
 class _SearchScreenState extends ConsumerState<SearchScreen> {
-  static const double _biasLatDelta = 2.0;
-  static const double _biasLonDelta = 3.0;
+  // Широкая bbox вокруг точки биаса (покрывает ~1000 км в каждую сторону).
+  // Центр bbox = текущая позиция камеры, что правильно биасирует Yandex Suggest.
+  static const double _biasLatDelta = 10.0;
+  static const double _biasLonDelta = 15.0;
+  // Запасной вариант если геолокация/позиция камеры неизвестны — центр России.
   static const BoundingBox _russiaBoundingBox = BoundingBox(
     southWest: Point(latitude: 41.0, longitude: 19.0),
-    northEast: Point(latitude: 82.0, longitude: 180.0),
+    northEast: Point(latitude: 82.0, longitude: 169.0),
   );
 
   final _controller = TextEditingController();
@@ -83,12 +86,12 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     final resultWithSession = YandexSuggest.getSuggestions(
       text: text,
       boundingBox: boundingBox,
-      suggestOptions: const SuggestOptions(suggestType: SuggestType.geo),
+      suggestOptions: const SuggestOptions(suggestType: SuggestType.unspecified),
     );
     _suggestSession?.close();
     _suggestSession = resultWithSession.session;
     final result = await resultWithSession.result.timeout(
-      const Duration(seconds: 8),
+      const Duration(seconds: 5),
     );
     return result.items ?? [];
   }
@@ -105,7 +108,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     _searchSession?.close();
     _searchSession = resultWithSession.session;
     final result = await resultWithSession.result.timeout(
-      const Duration(seconds: 8),
+      const Duration(seconds: 5),
     );
     return result.items?.firstOrNull?.geometry.firstOrNull?.point;
   }
@@ -115,13 +118,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     setState(() => _loading = true);
     try {
       final searchBias = ref.read(searchBiasProvider);
-      final preferredBoundingBox = searchBias == null
+      final bbox = searchBias == null
           ? _russiaBoundingBox
           : _buildLocalBoundingBox(searchBias);
-      var items = await _loadSuggestions(text, preferredBoundingBox);
-      if (items.isEmpty && searchBias != null) {
-        items = await _loadSuggestions(text, _russiaBoundingBox);
-      }
+      final items = await _loadSuggestions(text, bbox);
       if (!mounted) return;
       setState(() {
         _suggestions = items;
@@ -142,46 +142,19 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     }
   }
 
-  Future<void> _chooseDestinationModeAndClose(Destination destination) async {
-    final mode = await showModalBottomSheet<DestinationMode>(
-      context: context,
-      builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.navigation_outlined),
-              title: const Text('Ехать к адресу'),
-              subtitle: const Text('Сразу открыть маршрут к выбранному адресу'),
-              onTap: () => Navigator.pop(context, DestinationMode.routeToAddress),
-            ),
-            ListTile(
-              leading: const Icon(Icons.local_parking_outlined),
-              title: const Text('Искать парковку рядом'),
-              subtitle: const Text('Подобрать ближайшую парковку к адресу'),
-              onTap: () => Navigator.pop(context, DestinationMode.nearestParking),
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-    if (mode == null || !mounted) return;
+  void _selectDestination(Destination destination) {
     ref.read(destinationProvider.notifier).state = destination;
-    ref.read(destinationModeProvider.notifier).state = mode;
     context.pop();
   }
 
   Future<void> _onSuggestionTap(SuggestItem item) async {
     _focusNode.unfocus();
     if (item.center != null) {
-      await _chooseDestinationModeAndClose(
-        Destination(
-          latitude: item.center!.latitude,
-          longitude: item.center!.longitude,
-          name: item.title,
-        ),
-      );
+      _selectDestination(Destination(
+        latitude: item.center!.latitude,
+        longitude: item.center!.longitude,
+        name: item.title,
+      ));
       return;
     }
 
@@ -191,13 +164,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     });
     try {
       final searchBias = ref.read(searchBiasProvider);
-      final preferredBoundingBox = searchBias == null
+      final bbox = searchBias == null
           ? _russiaBoundingBox
           : _buildLocalBoundingBox(searchBias);
-      var point = await _searchPointByText(item.searchText, preferredBoundingBox);
-      if (point == null && searchBias != null) {
-        point = await _searchPointByText(item.searchText, _russiaBoundingBox);
-      }
+      final point = await _searchPointByText(item.searchText, bbox);
       if (!mounted) return;
       if (point == null) {
         setState(() => _loading = false);
@@ -206,13 +176,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         );
         return;
       }
-      await _chooseDestinationModeAndClose(
-        Destination(
-          latitude: point.latitude,
-          longitude: point.longitude,
-          name: item.title,
-        ),
-      );
+      _selectDestination(Destination(
+        latitude: point.latitude,
+        longitude: point.longitude,
+        name: item.title,
+      ));
     } on TimeoutException {
       if (!mounted) return;
       setState(() => _loading = false);
@@ -244,6 +212,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           controller: _controller,
           focusNode: _focusNode,
           onChanged: _onChanged,
+          onSubmitted: (text) {
+            if (text.trim().isNotEmpty) _suggest(text.trim());
+          },
           textInputAction: TextInputAction.search,
           decoration: const InputDecoration(
             hintText: 'Введите адрес или место',
