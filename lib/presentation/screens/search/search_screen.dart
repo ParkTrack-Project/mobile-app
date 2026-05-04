@@ -37,6 +37,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusNode.requestFocus();
+      final saved = ref.read(searchQueryProvider);
+      if (saved.isNotEmpty) {
+        _controller.text = saved;
+        _suggest(saved);
+      }
     });
   }
 
@@ -51,6 +56,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   }
 
   void _onChanged(String text) {
+    ref.read(searchQueryProvider.notifier).state = text;
     _debounce?.cancel();
     if (text.trim().isEmpty) {
       setState(() => _suggestions = []);
@@ -228,6 +234,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               icon: const Icon(Icons.close),
               onPressed: () {
                 _controller.clear();
+                ref.read(searchQueryProvider.notifier).state = '';
                 setState(() => _suggestions = []);
               },
             ),

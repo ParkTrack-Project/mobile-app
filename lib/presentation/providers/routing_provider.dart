@@ -40,6 +40,8 @@ class SearchBias {
 
 final searchBiasProvider = StateProvider<SearchBias?>((ref) => null);
 
+final searchQueryProvider = StateProvider<String>((ref) => '');
+
 class RoutingNotifier extends StateNotifier<RoutingState> {
   RoutingNotifier(this._ref) : super(const RoutingState.idle());
 

@@ -419,8 +419,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         ),
     ];
 
-    final isRotated = _currentAzimuth.abs() > 1;
-
     return Scaffold(
       body: SafeArea(child: Stack(
         children: [
@@ -519,17 +517,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (isRotated) ...[
-                    _MapButton(
-                      onTap: _resetNorth,
-                      child: Transform.rotate(
-                        angle: -_currentAzimuth * math.pi / 180,
-                        child: const Icon(Icons.navigation_outlined,
-                            size: 22, color: Color(0xFF424242)),
-                      ),
+                  _MapButton(
+                    onTap: _resetNorth,
+                    child: Transform.rotate(
+                      angle: -_currentAzimuth * math.pi / 180,
+                      child: const Icon(Icons.explore,
+                          size: 22, color: Color(0xFF424242)),
                     ),
-                    const SizedBox(height: 4),
-                  ],
+                  ),
+                  const SizedBox(height: 4),
                   _MapButton(icon: Icons.add, onTap: _zoomIn),
                   const SizedBox(height: 4),
                   _MapButton(icon: Icons.remove, onTap: _zoomOut),
@@ -701,7 +697,7 @@ class _DestinationCard extends StatelessWidget {
                     textStyle: const TextStyle(fontSize: 13),
                     padding: const EdgeInsets.symmetric(vertical: 10),
                   ),
-                  child: const Text('Ехать туда'),
+                  child: const Text('Ехать сюда'),
                 ),
               ),
             ],
