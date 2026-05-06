@@ -31,6 +31,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   Timer? _debounce;
   List<SuggestItem> _suggestions = [];
   bool _loading = false;
+  int _suggestSeq = 0;
 
   @override
   void initState() {
@@ -121,6 +122,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
   Future<void> _suggest(String text) async {
     if (!mounted) return;
+    final seq = ++_suggestSeq;
     setState(() => _loading = true);
     try {
       final searchBias = ref.read(searchBiasProvider);
@@ -128,19 +130,19 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           ? _russiaBoundingBox
           : _buildLocalBoundingBox(searchBias);
       final items = await _loadSuggestions(text, bbox);
-      if (!mounted) return;
+      if (!mounted || seq != _suggestSeq) return;
       setState(() {
         _suggestions = items;
         _loading = false;
       });
     } on TimeoutException {
-      if (!mounted) return;
+      if (!mounted || seq != _suggestSeq) return;
       setState(() => _loading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Поиск занял слишком много времени')),
       );
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || seq != _suggestSeq) return;
       setState(() => _loading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Не удалось выполнить поиск')),
