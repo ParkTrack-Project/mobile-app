@@ -52,8 +52,8 @@ class RoutingRepository {
   RouteCandidate _mapCandidate(RouteCandidateDto dto) => RouteCandidate(
         zoneId: dto.zoneId,
         rank: dto.rank,
-        freeCount: dto.freeCount,
-        confidence: dto.confidence,
+        freeCount: dto.currentFreeCount,
+        confidence: dto.currentConfidence,
         pay: dto.pay,
         distanceToDestinationMeters: dto.distanceToDestinationMeters,
         durationFromOriginSeconds: dto.durationFromOriginSeconds,
@@ -68,8 +68,10 @@ class RoutingRepository {
         selectedZoneId: dto.selectedZoneId ?? 0,
         arrivalTime: dto.arrivalTime,
         deeplinkUrl: dto.deeplinkUrl,
-        routePolyline: _parsePolyline(dto.routeGeometry),
-        candidates: dto.candidates?.map(_mapCandidate).toList() ?? [],
+        routePolyline: null,
+        candidates: dto.selectedCandidate != null
+            ? [_mapCandidate(dto.selectedCandidate!)]
+            : [],
       );
 
   List<Point>? _parsePolyline(Map<String, dynamic>? geometry) {

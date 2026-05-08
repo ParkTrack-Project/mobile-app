@@ -52,8 +52,8 @@ class RouteCandidateDto with _$RouteCandidateDto {
   const factory RouteCandidateDto({
     required int zoneId,
     required int rank,
-    required int freeCount,
-    required double confidence,
+    required int currentFreeCount,
+    required double currentConfidence,
     required int pay,
     int? distanceToDestinationMeters,
     int? durationFromOriginSeconds,
@@ -75,8 +75,8 @@ class RouteDto with _$RouteDto {
     int? selectedZoneId,
     String? arrivalTime,
     String? deeplinkUrl,
-    Map<String, dynamic>? routeGeometry,
-    List<RouteCandidateDto>? candidates,
+    String? polyline,
+    RouteCandidateDto? selectedCandidate,
   }) = _RouteDto;
 
   factory RouteDto.fromJson(Map<String, dynamic> json) =>
