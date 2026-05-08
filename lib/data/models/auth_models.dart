@@ -21,7 +21,7 @@ class UserDto with _$UserDto {
     required int userId,
     required String email,
     String? fullName,
-    required List<String> globalRoles,
+    String? globalRole,
   }) = _UserDto;
 
   factory UserDto.fromJson(Map<String, dynamic> json) =>

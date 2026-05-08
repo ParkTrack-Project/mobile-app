@@ -1,4 +1,4 @@
-const String kBaseUrl = 'https://api.parktrack.live';
+const String kBaseUrl = 'https://api.parktrack.live/api/v1';
 const String kYandexMapkitKey = String.fromEnvironment('YANDEX_MAPKIT_KEY');
 
 const double kConfidenceThreshold = 0.65;
