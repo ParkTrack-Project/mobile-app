@@ -1,6 +1,6 @@
 import 'package:dio/dio.dart';
 
-const bool kUseMocks = true;
+const bool kUseMocks = false;
 
 class MockInterceptor extends Interceptor {
   @override
@@ -62,33 +62,31 @@ class MockInterceptor extends Interceptor {
       return handler.resolve(_response(options, {
         'mode': 'find_parking',
         'provider': 'mock',
-        'generatedAt': '2024-01-01T12:00:00Z',
-        'selectedZoneId': 101,
-        'totalCandidates': 2,
+        'generated_at': '2024-01-01T12:00:00Z',
+        'selected_zone_id': 101,
+        'total_candidates': 2,
         'candidates': [
           {
-            'zoneId': 101,
+            'zone_id': 101,
             'rank': 1,
-            'freeCount': 5,
-            'confidence': 0.87,
+            'current_free_count': 5,
+            'current_confidence': 0.87,
             'pay': 0,
-            'distanceToDestinationMeters': 150,
-            'durationFromOriginSeconds': 420,
-            'predictedFreeCount': 4,
-            'eta': '14:35',
-            'routeGeometry': null,
+            'distance_to_destination_meters': 150,
+            'duration_from_origin_seconds': 420,
+            'predicted_free_count': 4,
+            'route_geometry': null,
           },
           {
-            'zoneId': 102,
+            'zone_id': 102,
             'rank': 2,
-            'freeCount': 2,
-            'confidence': 0.72,
+            'current_free_count': 2,
+            'current_confidence': 0.72,
             'pay': 100,
-            'distanceToDestinationMeters': 280,
-            'durationFromOriginSeconds': 540,
-            'predictedFreeCount': 1,
-            'eta': '14:37',
-            'routeGeometry': null,
+            'distance_to_destination_meters': 280,
+            'duration_from_origin_seconds': 540,
+            'predicted_free_count': 1,
+            'route_geometry': null,
           },
         ],
       }));
@@ -100,15 +98,13 @@ class MockInterceptor extends Interceptor {
           ? {'lat': 55.7495, 'lon': 37.622, 'time': '14:37'}
           : {'lat': 55.7520, 'lon': 37.612, 'time': '14:35'};
       return handler.resolve(_response(options, {
-        'routeId': zoneId,
+        'route_id': zoneId,
         'status': 'active',
         'mode': 'find_parking',
-        'selectedZoneId': zoneId,
-        'arrivalTime': zone['time'],
-        'deeplinkUrl':
+        'selected_zone_id': zoneId,
+        'arrival_time': zone['time'],
+        'deeplink_url':
             'yandexnavi://build_route_on_map?lat_to=${zone['lat']}&lon_to=${zone['lon']}&appmetrica_tracking_id=1178268795219767552',
-        'routeGeometry': null,
-        'candidates': [],
       }));
     }
 
@@ -124,8 +120,8 @@ class MockInterceptor extends Interceptor {
   }
 
   Map<String, dynamic> _authPayload(String email, String name) => {
-        'accessToken': 'mock-token-123',
-        'expiresIn': 86400,
+        'access_token': 'mock-token-123',
+        'expires_in': 86400,
         'user': _userPayload(email, name),
       };
 
@@ -137,28 +133,28 @@ class MockInterceptor extends Interceptor {
     required List<List<double>> ring,
   }) {
     return {
-      'zoneId': zoneId,
-      'zoneType': zoneType,
+      'zone_id': zoneId,
+      'zone_type': zoneType,
       'capacity': 20,
-      'freeCount': freeCount,
+      'free_count': freeCount,
       'confidence': 0.9,
       'pay': pay,
       'geometry': {
         'type': 'Polygon',
         'coordinates': [ring],
       },
-      'isActive': true,
-      'locationType': 'street',
-      'isPrivate': false,
-      'isAccessible': true,
-      'confidenceLevel': 'high',
+      'is_active': true,
+      'location_type': 'street',
+      'is_private': false,
+      'is_accessible': true,
+      'confidence_level': 'high',
     };
   }
 
   Map<String, dynamic> _userPayload(String email, String name) => {
-        'userId': 1,
+        'user_id': 1,
         'email': email,
-        'fullName': name,
-        'globalRoles': ['user'],
+        'full_name': name,
+        'global_roles': ['user'],
       };
 }

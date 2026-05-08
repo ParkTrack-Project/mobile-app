@@ -18,6 +18,10 @@ class AuthRepository {
       return _mapUser(response.user);
     } on DioException catch (e) {
       throw ApiException.fromStatusCode(e.response?.statusCode ?? 0);
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw ApiException('Ошибка: $e');
     }
   }
 
@@ -30,6 +34,10 @@ class AuthRepository {
       return _mapUser(response.user);
     } on DioException catch (e) {
       throw ApiException.fromStatusCode(e.response?.statusCode ?? 0);
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw ApiException('Ошибка: $e');
     }
   }
 
@@ -55,6 +63,6 @@ class AuthRepository {
         userId: dto.userId,
         email: dto.email,
         fullName: dto.fullName,
-        roles: dto.globalRoles,
+        roles: dto.globalRole != null ? [dto.globalRole!] : [],
       );
 }
