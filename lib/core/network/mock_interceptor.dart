@@ -29,11 +29,11 @@ class MockInterceptor extends Interceptor {
           freeCount: 5,
           pay: 0,
           ring: [
-            [37.611, 55.7515],
-            [37.613, 55.7515],
-            [37.613, 55.7525],
-            [37.611, 55.7525],
-            [37.611, 55.7515],
+            [30.398, 59.733],
+            [30.402, 59.733],
+            [30.402, 59.737],
+            [30.398, 59.737],
+            [30.398, 59.733],
           ],
         ),
         _mockZone(
@@ -42,21 +42,41 @@ class MockInterceptor extends Interceptor {
           freeCount: 2,
           pay: 100,
           ring: [
-            [37.621, 55.749],
-            [37.623, 55.749],
-            [37.623, 55.750],
-            [37.621, 55.750],
-            [37.621, 55.749],
+            [30.406, 59.739],
+            [30.410, 59.739],
+            [30.410, 59.743],
+            [30.406, 59.743],
+            [30.406, 59.739],
+          ],
+        ),
+        _mockZone(
+          zoneId: 103,
+          zoneType: 'parallel',
+          freeCount: 0,
+          pay: 50,
+          ring: [
+            [30.403, 59.735],
+            [30.403, 59.736],
+            [30.412, 59.736],
+            [30.412, 59.735],
+            [30.403, 59.735],
           ],
         ),
       ]));
     }
 
     if (method == 'GET' && path.startsWith('/occupancy')) {
-      return handler.resolve(_response(options, []));
+      return handler.resolve(_response(options, [
+        _mockOccupancy(zoneId: 101, freeCount: 3),
+        _mockOccupancy(zoneId: 102, freeCount: 0),
+        _mockOccupancy(zoneId: 103, freeCount: 1),
+      ]));
     }
     if (method == 'GET' && path.startsWith('/forecasts')) {
-      return handler.resolve(_response(options, []));
+      return handler.resolve(_response(options, [
+        _mockForecast(zoneId: 101, predictedFreeCount: 4, confidence: 0.85),
+        _mockForecast(zoneId: 103, predictedFreeCount: 2, confidence: 0.71),
+      ]));
     }
     if (method == 'POST' && path == '/routing/search') {
       return handler.resolve(_response(options, {
@@ -156,5 +176,42 @@ class MockInterceptor extends Interceptor {
         'email': email,
         'full_name': name,
         'global_roles': ['user'],
+      };
+
+  Map<String, dynamic> _mockOccupancy({
+    required int zoneId,
+    required int freeCount,
+  }) =>
+      {
+        'zone_id': zoneId,
+        'zone_type': 'standard',
+        'capacity': 20,
+        'free_count': freeCount,
+        'confidence': 0.9,
+        'pay': 0,
+        'geometry': {
+          'type': 'Polygon',
+          'coordinates': [
+            [
+              [30.398, 59.733],
+              [30.402, 59.733],
+              [30.402, 59.737],
+              [30.398, 59.737],
+              [30.398, 59.733],
+            ]
+          ],
+        },
+        'observed_at': '2024-01-01T12:00:00Z',
+      };
+
+  Map<String, dynamic> _mockForecast({
+    required int zoneId,
+    required int predictedFreeCount,
+    required double confidence,
+  }) =>
+      {
+        'zone_id': zoneId,
+        'predicted_free_count': predictedFreeCount,
+        'confidence': confidence,
       };
 }

@@ -63,7 +63,10 @@ class _ParkingCardSheet extends StatelessWidget {
             _InfoRow(
               icon: Icons.local_parking,
               label: 'Мест',
-              value: '${zone.freeCount} / ${zone.capacity} свободно',
+              value: zone.hasForecast
+                  ? '${zone.freeCount} / ${zone.capacity} свободно'
+                  : 'Нет прогноза',
+              valueColor: zone.hasForecast ? null : AppColors.textSecondary,
             ),
             _InfoRow(
               icon: Icons.payments_outlined,

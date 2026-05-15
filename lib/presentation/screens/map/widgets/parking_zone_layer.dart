@@ -8,18 +8,29 @@ List<MapObject> buildZoneMapObjects({
   required List<Zone> zones,
   required void Function(Zone) onTap,
 }) {
-  return zones.map((zone) {
+  final result = <MapObject>[];
+  for (final zone in zones) {
+    if (_isDegenerate(zone.geometry)) continue;
     final color = _zoneColor(zone);
     if (zone.zoneType == ZoneType.parallel) {
-      return _buildParallelLine(zone, color, onTap);
+      result.add(_buildParallelLine(zone, color, onTap));
     } else {
-      return _buildPolygon(zone, color, onTap);
+      result.add(_buildPolygon(zone, color, onTap));
     }
-  }).toList();
+  }
+  return result;
+}
+
+bool _isDegenerate(List<Point> points) {
+  if (points.length < 3) return true;
+  final lat0 = points.first.latitude;
+  final lon0 = points.first.longitude;
+  return points.every((p) => p.latitude == lat0 && p.longitude == lon0);
 }
 
 Color _zoneColor(Zone zone) {
   if (!zone.isActive || zone.geometry.isEmpty) return AppColors.parkingUnknown;
+  if (!zone.hasForecast) return AppColors.parkingUnknown;
   if (zone.freeCount == 0) return AppColors.parkingFull;
   if (zone.freeCount == 1) return AppColors.parkingOne;
   if (zone.confidence >= kConfidenceThreshold) return AppColors.parkingFewHigh;
