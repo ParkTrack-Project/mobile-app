@@ -26,11 +26,30 @@ class ZonesRepository {
   }
 
   Future<List<Zone>> getZonesFuture(String bbox, DateTime at) async {
-    final items = await _forecastsApi.getForecastsMap(
-      bbox: bbox,
-      at: at.toUtc().toIso8601String(),
-    );
-    return items.map(_mapFromForecast).toList();
+    final atStr = at.toUtc().toIso8601String();
+    final zonesFuture = _zonesApi.getZones(bbox: bbox, view: 'map');
+    final forecastsFuture = _forecastsApi.getForecastsMap(bbox: bbox, at: atStr);
+
+    final zoneDtos = await zonesFuture;
+    List<Map<String, dynamic>> forecasts;
+    try {
+      forecasts = await forecastsFuture;
+    } catch (_) {
+      forecasts = [];
+    }
+
+    final forecastMap = <int, Map<String, dynamic>>{};
+    for (final f in forecasts) {
+      final id = f['zone_id'];
+      if (id is int) forecastMap[id] = f;
+    }
+
+    return zoneDtos.map((dto) {
+      final forecast = forecastMap[dto.zoneId];
+      return forecast != null
+          ? _mapZoneWithForecast(dto, forecast)
+          : _mapZone(dto).copyWith(hasForecast: false);
+    }).toList();
   }
 
   Future<Zone> getZoneDetails(int zoneId) async {
@@ -74,6 +93,24 @@ class ZonesRepository {
             : null,
       );
 
+  Zone _mapZoneWithForecast(ZoneMapItemDto dto, Map<String, dynamic> forecast) => Zone(
+        zoneId: dto.zoneId,
+        zoneType: _parseZoneType(dto.zoneType),
+        capacity: dto.capacity,
+        freeCount: (forecast['predicted_free_count'] as num?)?.toInt() ?? dto.freeCount,
+        confidence: (forecast['confidence'] as num?)?.toDouble() ?? dto.confidence,
+        pay: dto.pay,
+        geometry: _parseGeometry(dto.geometry),
+        isActive: dto.isActive,
+        locationType: _parseLocationType(dto.locationType),
+        isPrivate: dto.isPrivate,
+        isAccessible: dto.isAccessible,
+        confidenceLevel: dto.confidenceLevel,
+        occupancyUpdatedAt: dto.occupancyUpdatedAt != null
+            ? DateTime.tryParse(dto.occupancyUpdatedAt!)
+            : null,
+      );
+
   Zone _mapFromOccupancy(Map<String, dynamic> json) => Zone(
         zoneId: json['zone_id'] as int,
         zoneType: _parseZoneType(json['zone_type'] as String? ?? 'standard'),
@@ -86,17 +123,6 @@ class ZonesRepository {
         occupancyUpdatedAt: json['observed_at'] != null
             ? DateTime.tryParse(json['observed_at'] as String)
             : null,
-      );
-
-  Zone _mapFromForecast(Map<String, dynamic> json) => Zone(
-        zoneId: json['zone_id'] as int,
-        zoneType: ZoneType.standard,
-        capacity: json['capacity'] as int? ?? 0,
-        freeCount: json['predicted_free_count'] as int? ?? 0,
-        confidence: (json['confidence'] as num?)?.toDouble() ?? 0.0,
-        pay: 0,
-        geometry: _parseGeometry(json['geometry'] as Map<String, dynamic>? ?? {}),
-        isActive: true,
       );
 
   ZoneType _parseZoneType(String type) =>

@@ -18,6 +18,7 @@ class Zone with _$Zone {
     required int pay,
     required List<Point> geometry,
     @Default(true) bool isActive,
+    @Default(true) bool hasForecast,
     LocationType? locationType,
     bool? isPrivate,
     bool? isAccessible,
