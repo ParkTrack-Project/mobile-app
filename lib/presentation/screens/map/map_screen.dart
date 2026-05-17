@@ -383,10 +383,32 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         routePreview: (route) async {
           if (_isRouteSheetOpen) return;
           _isRouteSheetOpen = true;
+
+          final matches = zones.where((z) => z.zoneId == route.selectedZoneId);
+          double? zoneLat, zoneLon;
+          if (matches.isNotEmpty) {
+            final zone = matches.first;
+            if (zone.geometry.length >= 3) {
+              final c = centroid(zone.geometry);
+              zoneLat = c.latitude;
+              zoneLon = c.longitude;
+              await _mapController?.moveCamera(
+                CameraUpdate.newCameraPosition(
+                  CameraPosition(target: c, zoom: 17),
+                ),
+                animation: const MapAnimation(duration: 0.8),
+              );
+            }
+          }
+
           await showModalBottomSheet(
             context: context,
             isScrollControlled: true,
-            builder: (_) => RoutePreviewSheet(route: route),
+            builder: (_) => RoutePreviewSheet(
+              route: route,
+              zoneLat: zoneLat,
+              zoneLon: zoneLon,
+            ),
           );
           _isRouteSheetOpen = false;
         },
