@@ -848,12 +848,12 @@ class _FiltersSheet extends ConsumerWidget {
               onChanged: (_) => notifier.toggleHidePrivate(),
             ),
             SwitchListTile(
-              title: const Text('Скрыть недоступные'),
+              title: const Text('Скрыть недоступные для инвалидов'),
               value: filters.hideInaccessible,
               onChanged: (_) => notifier.toggleHideInaccessible(),
             ),
             SwitchListTile(
-              title: const Text('Скрыть неактивные'),
+              title: const Text('Скрыть закрытые'),
               value: filters.hideInactive,
               onChanged: (_) => notifier.toggleHideInactive(),
             ),
