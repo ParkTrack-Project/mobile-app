@@ -34,6 +34,7 @@ MapObject buildZoneLabels({
       .map((zone) => PlacemarkMapObject(
             mapId: MapObjectId('zone_label_${zone.zoneId}'),
             point: _centroid(zone.geometry),
+            opacity: 1.0,
             icon: PlacemarkIcon.single(PlacemarkIconStyle(
               image: BitmapDescriptor.fromBytes(bitmapCache[zone.zoneId]!),
               scale: 1.0,
@@ -57,6 +58,7 @@ MapObject buildZoneLabels({
       final bytes = await buildClusterBitmap(totalFree, cluster.placemarks.length);
       return cluster.copyWith(
         appearance: cluster.appearance.copyWith(
+          opacity: 1.0,
           icon: PlacemarkIcon.single(PlacemarkIconStyle(
             image: BitmapDescriptor.fromBytes(bytes),
             scale: 1.0,
