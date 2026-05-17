@@ -33,7 +33,7 @@ MapObject buildZoneLabels({
       .where((z) => !_isDegenerate(z.geometry) && bitmapCache.containsKey(z.zoneId))
       .map((zone) => PlacemarkMapObject(
             mapId: MapObjectId('zone_label_${zone.zoneId}'),
-            point: _centroid(zone.geometry),
+            point: centroid(zone.geometry),
             opacity: 1.0,
             icon: PlacemarkIcon.single(PlacemarkIconStyle(
               image: BitmapDescriptor.fromBytes(bitmapCache[zone.zoneId]!),
@@ -198,7 +198,7 @@ Point _midpoint(Point a, Point b) => Point(
       longitude: (a.longitude + b.longitude) / 2,
     );
 
-Point _centroid(List<Point> points) {
+Point centroid(List<Point> points) {
   final pts = points.length > 1 &&
           points.first.latitude == points.last.latitude &&
           points.first.longitude == points.last.longitude

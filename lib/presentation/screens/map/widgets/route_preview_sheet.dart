@@ -6,9 +6,16 @@ import '../../../../domain/models/route_result.dart';
 import '../../../providers/routing_provider.dart';
 
 class RoutePreviewSheet extends ConsumerStatefulWidget {
-  const RoutePreviewSheet({super.key, required this.route});
+  const RoutePreviewSheet({
+    super.key,
+    required this.route,
+    this.zoneLat,
+    this.zoneLon,
+  });
 
   final ActiveRoute route;
+  final double? zoneLat;
+  final double? zoneLon;
 
   @override
   ConsumerState<RoutePreviewSheet> createState() => _RoutePreviewSheetState();
@@ -18,16 +25,22 @@ class _RoutePreviewSheetState extends ConsumerState<RoutePreviewSheet> {
   bool _launching = false;
 
   Future<void> _launch() async {
-    final url = widget.route.deeplinkUrl;
-    if (url == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ссылка на навигатор недоступна')),
-      );
-      return;
-    }
     setState(() => _launching = true);
     try {
-      await openYandexNavigatorUrl(url);
+      final url = widget.route.deeplinkUrl;
+      if (url != null) {
+        await openYandexNavigatorUrl(url);
+        return;
+      }
+      final lat = widget.zoneLat;
+      final lon = widget.zoneLon;
+      if (lat != null && lon != null) {
+        await openYandexNavigator(lat, lon);
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Нет данных для навигации')),
+      );
     } finally {
       if (mounted) setState(() => _launching = false);
     }
