@@ -8,6 +8,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:yandex_mapkit/yandex_mapkit.dart';
 import '../../providers/zones_provider.dart';
+import '../../../domain/models/zone.dart';
 import '../../providers/filters_provider.dart';
 import '../../providers/routing_provider.dart';
 import '../../providers/time_selector_provider.dart';
@@ -39,6 +40,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   bool _isCandidatesSheetOpen = false;
   bool _isRouteSheetOpen = false;
   bool _isParkingCardOpen = false;
+
+  Map<int, Uint8List> _zoneLabelCache = {};
+  Map<int, Zone> _zonesById = {};
 
   @override
   void initState() {
@@ -78,6 +82,23 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final image = await picture.toImage(size.toInt(), size.toInt());
     final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
     return byteData!.buffer.asUint8List();
+  }
+
+  Future<void> _updateZoneBitmaps(List<Zone> zones) async {
+    final newCache = <int, Uint8List>{};
+    final newById = <int, Zone>{};
+    for (final zone in zones) {
+      if (zone.geometry.length < 3) continue;
+      final color = zoneColor(zone);
+      newCache[zone.zoneId] = await buildCountBitmap(zone.freeCount, color);
+      newById[zone.zoneId] = zone;
+    }
+    if (mounted) {
+      setState(() {
+        _zoneLabelCache = newCache;
+        _zonesById = newById;
+      });
+    }
   }
 
   Future<Uint8List> _buildUserLocationBitmap() async {
@@ -300,6 +321,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     );
 
     ref.listen(timeSelectorProvider, (_, __) => _fetchZones());
+    ref.listen(filteredZonesProvider, (_, zones) => _updateZoneBitmaps(zones));
 
     ref.listen(rawZonesProvider, (_, next) {
       next.whenOrNull(
@@ -393,6 +415,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
     final mapObjects = <MapObject>[
       ...zoneObjects,
+      if (_zoneLabelCache.isNotEmpty)
+        buildZoneLabels(zones: zones, bitmapCache: _zoneLabelCache, zonesById: _zonesById),
       if (_userPosition != null && _userLocationBytes != null)
         PlacemarkMapObject(
           mapId: const MapObjectId('user_location'),
@@ -758,7 +782,7 @@ class _FiltersSheet extends ConsumerWidget {
       maxChildSize: 0.95,
       builder: (_, controller) => Container(
         decoration: const BoxDecoration(
-          color: Colors.white,
+          color: Color(0xFFE8F5E9),
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: ListView(
@@ -884,8 +908,9 @@ class _FiltersSheet extends ConsumerWidget {
               ),
             const SizedBox(height: 16),
             FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
               onPressed: () => Navigator.pop(context),
-              child: const Text('Применить'),
+              child: const Text('Применить', style: TextStyle(color: Colors.white)),
             ),
           ],
         ),
