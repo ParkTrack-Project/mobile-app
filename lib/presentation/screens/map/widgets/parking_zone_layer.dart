@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:yandex_mapkit/yandex_mapkit.dart';
 import '../../../../domain/models/zone.dart';
@@ -11,7 +14,7 @@ List<MapObject> buildZoneMapObjects({
   final result = <MapObject>[];
   for (final zone in zones) {
     if (_isDegenerate(zone.geometry)) continue;
-    final color = _zoneColor(zone);
+    final color = zoneColor(zone);
     if (zone.zoneType == ZoneType.parallel) {
       result.add(_buildParallelLine(zone, color, onTap));
     } else {
@@ -21,6 +24,128 @@ List<MapObject> buildZoneMapObjects({
   return result;
 }
 
+MapObject buildZoneLabels({
+  required List<Zone> zones,
+  required Map<int, Uint8List> bitmapCache,
+  required Map<int, Zone> zonesById,
+}) {
+  final placemarks = zones
+      .where((z) => !_isDegenerate(z.geometry) && bitmapCache.containsKey(z.zoneId))
+      .map((zone) => PlacemarkMapObject(
+            mapId: MapObjectId('zone_label_${zone.zoneId}'),
+            point: _centroid(zone.geometry),
+            icon: PlacemarkIcon.single(PlacemarkIconStyle(
+              image: BitmapDescriptor.fromBytes(bitmapCache[zone.zoneId]!),
+              scale: 1.0,
+            )),
+          ))
+      .toList();
+
+  return ClusterizedPlacemarkCollection(
+    mapId: const MapObjectId('zone_labels'),
+    placemarks: placemarks,
+    radius: 60,
+    minZoom: 15,
+    onClusterAdded: (collection, cluster) async {
+      final zoneIds = cluster.placemarks
+          .map((p) => int.tryParse(p.mapId.value.replaceFirst('zone_label_', '')))
+          .whereType<int>()
+          .toList();
+      final totalFree = zoneIds
+          .map((id) => zonesById[id]?.freeCount ?? 0)
+          .fold(0, (a, b) => a + b);
+      final bytes = await buildClusterBitmap(totalFree, cluster.placemarks.length);
+      return cluster.copyWith(
+        appearance: cluster.appearance.copyWith(
+          icon: PlacemarkIcon.single(PlacemarkIconStyle(
+            image: BitmapDescriptor.fromBytes(bytes),
+            scale: 1.0,
+          )),
+        ),
+      );
+    },
+  );
+}
+
+Future<Uint8List> buildCountBitmap(int count, Color color) async {
+  const size = 36.0;
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder);
+  canvas.drawCircle(
+    const Offset(size / 2, size / 2),
+    size / 2 - 1,
+    Paint()..color = color,
+  );
+  canvas.drawCircle(
+    const Offset(size / 2, size / 2),
+    size / 2 - 1,
+    Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2,
+  );
+  final textPainter = TextPainter(
+    text: TextSpan(
+      text: '$count',
+      style: const TextStyle(
+        color: Colors.white,
+        fontSize: 14,
+        fontWeight: FontWeight.bold,
+      ),
+    ),
+    textDirection: TextDirection.ltr,
+  )..layout();
+  textPainter.paint(
+    canvas,
+    Offset((size - textPainter.width) / 2, (size - textPainter.height) / 2),
+  );
+  final picture = recorder.endRecording();
+  final image = await picture.toImage(size.toInt(), size.toInt());
+  final data = await image.toByteData(format: ui.ImageByteFormat.png);
+  return data!.buffer.asUint8List();
+}
+
+Future<Uint8List> buildClusterBitmap(int totalFree, int clusterSize) async {
+  const size = 46.0;
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder);
+  canvas.drawCircle(
+    const Offset(size / 2, size / 2),
+    size / 2 - 1,
+    Paint()..color = AppColors.primary,
+  );
+  canvas.drawCircle(
+    const Offset(size / 2, size / 2),
+    size / 2 - 1,
+    Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3,
+  );
+  final label = clusterSize <= 1 ? '$totalFree' : '$totalFree\n($clusterSize)';
+  final textPainter = TextPainter(
+    text: TextSpan(
+      text: label,
+      style: const TextStyle(
+        color: Colors.white,
+        fontSize: 12,
+        fontWeight: FontWeight.bold,
+        height: 1.2,
+      ),
+    ),
+    textDirection: TextDirection.ltr,
+    textAlign: TextAlign.center,
+  )..layout(maxWidth: size - 6);
+  textPainter.paint(
+    canvas,
+    Offset((size - textPainter.width) / 2, (size - textPainter.height) / 2),
+  );
+  final picture = recorder.endRecording();
+  final image = await picture.toImage(size.toInt(), size.toInt());
+  final data = await image.toByteData(format: ui.ImageByteFormat.png);
+  return data!.buffer.asUint8List();
+}
+
 bool _isDegenerate(List<Point> points) {
   if (points.length < 3) return true;
   final lat0 = points.first.latitude;
@@ -28,7 +153,7 @@ bool _isDegenerate(List<Point> points) {
   return points.every((p) => p.latitude == lat0 && p.longitude == lon0);
 }
 
-Color _zoneColor(Zone zone) {
+Color zoneColor(Zone zone) {
   if (!zone.isActive || zone.geometry.isEmpty) return AppColors.parkingUnknown;
   if (!zone.hasForecast) return AppColors.parkingUnknown;
   if (zone.freeCount == 0) return AppColors.parkingFull;
@@ -44,7 +169,7 @@ MapObject _buildPolygon(Zone zone, Color color, void Function(Zone) onTap) {
       outerRing: LinearRing(points: zone.geometry),
       innerRings: [],
     ),
-    fillColor: color.withOpacity(0.5),
+    fillColor: color.withValues(alpha: 0.5),
     strokeColor: color,
     strokeWidth: 2,
     onTap: (_, __) => onTap(zone),
@@ -53,12 +178,21 @@ MapObject _buildPolygon(Zone zone, Color color, void Function(Zone) onTap) {
 
 MapObject _buildParallelLine(Zone zone, Color color, void Function(Zone) onTap) {
   final points = zone.geometry;
-  if (points.length < 4) {
-    return _buildPolygon(zone, color, onTap);
+  if (points.length < 4) return _buildPolygon(zone, color, onTap);
+
+  final len01 = _distance(points[0], points[1]);
+  final len12 = _distance(points[1], points[2]);
+
+  final Point mid1, mid2;
+  if (len01 <= len12) {
+    // стороны 0→1 и 2→3 — короткие (торцы ряда)
+    mid1 = _midpoint(points[0], points[1]);
+    mid2 = _midpoint(points[2], points[3]);
+  } else {
+    // стороны 1→2 и 3→0 — короткие (торцы ряда)
+    mid1 = _midpoint(points[1], points[2]);
+    mid2 = _midpoint(points[3], points[0]);
   }
-  // Centers of short sides: midpoints of sides 0→1 and 2→3
-  final mid1 = _midpoint(points[0], points[1]);
-  final mid2 = _midpoint(points[2], points[3]);
 
   return PolylineMapObject(
     mapId: MapObjectId('zone_line_${zone.zoneId}'),
@@ -69,7 +203,24 @@ MapObject _buildParallelLine(Zone zone, Color color, void Function(Zone) onTap) 
   );
 }
 
+double _distance(Point a, Point b) {
+  final dlat = a.latitude - b.latitude;
+  final dlon = a.longitude - b.longitude;
+  return math.sqrt(dlat * dlat + dlon * dlon);
+}
+
 Point _midpoint(Point a, Point b) => Point(
       latitude: (a.latitude + b.latitude) / 2,
       longitude: (a.longitude + b.longitude) / 2,
     );
+
+Point _centroid(List<Point> points) {
+  final pts = points.length > 1 &&
+          points.first.latitude == points.last.latitude &&
+          points.first.longitude == points.last.longitude
+      ? points.sublist(0, points.length - 1)
+      : points;
+  final lat = pts.map((p) => p.latitude).reduce((a, b) => a + b) / pts.length;
+  final lon = pts.map((p) => p.longitude).reduce((a, b) => a + b) / pts.length;
+  return Point(latitude: lat, longitude: lon);
+}
