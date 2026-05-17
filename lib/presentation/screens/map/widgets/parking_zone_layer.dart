@@ -68,28 +68,20 @@ MapObject buildZoneLabels({
 }
 
 Future<Uint8List> buildCountBitmap(int count, Color color) async {
-  const size = 36.0;
+  const size = 96.0;
+  final center = Offset(size / 2, size / 2);
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder);
-  canvas.drawCircle(
-    const Offset(size / 2, size / 2),
-    size / 2 - 1,
-    Paint()..color = color,
-  );
-  canvas.drawCircle(
-    const Offset(size / 2, size / 2),
-    size / 2 - 1,
-    Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2,
-  );
+  // White outer ring for contrast against any map background
+  canvas.drawCircle(center, size / 2 - 1, Paint()..color = Colors.white);
+  // Colored fill
+  canvas.drawCircle(center, size / 2 - 5, Paint()..color = color);
   final textPainter = TextPainter(
     text: TextSpan(
       text: '$count',
       style: const TextStyle(
         color: Colors.white,
-        fontSize: 14,
+        fontSize: 36,
         fontWeight: FontWeight.bold,
       ),
     ),
@@ -106,36 +98,26 @@ Future<Uint8List> buildCountBitmap(int count, Color color) async {
 }
 
 Future<Uint8List> buildClusterBitmap(int totalFree, int clusterSize) async {
-  const size = 46.0;
+  const size = 112.0;
+  final center = Offset(size / 2, size / 2);
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder);
-  canvas.drawCircle(
-    const Offset(size / 2, size / 2),
-    size / 2 - 1,
-    Paint()..color = AppColors.primary,
-  );
-  canvas.drawCircle(
-    const Offset(size / 2, size / 2),
-    size / 2 - 1,
-    Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3,
-  );
+  canvas.drawCircle(center, size / 2 - 1, Paint()..color = Colors.white);
+  canvas.drawCircle(center, size / 2 - 5, Paint()..color = AppColors.primary);
   final label = clusterSize <= 1 ? '$totalFree' : '$totalFree\n($clusterSize)';
   final textPainter = TextPainter(
     text: TextSpan(
       text: label,
       style: const TextStyle(
         color: Colors.white,
-        fontSize: 12,
+        fontSize: 32,
         fontWeight: FontWeight.bold,
         height: 1.2,
       ),
     ),
     textDirection: TextDirection.ltr,
     textAlign: TextAlign.center,
-  )..layout(maxWidth: size - 6);
+  )..layout(maxWidth: size - 10);
   textPainter.paint(
     canvas,
     Offset((size - textPainter.width) / 2, (size - textPainter.height) / 2),
