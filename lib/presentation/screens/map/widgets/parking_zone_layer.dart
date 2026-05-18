@@ -28,6 +28,7 @@ MapObject buildZoneLabels({
   required List<Zone> zones,
   required Map<int, Uint8List> bitmapCache,
   required Map<int, Zone> zonesById,
+  ClusterTapCallback? onClusterTap,
 }) {
   final placemarks = zones
       .where((z) => !_isDegenerate(z.geometry) && bitmapCache.containsKey(z.zoneId))
@@ -47,6 +48,7 @@ MapObject buildZoneLabels({
     placemarks: placemarks,
     radius: 60,
     minZoom: 15,
+    onClusterTap: onClusterTap,
     onClusterAdded: (collection, cluster) async {
       final zoneIds = cluster.placemarks
           .map((p) => int.tryParse(p.mapId.value.replaceFirst('zone_label_', '')))
@@ -70,20 +72,20 @@ MapObject buildZoneLabels({
 }
 
 Future<Uint8List> buildCountBitmap(int count, Color color) async {
-  const size = 96.0;
+  const size = 48.0;
   final center = Offset(size / 2, size / 2);
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder);
   // White outer ring for contrast against any map background
   canvas.drawCircle(center, size / 2 - 1, Paint()..color = Colors.white);
   // Colored fill
-  canvas.drawCircle(center, size / 2 - 5, Paint()..color = color);
+  canvas.drawCircle(center, size / 2 - 3, Paint()..color = color);
   final textPainter = TextPainter(
     text: TextSpan(
       text: '$count',
       style: const TextStyle(
         color: Colors.white,
-        fontSize: 36,
+        fontSize: 18,
         fontWeight: FontWeight.bold,
       ),
     ),
@@ -100,19 +102,19 @@ Future<Uint8List> buildCountBitmap(int count, Color color) async {
 }
 
 Future<Uint8List> buildClusterBitmap(int totalFree, int clusterSize) async {
-  const size = 112.0;
+  const size = 56.0;
   final center = Offset(size / 2, size / 2);
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder);
   canvas.drawCircle(center, size / 2 - 1, Paint()..color = Colors.white);
-  canvas.drawCircle(center, size / 2 - 5, Paint()..color = AppColors.primary);
+  canvas.drawCircle(center, size / 2 - 3, Paint()..color = AppColors.primary);
   final label = clusterSize <= 1 ? '$totalFree' : '$totalFree\n($clusterSize)';
   final textPainter = TextPainter(
     text: TextSpan(
       text: label,
       style: const TextStyle(
         color: Colors.white,
-        fontSize: 32,
+        fontSize: 16,
         fontWeight: FontWeight.bold,
         height: 1.2,
       ),

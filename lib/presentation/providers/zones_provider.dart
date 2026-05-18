@@ -17,7 +17,7 @@ class ZonesNotifier extends StateNotifier<AsyncValue<List<Zone>>> {
 
   Future<void> fetchZones(String bbox) async {
     _lastBbox = bbox;
-    state = const AsyncValue.loading();
+    state = const AsyncValue<List<Zone>>.loading().copyWithPrevious(state);
     try {
       final repo = _ref.read(zonesRepositoryProvider);
       final timeMode = _ref.read(timeSelectorProvider);
@@ -45,22 +45,20 @@ final filteredZonesProvider = Provider<List<Zone>>((ref) {
   final zonesAsync = ref.watch(rawZonesProvider);
   final filters = ref.watch(filtersProvider);
 
-  return zonesAsync.maybeWhen(
-    data: (zones) => zones.where((z) {
-      if (filters.hideInactive && !z.isActive) return false;
-      if (filters.hideNoFreeSpots && z.freeCount == 0) return false;
-      if (z.confidence < filters.minConfidence) return false;
-      if (filters.maxPayPerHour != null && z.pay > filters.maxPayPerHour!) return false;
-      if (filters.hidePrivate && (z.isPrivate ?? false)) return false;
-      if (filters.hideInaccessible && (z.isAccessible == false)) return false;
-      if (z.locationType != null) {
-        final typeKey = _locationTypeKey(z.locationType!);
-        if (filters.hiddenLocationTypes.contains(typeKey)) return false;
-      }
-      return true;
-    }).toList(),
-    orElse: () => [],
-  );
+  final zones = zonesAsync.valueOrNull ?? [];
+  return zones.where((z) {
+    if (filters.hideInactive && !z.isActive) return false;
+    if (filters.hideNoFreeSpots && z.freeCount == 0) return false;
+    if (z.confidence < filters.minConfidence) return false;
+    if (filters.maxPayPerHour != null && z.pay > filters.maxPayPerHour!) return false;
+    if (filters.hidePrivate && (z.isPrivate ?? false)) return false;
+    if (filters.hideInaccessible && (z.isAccessible == true)) return false;
+    if (z.locationType != null) {
+      final typeKey = _locationTypeKey(z.locationType!);
+      if (filters.hiddenLocationTypes.contains(typeKey)) return false;
+    }
+    return true;
+  }).toList();
 });
 
 String _locationTypeKey(LocationType type) => switch (type) {
