@@ -446,15 +446,21 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             if (cluster.placemarks.isEmpty) return;
             final lats = cluster.placemarks.map((p) => p.point.latitude);
             final lons = cluster.placemarks.map((p) => p.point.longitude);
+            final latMin = lats.reduce(math.min);
+            final latMax = lats.reduce(math.max);
+            final lonMin = lons.reduce(math.min);
+            final lonMax = lons.reduce(math.max);
+            final latPad = (latMax - latMin) * 0.6 + 0.003;
+            final lonPad = (lonMax - lonMin) * 0.6 + 0.003;
             _mapController?.moveCamera(
               CameraUpdate.newGeometry(Geometry.fromBoundingBox(BoundingBox(
                 southWest: Point(
-                  latitude: lats.reduce(math.min),
-                  longitude: lons.reduce(math.min),
+                  latitude: latMin - latPad,
+                  longitude: lonMin - lonPad,
                 ),
                 northEast: Point(
-                  latitude: lats.reduce(math.max),
-                  longitude: lons.reduce(math.max),
+                  latitude: latMax + latPad,
+                  longitude: lonMax + lonPad,
                 ),
               ))),
               animation: const MapAnimation(duration: 0.5),
