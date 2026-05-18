@@ -438,7 +438,29 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final mapObjects = <MapObject>[
       ...zoneObjects,
       if (_zoneLabelCache.isNotEmpty)
-        buildZoneLabels(zones: zones, bitmapCache: _zoneLabelCache, zonesById: _zonesById),
+        buildZoneLabels(
+          zones: zones,
+          bitmapCache: _zoneLabelCache,
+          zonesById: _zonesById,
+          onClusterTap: (_, cluster) {
+            if (cluster.placemarks.isEmpty) return;
+            final lats = cluster.placemarks.map((p) => p.point.latitude);
+            final lons = cluster.placemarks.map((p) => p.point.longitude);
+            _mapController?.moveCamera(
+              CameraUpdate.newGeometry(Geometry.fromBoundingBox(BoundingBox(
+                southWest: Point(
+                  latitude: lats.reduce(math.min),
+                  longitude: lons.reduce(math.min),
+                ),
+                northEast: Point(
+                  latitude: lats.reduce(math.max),
+                  longitude: lons.reduce(math.max),
+                ),
+              ))),
+              animation: const MapAnimation(duration: 0.5),
+            );
+          },
+        ),
       if (_userPosition != null && _userLocationBytes != null)
         PlacemarkMapObject(
           mapId: const MapObjectId('user_location'),
@@ -848,7 +870,7 @@ class _FiltersSheet extends ConsumerWidget {
               onChanged: (_) => notifier.toggleHidePrivate(),
             ),
             SwitchListTile(
-              title: const Text('Скрыть недоступные для инвалидов'),
+              title: const Text('Скрыть места для инвалидов'),
               value: filters.hideInaccessible,
               onChanged: (_) => notifier.toggleHideInaccessible(),
             ),

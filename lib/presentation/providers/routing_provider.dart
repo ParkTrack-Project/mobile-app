@@ -61,7 +61,7 @@ class RoutingNotifier extends StateNotifier<RoutingState> {
             destinationLat: destination?.latitude,
             destinationLon: destination?.longitude,
             maxPay: filters.maxPayPerHour,
-            minConfidence: filters.minConfidence,
+            minConfidence: filters.minConfidence > 0 ? filters.minConfidence : null,
             minFreeCount: filters.hideNoFreeSpots ? 1 : null,
           );
       state = RoutingState.candidates(candidates);
