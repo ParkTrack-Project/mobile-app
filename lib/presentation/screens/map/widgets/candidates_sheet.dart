@@ -2,6 +2,26 @@ import 'package:flutter/material.dart';
 import '../../../../domain/models/route_result.dart';
 import '../../../../core/theme/app_colors.dart';
 
+class _CandidateSubtitle extends StatelessWidget {
+  final RouteCandidate candidate;
+  const _CandidateSubtitle({required this.candidate});
+
+  @override
+  Widget build(BuildContext context) {
+    final parts = <String>[
+      'Свободно: ${candidate.freeCount}',
+      candidate.pay == 0 ? 'бесплатно' : '${candidate.pay} ₽/ч',
+    ];
+    if (candidate.distanceToDestinationMeters != null)
+      parts.add('${(candidate.distanceToDestinationMeters! / 1000).toStringAsFixed(1)} км');
+    if (candidate.durationFromOriginSeconds != null)
+      parts.add('~${(candidate.durationFromOriginSeconds! / 60).round()} мин');
+    if (candidate.predictedFreeCount != null)
+      parts.add('прогноз: ${candidate.predictedFreeCount}');
+    return Text(parts.join(' • '));
+  }
+}
+
 class CandidatesSheet extends StatefulWidget {
   const CandidatesSheet({
     super.key,
@@ -70,10 +90,7 @@ class _CandidatesSheetState extends State<CandidatesSheet> {
                   margin: const EdgeInsets.symmetric(vertical: 6),
                   child: ListTile(
                     title: Text('Зона #${candidate.zoneId}'),
-                    subtitle: Text(
-                      'Свободно: ${candidate.freeCount} • '
-                      'Цена: ${candidate.pay == 0 ? "бесплатно" : "${candidate.pay} ₽/ч"}',
-                    ),
+                    subtitle: _CandidateSubtitle(candidate: candidate),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => widget.onSelectByList(candidate.zoneId),
                   ),

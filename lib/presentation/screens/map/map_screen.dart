@@ -43,6 +43,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   Map<int, Uint8List> _zoneLabelCache = {};
   Map<int, Zone> _zonesById = {};
+  List<Point>? _routePolyline;
+  int? _activeRouteZoneId;
 
   @override
   void initState() {
@@ -348,7 +350,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
     ref.listen(routingProvider, (_, next) async {
       await next.when(
-        idle: () async {},
+        idle: () async {
+          setState(() {
+            _routePolyline = null;
+            _activeRouteZoneId = null;
+          });
+        },
         searching: () async {},
         error: (message) async {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -401,6 +408,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             }
           }
 
+          setState(() {
+            _routePolyline = route.candidates.firstOrNull?.routePolyline;
+            _activeRouteZoneId = route.selectedZoneId;
+          });
+
           await showModalBottomSheet(
             context: context,
             isScrollControlled: true,
@@ -422,6 +434,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
     final zoneObjects = buildZoneMapObjects(
       zones: zones,
+      highlightedIds: candidateIds,
       onTap: (zone) {
         if (_isSelectingOnMap && candidateIds.contains(zone.zoneId)) {
           _buildRouteForZone(zone.zoneId);
@@ -429,7 +442,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         }
         if (_isParkingCardOpen) return;
         setState(() => _isParkingCardOpen = true);
-        showParkingCard(context, zone).then((_) {
+        showParkingCard(
+          context,
+          zone,
+          onBuildRoute: () => _buildRouteForZone(zone.zoneId),
+        ).then((_) {
           if (mounted) setState(() => _isParkingCardOpen = false);
         });
       },
@@ -437,6 +454,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
     final mapObjects = <MapObject>[
       ...zoneObjects,
+      if (_routePolyline != null && _routePolyline!.length >= 2)
+        PolylineMapObject(
+          mapId: const MapObjectId('route_polyline'),
+          polyline: Polyline(points: _routePolyline!),
+          strokeColor: Colors.blue,
+          strokeWidth: 5,
+        ),
+      if (_activeRouteZoneId != null)
+        ...buildHighlightZone(zones, _activeRouteZoneId!),
       if (_zoneLabelCache.isNotEmpty)
         buildZoneLabels(
           zones: zones,
