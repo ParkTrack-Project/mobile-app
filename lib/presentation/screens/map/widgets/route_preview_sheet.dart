@@ -24,6 +24,16 @@ class RoutePreviewSheet extends ConsumerStatefulWidget {
 class _RoutePreviewSheetState extends ConsumerState<RoutePreviewSheet> {
   bool _launching = false;
 
+  String _formatArrival(String iso) {
+    final dt = DateTime.tryParse(iso)?.toLocal();
+    if (dt == null) return iso;
+    final mins = dt.difference(DateTime.now()).inMinutes;
+    if (mins > 0 && mins <= 90) return 'через $mins мин';
+    final hh = dt.hour.toString().padLeft(2, '0');
+    final mm = dt.minute.toString().padLeft(2, '0');
+    return '$hh:$mm';
+  }
+
   Future<void> _launch() async {
     setState(() => _launching = true);
     try {
@@ -80,7 +90,19 @@ class _RoutePreviewSheetState extends ConsumerState<RoutePreviewSheet> {
             const SizedBox(height: 10),
             Text('Зона: #${widget.route.selectedZoneId}'),
             if (widget.route.arrivalTime != null)
-              Text('Прибытие: ${widget.route.arrivalTime}'),
+              Text('Прибытие: ${_formatArrival(widget.route.arrivalTime!)}'),
+            Builder(builder: (_) {
+              final c = widget.route.candidates.firstOrNull;
+              if (c == null) return const SizedBox.shrink();
+              final parts = <String>[];
+              if (c.distanceToDestinationMeters != null)
+                parts.add('${(c.distanceToDestinationMeters! / 1000).toStringAsFixed(1)} км');
+              if (c.durationFromOriginSeconds != null)
+                parts.add('~${(c.durationFromOriginSeconds! / 60).round()} мин');
+              if (parts.isEmpty) return const SizedBox.shrink();
+              return Text(parts.join(' • '),
+                  style: const TextStyle(color: Color(0xFF666666)));
+            }),
             const SizedBox(height: 18),
             FilledButton.icon(
               onPressed: _launching ? null : _launch,

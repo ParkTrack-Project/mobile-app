@@ -2,18 +2,23 @@ import 'package:flutter/material.dart';
 import '../../../../domain/models/zone.dart';
 import '../../../../core/theme/app_colors.dart';
 
-Future<void> showParkingCard(BuildContext context, Zone zone) {
+Future<void> showParkingCard(
+  BuildContext context,
+  Zone zone, {
+  VoidCallback? onBuildRoute,
+}) {
   return showModalBottomSheet(
     context: context,
     isScrollControlled: true,
-    builder: (_) => _ParkingCardSheet(zone: zone),
+    builder: (_) => _ParkingCardSheet(zone: zone, onBuildRoute: onBuildRoute),
   );
 }
 
 class _ParkingCardSheet extends StatelessWidget {
   final Zone zone;
+  final VoidCallback? onBuildRoute;
 
-  const _ParkingCardSheet({required this.zone});
+  const _ParkingCardSheet({required this.zone, this.onBuildRoute});
 
   @override
   Widget build(BuildContext context) {
@@ -100,7 +105,7 @@ class _ParkingCardSheet extends StatelessWidget {
             FilledButton.icon(
               onPressed: () {
                 Navigator.pop(context);
-                // Store selected zone for routing
+                onBuildRoute?.call();
               },
               icon: const Icon(Icons.directions),
               label: const Text('Построить маршрут'),

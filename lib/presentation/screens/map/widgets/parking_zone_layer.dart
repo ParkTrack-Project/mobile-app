@@ -10,18 +10,65 @@ import '../../../../core/theme/app_colors.dart';
 List<MapObject> buildZoneMapObjects({
   required List<Zone> zones,
   required void Function(Zone) onTap,
+  Set<int> highlightedIds = const {},
 }) {
   final result = <MapObject>[];
   for (final zone in zones) {
     if (_isDegenerate(zone.geometry)) continue;
     final color = zoneColor(zone);
+    final highlighted = highlightedIds.contains(zone.zoneId);
     if (zone.zoneType == ZoneType.parallel) {
-      result.add(_buildParallelLine(zone, color, onTap));
+      result.add(_buildParallelLine(zone, color, onTap, highlighted: highlighted));
     } else {
-      result.add(_buildPolygon(zone, color, onTap));
+      result.add(_buildPolygon(zone, color, onTap, highlighted: highlighted));
     }
   }
   return result;
+}
+
+List<MapObject> buildHighlightZone(List<Zone> zones, int zoneId) {
+  final matches = zones.where((z) => z.zoneId == zoneId && !_isDegenerate(z.geometry));
+  if (matches.isEmpty) return [];
+  final zone = matches.first;
+  final color = zoneColor(zone);
+  if (zone.zoneType == ZoneType.parallel) {
+    final points = zone.geometry;
+    if (points.length < 4) return [];
+    final len01 = _distance(points[0], points[1]);
+    final len12 = _distance(points[1], points[2]);
+    final Point mid1, mid2;
+    if (len01 <= len12) {
+      mid1 = _midpoint(points[0], points[1]);
+      mid2 = _midpoint(points[2], points[3]);
+    } else {
+      mid1 = _midpoint(points[1], points[2]);
+      mid2 = _midpoint(points[3], points[0]);
+    }
+    return [
+      PolylineMapObject(
+        mapId: MapObjectId('zone_highlight_${zone.zoneId}'),
+        polyline: Polyline(points: [mid1, mid2]),
+        strokeColor: Colors.white,
+        strokeWidth: 10,
+      ),
+      PolylineMapObject(
+        mapId: MapObjectId('zone_highlight_inner_${zone.zoneId}'),
+        polyline: Polyline(points: [mid1, mid2]),
+        strokeColor: color,
+        strokeWidth: 6,
+      ),
+    ];
+  } else {
+    return [
+      PolygonMapObject(
+        mapId: MapObjectId('zone_highlight_${zone.zoneId}'),
+        polygon: Polygon(outerRing: LinearRing(points: zone.geometry), innerRings: []),
+        fillColor: color.withValues(alpha: 0.6),
+        strokeColor: Colors.white,
+        strokeWidth: 4,
+      ),
+    ];
+  }
 }
 
 MapObject buildZoneLabels({
@@ -157,7 +204,8 @@ Color zoneColor(Zone zone) {
   return AppColors.parkingFewLow;
 }
 
-MapObject _buildPolygon(Zone zone, Color color, void Function(Zone) onTap) {
+MapObject _buildPolygon(Zone zone, Color color, void Function(Zone) onTap,
+    {bool highlighted = false}) {
   return PolygonMapObject(
     mapId: MapObjectId('zone_polygon_${zone.zoneId}'),
     polygon: Polygon(
@@ -165,13 +213,14 @@ MapObject _buildPolygon(Zone zone, Color color, void Function(Zone) onTap) {
       innerRings: [],
     ),
     fillColor: color.withValues(alpha: 0.5),
-    strokeColor: color,
-    strokeWidth: 2,
+    strokeColor: highlighted ? Colors.white : color,
+    strokeWidth: highlighted ? 4 : 2,
     onTap: (_, __) => onTap(zone),
   );
 }
 
-MapObject _buildParallelLine(Zone zone, Color color, void Function(Zone) onTap) {
+MapObject _buildParallelLine(Zone zone, Color color, void Function(Zone) onTap,
+    {bool highlighted = false}) {
   final points = zone.geometry;
   if (points.length < 4) return _buildPolygon(zone, color, onTap);
 
@@ -192,8 +241,8 @@ MapObject _buildParallelLine(Zone zone, Color color, void Function(Zone) onTap) 
   return PolylineMapObject(
     mapId: MapObjectId('zone_line_${zone.zoneId}'),
     polyline: Polyline(points: [mid1, mid2]),
-    strokeColor: color,
-    strokeWidth: 6,
+    strokeColor: highlighted ? Colors.white : color,
+    strokeWidth: highlighted ? 9 : 6,
     onTap: (_, __) => onTap(zone),
   );
 }
