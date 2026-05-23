@@ -49,6 +49,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   List<Point>? _routePolyline;
   int? _activeRouteZoneId;
   DrivingSession? _drivingSession;
+  bool _navBuilding = false;
 
   @override
   void initState() {
@@ -312,75 +313,85 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     required double toLat,
     required double toLon,
   }) async {
-    final pos = await _getCurrentPosition();
-    if (pos == null) return;
+    if (!mounted) return;
+    setState(() => _navBuilding = true);
+    try {
+      final pos = await _getCurrentPosition();
+      if (pos == null) return;
 
-    // Immediately fly camera to user's current position
-    await _mapController?.moveCamera(
-      CameraUpdate.newCameraPosition(CameraPosition(
-        target: Point(latitude: pos.latitude, longitude: pos.longitude),
-        zoom: 17,
-        tilt: 40,
-      )),
-      animation: const MapAnimation(duration: 0.8),
-    );
-
-    List<Point> route;
-    double totalSeconds = 0;
-    double totalMeters = 0;
-
-    // Prefer backend polyline, else call YandexDriving
-    if (_routePolyline != null && _routePolyline!.length >= 2) {
-      route = _routePolyline!;
-    } else {
-      await _drivingSession?.close();
-      final rws = YandexDriving.requestRoutes(
-        points: [
-          RequestPoint(
-            point: Point(latitude: pos.latitude, longitude: pos.longitude),
-            requestPointType: RequestPointType.wayPoint,
-          ),
-          RequestPoint(
-            point: Point(latitude: toLat, longitude: toLon),
-            requestPointType: RequestPointType.wayPoint,
-          ),
-        ],
-        drivingOptions: const DrivingOptions(routesCount: 1),
+      await _mapController?.moveCamera(
+        CameraUpdate.newCameraPosition(CameraPosition(
+          target: Point(latitude: pos.latitude, longitude: pos.longitude),
+          zoom: 17,
+          tilt: 40,
+        )),
+        animation: const MapAnimation(duration: 0.8),
       );
-      _drivingSession = rws.session;
-      final result = await rws.result;
-      await rws.session.close();
-      _drivingSession = null;
-      final dr = result.routes?.firstOrNull;
-      if (dr == null || !mounted) return;
-      route = dr.geometry;
-      totalSeconds = dr.metadata.weight.timeWithTraffic.value ?? 0;
-      totalMeters = dr.metadata.weight.distance.value ?? 0;
-      setState(() => _routePolyline = route);
-    }
 
-    // Build total metrics from nav_math if backend polyline used
-    if (totalMeters == 0 && route.length >= 2) {
-      for (int i = 0; i < route.length - 1; i++) {
-        totalMeters += navDistanceM(route[i], route[i + 1]);
-      }
-      totalSeconds = totalMeters / 10; // rough: 36 km/h average
-    }
+      List<Point> route;
+      double totalSeconds = 0;
+      double totalMeters = 0;
 
-    await ref.read(navigationProvider.notifier).startNavigation(
-          zoneId: zoneId,
-          route: route,
-          totalSeconds: totalSeconds,
-          totalMeters: totalMeters,
+      if (_routePolyline != null && _routePolyline!.length >= 2) {
+        route = _routePolyline!;
+      } else {
+        await _drivingSession?.close();
+        final rws = YandexDriving.requestRoutes(
+          points: [
+            RequestPoint(
+              point: Point(latitude: pos.latitude, longitude: pos.longitude),
+              requestPointType: RequestPointType.wayPoint,
+            ),
+            RequestPoint(
+              point: Point(latitude: toLat, longitude: toLon),
+              requestPointType: RequestPointType.wayPoint,
+            ),
+          ],
+          drivingOptions: const DrivingOptions(routesCount: 1),
         );
+        _drivingSession = rws.session;
+        final result = await rws.result;
+        await rws.session.close();
+        _drivingSession = null;
+        final dr = result.routes?.firstOrNull;
+        if (dr == null || !mounted) return;
+        route = dr.geometry;
+        totalSeconds = dr.metadata.weight.timeWithTraffic.value ?? 0;
+        totalMeters = dr.metadata.weight.distance.value ?? 0;
+        setState(() => _routePolyline = route);
+      }
 
-    // Enable heading arrow and traffic
-    await _mapController?.toggleUserLayer(
-      visible: true,
-      headingEnabled: true,
-      autoZoomEnabled: false,
-    );
-    await _mapController?.toggleTrafficLayer(visible: true);
+      if (totalMeters == 0 && route.length >= 2) {
+        for (int i = 0; i < route.length - 1; i++) {
+          totalMeters += navDistanceM(route[i], route[i + 1]);
+        }
+        totalSeconds = totalMeters / 10;
+      }
+
+      await ref.read(navigationProvider.notifier).startNavigation(
+            zoneId: zoneId,
+            route: route,
+            totalSeconds: totalSeconds,
+            totalMeters: totalMeters,
+            destLat: toLat,
+            destLon: toLon,
+          );
+
+      await _mapController?.toggleUserLayer(
+        visible: true,
+        headingEnabled: true,
+        autoZoomEnabled: false,
+      );
+      await _mapController?.toggleTrafficLayer(visible: true);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Не удалось построить маршрут: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _navBuilding = false);
+    }
   }
 
   void _showFilters(BuildContext context) {
@@ -398,6 +409,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final zonesAsync = ref.watch(rawZonesProvider);
     final routingState = ref.watch(routingProvider);
     final destination = ref.watch(destinationProvider);
+    final isNavigating = ref.watch(navigationProvider) != null;
     final isRoutingLoading = routingState.maybeWhen(
       searching: () => true,
       orElse: () => false,
@@ -406,8 +418,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     ref.listen(timeSelectorProvider, (_, __) => _fetchZones());
     ref.listen(filteredZonesProvider, (_, zones) => _updateZoneBitmaps(zones));
 
-    ref.listen(navigationProvider, (_, nav) {
+    ref.listen(navigationProvider, (prev, nav) {
       if (nav == null) return;
+      if (prev?.route != nav.route) {
+        setState(() => _routePolyline = nav.route);
+      }
       _mapController?.moveCamera(
         CameraUpdate.newCameraPosition(CameraPosition(
           target: nav.currentPosition,
@@ -642,6 +657,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             onCameraPositionChanged: _onCameraPositionChanged,
           ),
           // ─── Top bar ───────────────────────────────────────────────
+          if (!isNavigating)
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(12),
@@ -697,7 +713,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             ),
           ),
           // ─── Нижняя строка: FAB слева + кнопки справа ─────────────
-          if (destination == null)
+          if (destination == null && !isNavigating)
             Positioned(
               bottom: bottomInset + 12,
               left: 12,
@@ -740,7 +756,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             ),
           ),
           // ─── Таймлайн: полная ширина, своя строка выше кнопок ──────
-          if (destination == null)
+          if (destination == null && !isNavigating)
             Positioned(
               bottom: bottomInset + 76,
               left: 0,
@@ -748,7 +764,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               child: const TimeSelectorWidget(),
             ),
           // ─── Карточка назначения ────────────────────────────────────
-          if (destination != null)
+          if (destination != null && !isNavigating)
             Positioned(
               bottom: bottomInset + 76,
               left: 12,
@@ -778,20 +794,45 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 ),
               ),
             ),
-          if (ref.watch(navigationProvider) != null)
+          if (isNavigating)
             const Positioned(
               top: 0,
               left: 0,
               right: 0,
               child: NavigationTurnCard(),
             ),
-          if (ref.watch(navigationProvider) != null)
+          if (isNavigating)
             Positioned(
               bottom: 0,
               left: 0,
               right: 0,
               child: NavigationBottomBar(
                 onFinish: () => ref.read(routingProvider.notifier).reset(),
+              ),
+            ),
+          if (_navBuilding)
+            const Positioned.fill(
+              child: ColoredBox(
+                color: Color(0x55000000),
+                child: Center(
+                  child: Card(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          SizedBox(width: 12),
+                          Text('Строим маршрут...'),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
           if (isRoutingLoading)
