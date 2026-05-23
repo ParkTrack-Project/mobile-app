@@ -315,6 +315,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final pos = await _getCurrentPosition();
     if (pos == null) return;
 
+    // Immediately fly camera to user's current position
+    await _mapController?.moveCamera(
+      CameraUpdate.newCameraPosition(CameraPosition(
+        target: Point(latitude: pos.latitude, longitude: pos.longitude),
+        zoom: 17,
+        tilt: 40,
+      )),
+      animation: const MapAnimation(duration: 0.8),
+    );
+
     List<Point> route;
     double totalSeconds = 0;
     double totalMeters = 0;
