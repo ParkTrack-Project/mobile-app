@@ -11,6 +11,7 @@ import '../../providers/zones_provider.dart';
 import '../../../domain/models/zone.dart';
 import '../../providers/filters_provider.dart';
 import '../../providers/routing_provider.dart';
+import '../../../domain/models/route_result.dart';
 import '../../providers/time_selector_provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/navigation_deeplink.dart';
@@ -45,6 +46,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Map<int, Zone> _zonesById = {};
   List<Point>? _routePolyline;
   int? _activeRouteZoneId;
+  bool _inAppNavMode = false;
+  DrivingSession? _drivingSession;
 
   @override
   void initState() {
@@ -60,6 +63,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   @override
   void dispose() {
     _debounce?.cancel();
+    _drivingSession?.close();
     super.dispose();
   }
 
@@ -302,6 +306,35 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         );
   }
 
+  Future<void> _startInAppNavigation(double toLat, double toLon) async {
+    setState(() => _inAppNavMode = true);
+    if (_routePolyline != null) return;
+    final pos = _userPosition;
+    if (pos == null) return;
+    await _drivingSession?.close();
+    final resultWithSession = YandexDriving.requestRoutes(
+      points: [
+        RequestPoint(
+          point: Point(latitude: pos.latitude, longitude: pos.longitude),
+          requestPointType: RequestPointType.wayPoint,
+        ),
+        RequestPoint(
+          point: Point(latitude: toLat, longitude: toLon),
+          requestPointType: RequestPointType.wayPoint,
+        ),
+      ],
+      drivingOptions: const DrivingOptions(routesCount: 1),
+    );
+    _drivingSession = resultWithSession.session;
+    final result = await resultWithSession.result;
+    await resultWithSession.session.close();
+    _drivingSession = null;
+    final route = result.routes?.firstOrNull;
+    if (route != null && mounted) {
+      setState(() => _routePolyline = route.geometry);
+    }
+  }
+
   void _showFilters(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -354,6 +387,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           setState(() {
             _routePolyline = null;
             _activeRouteZoneId = null;
+            _inAppNavMode = false;
           });
         },
         searching: () async {},
@@ -420,6 +454,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               route: route,
               zoneLat: zoneLat,
               zoneLon: zoneLon,
+              onNavigateInApp: (zoneLat != null && zoneLon != null)
+                  ? () => _startInAppNavigation(zoneLat!, zoneLon!)
+                  : null,
             ),
           );
           _isRouteSheetOpen = false;
@@ -672,6 +709,23 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   height: 24,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
+              ),
+            ),
+          if (_inAppNavMode && _activeRouteZoneId != null)
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: _InAppNavBar(
+                zoneId: _activeRouteZoneId!,
+                candidate: routingState.maybeWhen(
+                  routePreview: (r) => r.candidates.firstOrNull,
+                  orElse: () => null,
+                ),
+                onFinish: () {
+                  ref.read(routingProvider.notifier).reset();
+                  setState(() => _inAppNavMode = false);
+                },
               ),
             ),
           if (isRoutingLoading)
@@ -990,6 +1044,97 @@ class _FiltersSheet extends ConsumerWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+
+class _InAppNavBar extends StatelessWidget {
+  const _InAppNavBar({
+    required this.zoneId,
+    required this.onFinish,
+    this.candidate,
+  });
+
+  final int zoneId;
+  final VoidCallback onFinish;
+  final RouteCandidate? candidate;
+
+  String _formatDuration(int seconds) {
+    final mins = (seconds / 60).round();
+    if (mins < 60) return '~$mins мин';
+    final h = mins ~/ 60;
+    final m = mins % 60;
+    return m == 0 ? '~${h}ч' : '~${h}ч ${m}мин';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final parts = <String>[];
+    if (candidate?.distanceToDestinationMeters != null)
+      parts.add('${(candidate!.distanceToDestinationMeters! / 1000).toStringAsFixed(1)} км');
+    if (candidate?.durationFromOriginSeconds != null)
+      parts.add(_formatDuration(candidate!.durationFromOriginSeconds!));
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 12,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      padding: EdgeInsets.fromLTRB(
+        20,
+        14,
+        20,
+        MediaQuery.of(context).padding.bottom + 14,
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(Icons.navigation, color: AppColors.primary, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Зона #$zoneId',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                ),
+                if (parts.isNotEmpty)
+                  Text(
+                    parts.join(' • '),
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 13,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: onFinish,
+            child: const Text(
+              'Завершить',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
+          ),
+        ],
       ),
     );
   }

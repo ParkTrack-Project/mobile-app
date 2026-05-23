@@ -11,11 +11,13 @@ class RoutePreviewSheet extends ConsumerStatefulWidget {
     required this.route,
     this.zoneLat,
     this.zoneLon,
+    this.onNavigateInApp,
   });
 
   final ActiveRoute route;
   final double? zoneLat;
   final double? zoneLon;
+  final VoidCallback? onNavigateInApp;
 
   @override
   ConsumerState<RoutePreviewSheet> createState() => _RoutePreviewSheetState();
@@ -34,23 +36,33 @@ class _RoutePreviewSheetState extends ConsumerState<RoutePreviewSheet> {
     return '$hh:$mm';
   }
 
-  Future<void> _launch() async {
+  String _formatDuration(int seconds) {
+    final mins = (seconds / 60).round();
+    if (mins < 60) return '~$mins мин';
+    final h = mins ~/ 60;
+    final m = mins % 60;
+    return m == 0 ? '~${h}ч' : '~${h}ч ${m}мин';
+  }
+
+  Future<void> _launchNavigator() async {
     setState(() => _launching = true);
     try {
       final url = widget.route.deeplinkUrl;
-      if (url != null) {
-        await openYandexNavigatorUrl(url);
-        return;
-      }
       final lat = widget.zoneLat;
       final lon = widget.zoneLon;
-      if (lat != null && lon != null) {
+      if (url != null) {
+        await openYandexNavigatorUrl(url);
+      } else if (lat != null && lon != null) {
         await openYandexNavigator(lat, lon);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Нет данных для навигации')),
+          );
+        }
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Нет данных для навигации')),
-      );
+      if (mounted) Navigator.pop(context);
     } finally {
       if (mounted) setState(() => _launching = false);
     }
@@ -58,6 +70,7 @@ class _RoutePreviewSheetState extends ConsumerState<RoutePreviewSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final candidate = widget.route.candidates.firstOrNull;
     return DraggableScrollableSheet(
       expand: false,
       initialChildSize: 0.42,
@@ -91,23 +104,44 @@ class _RoutePreviewSheetState extends ConsumerState<RoutePreviewSheet> {
             Text('Зона: #${widget.route.selectedZoneId}'),
             if (widget.route.arrivalTime != null)
               Text('Прибытие: ${_formatArrival(widget.route.arrivalTime!)}'),
-            Builder(builder: (_) {
-              final c = widget.route.candidates.firstOrNull;
-              if (c == null) return const SizedBox.shrink();
-              final parts = <String>[];
-              if (c.distanceToDestinationMeters != null)
-                parts.add('${(c.distanceToDestinationMeters! / 1000).toStringAsFixed(1)} км');
-              if (c.durationFromOriginSeconds != null)
-                parts.add('~${(c.durationFromOriginSeconds! / 60).round()} мин');
-              if (parts.isEmpty) return const SizedBox.shrink();
-              return Text(parts.join(' • '),
-                  style: const TextStyle(color: Color(0xFF666666)));
-            }),
+            if (candidate != null) ...[
+              Builder(builder: (_) {
+                final parts = <String>[];
+                if (candidate.distanceToDestinationMeters != null)
+                  parts.add('${(candidate.distanceToDestinationMeters! / 1000).toStringAsFixed(1)} км');
+                if (candidate.durationFromOriginSeconds != null)
+                  parts.add(_formatDuration(candidate.durationFromOriginSeconds!));
+                if (parts.isEmpty) return const SizedBox.shrink();
+                return Text(parts.join(' • '),
+                    style: const TextStyle(color: Color(0xFF666666)));
+              }),
+            ],
             const SizedBox(height: 18),
+            if (widget.onNavigateInApp != null)
+              FilledButton.icon(
+                onPressed: () {
+                  Navigator.pop(context);
+                  widget.onNavigateInApp!();
+                },
+                icon: const Icon(Icons.map_outlined),
+                label: const Text('Маршрут в приложении'),
+              ),
+            const SizedBox(height: 8),
             FilledButton.icon(
-              onPressed: _launching ? null : _launch,
+              style: FilledButton.styleFrom(
+                backgroundColor: widget.onNavigateInApp != null
+                    ? Colors.white
+                    : null,
+                foregroundColor: widget.onNavigateInApp != null
+                    ? AppColors.primary
+                    : null,
+                side: widget.onNavigateInApp != null
+                    ? const BorderSide(color: AppColors.primary)
+                    : null,
+              ),
+              onPressed: _launching ? null : _launchNavigator,
               icon: const Icon(Icons.navigation_outlined),
-              label: Text(_launching ? 'Открываем...' : 'Открыть в навигаторе'),
+              label: Text(_launching ? 'Открываем...' : 'Яндекс Навигатор'),
             ),
             const SizedBox(height: 8),
             TextButton(
