@@ -645,14 +645,26 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             mapObjects: mapObjects,
             onMapCreated: (controller) async {
               _mapController = controller;
-              const initial = Point(latitude: 59.7390, longitude: 30.4020);
-              _lastCameraTarget = initial;
+              const fallback = Point(latitude: 59.7390, longitude: 30.4020);
+              _lastCameraTarget = fallback;
               await controller.moveCamera(
                 CameraUpdate.newCameraPosition(
-                  const CameraPosition(target: initial, zoom: 14),
+                  const CameraPosition(target: fallback, zoom: 14),
                 ),
               );
               _fetchZones();
+              final pos = await _getCurrentPosition();
+              if (pos != null && mounted) {
+                final target = Point(latitude: pos.latitude, longitude: pos.longitude);
+                _lastCameraTarget = target;
+                await controller.moveCamera(
+                  CameraUpdate.newCameraPosition(
+                    CameraPosition(target: target, zoom: 15),
+                  ),
+                  animation: const MapAnimation(duration: 0.8),
+                );
+                _fetchZones();
+              }
             },
             onCameraPositionChanged: _onCameraPositionChanged,
           ),
