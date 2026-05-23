@@ -78,10 +78,18 @@ class _TurnCard extends StatelessWidget {
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+          padding: const EdgeInsets.fromLTRB(16, 12, 20, 16),
           child: Row(
             children: [
-              Icon(icon, color: Colors.white, size: 48),
+              Container(
+                width: 64,
+                height: 64,
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: bg, size: 38),
+              ),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
