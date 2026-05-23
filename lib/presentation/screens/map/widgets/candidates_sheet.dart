@@ -2,6 +2,14 @@ import 'package:flutter/material.dart';
 import '../../../../domain/models/route_result.dart';
 import '../../../../core/theme/app_colors.dart';
 
+String _formatDuration(int seconds) {
+  final mins = (seconds / 60).round();
+  if (mins < 60) return '~$mins мин';
+  final h = mins ~/ 60;
+  final m = mins % 60;
+  return m == 0 ? '~${h}ч' : '~${h}ч ${m}мин';
+}
+
 class _CandidateSubtitle extends StatelessWidget {
   final RouteCandidate candidate;
   const _CandidateSubtitle({required this.candidate});
@@ -15,7 +23,7 @@ class _CandidateSubtitle extends StatelessWidget {
     if (candidate.distanceToDestinationMeters != null)
       parts.add('${(candidate.distanceToDestinationMeters! / 1000).toStringAsFixed(1)} км');
     if (candidate.durationFromOriginSeconds != null)
-      parts.add('~${(candidate.durationFromOriginSeconds! / 60).round()} мин');
+      parts.add(_formatDuration(candidate.durationFromOriginSeconds!));
     if (candidate.predictedFreeCount != null)
       parts.add('прогноз: ${candidate.predictedFreeCount}');
     return Text(parts.join(' • '));
