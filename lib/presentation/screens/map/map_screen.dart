@@ -11,11 +11,13 @@ import '../../providers/zones_provider.dart';
 import '../../../domain/models/zone.dart';
 import '../../providers/filters_provider.dart';
 import '../../providers/routing_provider.dart';
-import '../../../domain/models/route_result.dart';
+import '../../providers/navigation_provider.dart';
 import '../../providers/time_selector_provider.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/nav_math.dart';
 import '../../../core/utils/navigation_deeplink.dart';
 import 'widgets/candidates_sheet.dart';
+import 'widgets/navigation_overlay.dart' show NavigationTurnCard, NavigationBottomBar;
 import 'widgets/parking_zone_layer.dart';
 import 'widgets/time_selector_widget.dart';
 import 'widgets/parking_card_sheet.dart';
@@ -46,7 +48,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Map<int, Zone> _zonesById = {};
   List<Point>? _routePolyline;
   int? _activeRouteZoneId;
-  bool _inAppNavMode = false;
   DrivingSession? _drivingSession;
 
   @override
@@ -306,33 +307,70 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         );
   }
 
-  Future<void> _startInAppNavigation(double toLat, double toLon) async {
-    setState(() => _inAppNavMode = true);
-    if (_routePolyline != null) return;
-    final pos = _userPosition;
+  Future<void> _startInAppNavigation({
+    required int zoneId,
+    required double toLat,
+    required double toLon,
+  }) async {
+    final pos = await _getCurrentPosition();
     if (pos == null) return;
-    await _drivingSession?.close();
-    final resultWithSession = YandexDriving.requestRoutes(
-      points: [
-        RequestPoint(
-          point: Point(latitude: pos.latitude, longitude: pos.longitude),
-          requestPointType: RequestPointType.wayPoint,
-        ),
-        RequestPoint(
-          point: Point(latitude: toLat, longitude: toLon),
-          requestPointType: RequestPointType.wayPoint,
-        ),
-      ],
-      drivingOptions: const DrivingOptions(routesCount: 1),
-    );
-    _drivingSession = resultWithSession.session;
-    final result = await resultWithSession.result;
-    await resultWithSession.session.close();
-    _drivingSession = null;
-    final route = result.routes?.firstOrNull;
-    if (route != null && mounted) {
-      setState(() => _routePolyline = route.geometry);
+
+    List<Point> route;
+    double totalSeconds = 0;
+    double totalMeters = 0;
+
+    // Prefer backend polyline, else call YandexDriving
+    if (_routePolyline != null && _routePolyline!.length >= 2) {
+      route = _routePolyline!;
+    } else {
+      await _drivingSession?.close();
+      final rws = YandexDriving.requestRoutes(
+        points: [
+          RequestPoint(
+            point: Point(latitude: pos.latitude, longitude: pos.longitude),
+            requestPointType: RequestPointType.wayPoint,
+          ),
+          RequestPoint(
+            point: Point(latitude: toLat, longitude: toLon),
+            requestPointType: RequestPointType.wayPoint,
+          ),
+        ],
+        drivingOptions: const DrivingOptions(routesCount: 1),
+      );
+      _drivingSession = rws.session;
+      final result = await rws.result;
+      await rws.session.close();
+      _drivingSession = null;
+      final dr = result.routes?.firstOrNull;
+      if (dr == null || !mounted) return;
+      route = dr.geometry;
+      totalSeconds = dr.metadata.weight.timeWithTraffic.value ?? 0;
+      totalMeters = dr.metadata.weight.distance.value ?? 0;
+      setState(() => _routePolyline = route);
     }
+
+    // Build total metrics from nav_math if backend polyline used
+    if (totalMeters == 0 && route.length >= 2) {
+      for (int i = 0; i < route.length - 1; i++) {
+        totalMeters += navDistanceM(route[i], route[i + 1]);
+      }
+      totalSeconds = totalMeters / 10; // rough: 36 km/h average
+    }
+
+    await ref.read(navigationProvider.notifier).startNavigation(
+          zoneId: zoneId,
+          route: route,
+          totalSeconds: totalSeconds,
+          totalMeters: totalMeters,
+        );
+
+    // Enable heading arrow and traffic
+    await _mapController?.toggleUserLayer(
+      visible: true,
+      headingEnabled: true,
+      autoZoomEnabled: false,
+    );
+    await _mapController?.toggleTrafficLayer(visible: true);
   }
 
   void _showFilters(BuildContext context) {
@@ -357,6 +395,19 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
     ref.listen(timeSelectorProvider, (_, __) => _fetchZones());
     ref.listen(filteredZonesProvider, (_, zones) => _updateZoneBitmaps(zones));
+
+    ref.listen(navigationProvider, (_, nav) {
+      if (nav == null) return;
+      _mapController?.moveCamera(
+        CameraUpdate.newCameraPosition(CameraPosition(
+          target: nav.currentPosition,
+          zoom: 17,
+          azimuth: nav.heading,
+          tilt: 40,
+        )),
+        animation: const MapAnimation(duration: 0.6),
+      );
+    });
 
     ref.listen(rawZonesProvider, (_, next) {
       next.whenOrNull(
@@ -384,10 +435,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     ref.listen(routingProvider, (_, next) async {
       await next.when(
         idle: () async {
+          ref.read(navigationProvider.notifier).stop();
+          await _mapController?.toggleUserLayer(visible: false);
+          await _mapController?.toggleTrafficLayer(visible: false);
           setState(() {
             _routePolyline = null;
             _activeRouteZoneId = null;
-            _inAppNavMode = false;
           });
         },
         searching: () async {},
@@ -455,7 +508,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               zoneLat: zoneLat,
               zoneLon: zoneLon,
               onNavigateInApp: (zoneLat != null && zoneLon != null)
-                  ? () => _startInAppNavigation(zoneLat!, zoneLon!)
+                  ? () => _startInAppNavigation(
+                        zoneId: route.selectedZoneId,
+                        toLat: zoneLat!,
+                        toLon: zoneLon!,
+                      )
                   : null,
             ),
           );
@@ -711,21 +768,20 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 ),
               ),
             ),
-          if (_inAppNavMode && _activeRouteZoneId != null)
+          if (ref.watch(navigationProvider) != null)
+            const Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: NavigationTurnCard(),
+            ),
+          if (ref.watch(navigationProvider) != null)
             Positioned(
               bottom: 0,
               left: 0,
               right: 0,
-              child: _InAppNavBar(
-                zoneId: _activeRouteZoneId!,
-                candidate: routingState.maybeWhen(
-                  routePreview: (r) => r.candidates.firstOrNull,
-                  orElse: () => null,
-                ),
-                onFinish: () {
-                  ref.read(routingProvider.notifier).reset();
-                  setState(() => _inAppNavMode = false);
-                },
+              child: NavigationBottomBar(
+                onFinish: () => ref.read(routingProvider.notifier).reset(),
               ),
             ),
           if (isRoutingLoading)
@@ -1049,93 +1105,3 @@ class _FiltersSheet extends ConsumerWidget {
   }
 }
 
-// ───────────────────────────────────────────────────────────────────────────
-
-class _InAppNavBar extends StatelessWidget {
-  const _InAppNavBar({
-    required this.zoneId,
-    required this.onFinish,
-    this.candidate,
-  });
-
-  final int zoneId;
-  final VoidCallback onFinish;
-  final RouteCandidate? candidate;
-
-  String _formatDuration(int seconds) {
-    final mins = (seconds / 60).round();
-    if (mins < 60) return '~$mins мин';
-    final h = mins ~/ 60;
-    final m = mins % 60;
-    return m == 0 ? '~${h}ч' : '~${h}ч ${m}мин';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final parts = <String>[];
-    if (candidate?.distanceToDestinationMeters != null)
-      parts.add('${(candidate!.distanceToDestinationMeters! / 1000).toStringAsFixed(1)} км');
-    if (candidate?.durationFromOriginSeconds != null)
-      parts.add(_formatDuration(candidate!.durationFromOriginSeconds!));
-
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.12),
-            blurRadius: 12,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
-      padding: EdgeInsets.fromLTRB(
-        20,
-        14,
-        20,
-        MediaQuery.of(context).padding.bottom + 14,
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(Icons.navigation, color: AppColors.primary, size: 20),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Зона #$zoneId',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                ),
-                if (parts.isNotEmpty)
-                  Text(
-                    parts.join(' • '),
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 13,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          TextButton(
-            onPressed: onFinish,
-            child: const Text(
-              'Завершить',
-              style: TextStyle(color: AppColors.textSecondary),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
