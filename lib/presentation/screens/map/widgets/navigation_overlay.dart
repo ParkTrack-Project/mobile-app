@@ -146,37 +146,63 @@ class _NavBottomBar extends StatelessWidget {
   final NavigationData nav;
   final VoidCallback onFinish;
 
+  void _confirmFinish(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Завершить маршрут?'),
+        content: const Text('Навигация будет остановлена.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Нет'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(context);
+              onFinish();
+            },
+            child: const Text('Завершить'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final speedColor = nav.speedKmh > 90 ? Colors.red.shade600 : AppColors.onSurface;
     return Container(
       color: Colors.white,
       padding: EdgeInsets.fromLTRB(
-        20, 10, 8, MediaQuery.of(context).padding.bottom + 10,
+        12, 10, 4, MediaQuery.of(context).padding.bottom + 10,
       ),
       child: Row(
         children: [
-          _StatCell(
-            value: formatNavDuration(nav.remainingSeconds),
-            label: 'времени',
+          Expanded(
+            child: _StatCell(
+              value: formatNavDuration(nav.remainingSeconds),
+              label: 'времени',
+            ),
           ),
-          const SizedBox(width: 24),
-          _StatCell(
-            value: formatNavDistance(nav.remainingMeters),
-            label: 'до цели',
+          Expanded(
+            child: _StatCell(
+              value: formatNavDistance(nav.remainingMeters),
+              label: 'до цели',
+            ),
           ),
-          const SizedBox(width: 24),
-          _StatCell(
-            value: '${nav.speedKmh.round()}',
-            label: 'км/ч',
-            valueColor: speedColor,
+          Expanded(
+            child: _StatCell(
+              value: '${nav.speedKmh.round()}',
+              label: 'км/ч',
+              valueColor: speedColor,
+            ),
           ),
-          const Spacer(),
           TextButton(
-            onPressed: onFinish,
+            onPressed: () => _confirmFinish(context),
             child: const Text(
               'Завершить',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 15),
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
             ),
           ),
         ],
