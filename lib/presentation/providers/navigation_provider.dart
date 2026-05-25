@@ -47,6 +47,10 @@ class NavigationNotifier extends Notifier<NavigationData?> {
   double _destLon = 0;
   int _zoneId = 0;
 
+  double? _smoothLat;
+  double? _smoothLon;
+  double? _smoothHeading;
+
   @override
   NavigationData? build() => null;
 
@@ -68,6 +72,9 @@ class NavigationNotifier extends Notifier<NavigationData?> {
     _destLat = destLat;
     _destLon = destLon;
     _zoneId = zoneId;
+    _smoothLat = null;
+    _smoothLon = null;
+    _smoothHeading = null;
 
     _sub = Geolocator.getPositionStream(
       locationSettings: _buildLocationSettings(),
@@ -108,8 +115,24 @@ class NavigationNotifier extends Notifier<NavigationData?> {
     _arrivalTimer = null;
   }
 
+  static const _kAlpha = 0.3;
+
+  double _ema(double raw, double? prev) =>
+      prev == null ? raw : prev * (1 - _kAlpha) + raw * _kAlpha;
+
+  double _emaCircular(double raw, double? prev) {
+    if (prev == null) return raw;
+    final diff = ((raw - prev + 540) % 360) - 180;
+    return (prev + _kAlpha * diff + 360) % 360;
+  }
+
   void _onPosition(Position pos) {
-    final current = Point(latitude: pos.latitude, longitude: pos.longitude);
+    _smoothLat = _ema(pos.latitude, _smoothLat);
+    _smoothLon = _ema(pos.longitude, _smoothLon);
+    final rawHeading = pos.heading >= 0 ? pos.heading : 0.0;
+    _smoothHeading = _emaCircular(rawHeading, _smoothHeading);
+
+    final current = Point(latitude: _smoothLat!, longitude: _smoothLon!);
     final closest = closestOnRoute(current, _route);
 
     if (closest.segment > _segmentIndex) {
@@ -131,7 +154,7 @@ class NavigationNotifier extends Notifier<NavigationData?> {
       remainingSeconds: remainingSecs,
       speedKmh: (pos.speed * 3.6).clamp(0.0, 300.0),
       currentPosition: current,
-      heading: pos.heading >= 0 ? pos.heading : 0,
+      heading: _smoothHeading!,
       nextTurn: nextTurn,
       isOffRoute: isOff,
       isRecalculating: state?.isRecalculating ?? false,
