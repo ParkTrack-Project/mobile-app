@@ -38,6 +38,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   double _currentAzimuth = 0;
   Uint8List? _destinationPinBytes;
   Uint8List? _userLocationBytes;
+  Uint8List? _navArrowBytes;
 
   bool _isSelectingOnMap = false;
   bool _isCandidatesSheetOpen = false;
@@ -59,6 +60,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     });
     _buildUserLocationBitmap().then((b) {
       if (mounted) setState(() => _userLocationBytes = b);
+    });
+    _buildNavArrowBitmap().then((b) {
+      if (mounted) setState(() => _navArrowBytes = b);
     });
   }
 
@@ -116,6 +120,36 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final canvas = Canvas(recorder);
     canvas.drawCircle(center, size / 2 - 1, Paint()..color = Colors.white);
     canvas.drawCircle(center, size / 2 - 5, Paint()..color = const Color(0xFF007AFF));
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(size.toInt(), size.toInt());
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    return byteData!.buffer.asUint8List();
+  }
+
+  Future<Uint8List> _buildNavArrowBitmap() async {
+    const size = 56.0;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    canvas.drawCircle(
+      const Offset(size / 2, size / 2),
+      size / 2 - 1,
+      Paint()..color = AppColors.primary,
+    );
+    canvas.drawCircle(
+      const Offset(size / 2, size / 2),
+      size / 2 - 1,
+      Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5,
+    );
+    final path = Path()
+      ..moveTo(size / 2, 9)
+      ..lineTo(size * 0.7, size * 0.66)
+      ..lineTo(size / 2, size * 0.53)
+      ..lineTo(size * 0.3, size * 0.66)
+      ..close();
+    canvas.drawPath(path, Paint()..color = Colors.white);
     final picture = recorder.endRecording();
     final image = await picture.toImage(size.toInt(), size.toInt());
     final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
@@ -377,11 +411,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             destLon: toLon,
           );
 
-      await _mapController?.toggleUserLayer(
-        visible: true,
-        headingEnabled: true,
-        autoZoomEnabled: false,
-      );
+      await _mapController?.toggleUserLayer(visible: false);
       await _mapController?.toggleTrafficLayer(visible: true);
     } catch (e) {
       if (mounted) {
@@ -409,7 +439,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final zonesAsync = ref.watch(rawZonesProvider);
     final routingState = ref.watch(routingProvider);
     final destination = ref.watch(destinationProvider);
-    final isNavigating = ref.watch(navigationProvider) != null;
+    final navState = ref.watch(navigationProvider);
+    final isNavigating = navState != null;
     final isRoutingLoading = routingState.maybeWhen(
       searching: () => true,
       orElse: () => false,
@@ -612,7 +643,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             );
           },
         ),
-      if (_userPosition != null && _userLocationBytes != null)
+      if (_userPosition != null && _userLocationBytes != null && !isNavigating)
         PlacemarkMapObject(
           mapId: const MapObjectId('user_location'),
           point: Point(
@@ -621,6 +652,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           ),
           icon: PlacemarkIcon.single(PlacemarkIconStyle(
             image: BitmapDescriptor.fromBytes(_userLocationBytes!),
+            scale: 1.0,
+          )),
+        ),
+      if (isNavigating && _navArrowBytes != null)
+        PlacemarkMapObject(
+          mapId: const MapObjectId('nav_arrow'),
+          point: navState!.currentPosition,
+          opacity: 1.0,
+          icon: PlacemarkIcon.single(PlacemarkIconStyle(
+            image: BitmapDescriptor.fromBytes(_navArrowBytes!),
             scale: 1.0,
           )),
         ),
@@ -786,6 +827,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 onFindParking: isRoutingLoading ? null : _findParking,
                 onNavigate: () => openYandexNavigator(
                     destination.latitude, destination.longitude),
+                onNavigateInApp: () => _startInAppNavigation(
+                    zoneId: 0,
+                    toLat: destination.latitude,
+                    toLon: destination.longitude),
                 onClear: () {
                   ref.read(destinationProvider.notifier).state = null;
                   ref.read(routingProvider.notifier).reset();
@@ -896,12 +941,14 @@ class _DestinationCard extends StatelessWidget {
     required this.destination,
     required this.onFindParking,
     required this.onNavigate,
+    required this.onNavigateInApp,
     required this.onClear,
   });
 
   final Destination destination;
   final VoidCallback? onFindParking;
   final VoidCallback onNavigate;
+  final VoidCallback onNavigateInApp;
   final VoidCallback onClear;
 
   @override
@@ -947,14 +994,23 @@ class _DestinationCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
+          FilledButton.icon(
+            onPressed: onFindParking,
+            icon: const Icon(Icons.local_parking, size: 16),
+            label: const Text('Искать парковку рядом'),
+            style: FilledButton.styleFrom(
+              textStyle: const TextStyle(fontSize: 13),
+              padding: const EdgeInsets.symmetric(vertical: 10),
+            ),
+          ),
+          const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
-                flex: 3,
                 child: FilledButton.icon(
-                  onPressed: onFindParking,
-                  icon: const Icon(Icons.local_parking, size: 16),
-                  label: const Text('Искать парковку рядом'),
+                  onPressed: onNavigateInApp,
+                  icon: const Icon(Icons.map_outlined, size: 16),
+                  label: const Text('В приложении'),
                   style: FilledButton.styleFrom(
                     textStyle: const TextStyle(fontSize: 13),
                     padding: const EdgeInsets.symmetric(vertical: 10),
@@ -963,14 +1019,13 @@ class _DestinationCard extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Expanded(
-                flex: 2,
                 child: FilledButton.tonal(
                   onPressed: onNavigate,
                   style: FilledButton.styleFrom(
                     textStyle: const TextStyle(fontSize: 13),
                     padding: const EdgeInsets.symmetric(vertical: 10),
                   ),
-                  child: const Text('Ехать сюда'),
+                  child: const Text('Яндекс'),
                 ),
               ),
             ],
