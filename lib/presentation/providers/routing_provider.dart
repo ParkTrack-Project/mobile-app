@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import '../../domain/models/route_result.dart';
@@ -66,7 +67,11 @@ class RoutingNotifier extends StateNotifier<RoutingState> {
           );
       state = RoutingState.candidates(candidates);
     } catch (e) {
-      state = RoutingState.error(e.toString());
+      if (e is DioException && e.response != null) {
+        state = RoutingState.error('${e.response!.statusCode}: ${e.response!.data}');
+      } else {
+        state = RoutingState.error(e.toString());
+      }
     }
   }
 
@@ -87,7 +92,11 @@ class RoutingNotifier extends StateNotifier<RoutingState> {
           );
       state = RoutingState.routePreview(route);
     } catch (e) {
-      state = RoutingState.error(e.toString());
+      if (e is DioException && e.response != null) {
+        state = RoutingState.error('${e.response!.statusCode}: ${e.response!.data}');
+      } else {
+        state = RoutingState.error(e.toString());
+      }
     }
   }
 
