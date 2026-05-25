@@ -98,6 +98,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   Future<void> _updateZoneBitmaps(List<Zone> zones) async {
+    final same = zones.length == _zonesById.length &&
+        zones.every((z) {
+          final prev = _zonesById[z.zoneId];
+          return prev != null &&
+              prev.freeCount == z.freeCount &&
+              prev.hasForecast == z.hasForecast &&
+              prev.isActive == z.isActive;
+        });
+    if (same) return;
     final generation = ++_bitmapGeneration;
     final newCache = <int, Uint8List>{};
     final newById = <int, Zone>{};
