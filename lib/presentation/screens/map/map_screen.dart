@@ -103,7 +103,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       if (zone.geometry.length < 3) continue;
       final color = zoneColor(zone);
       newCache[zone.zoneId] = await buildCountBitmap(
-        zone.hasForecast ? zone.freeCount : null,
+        color == AppColors.parkingUnknown ? null : zone.freeCount,
         color,
       );
       newById[zone.zoneId] = zone;
