@@ -101,6 +101,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final newById = <int, Zone>{};
     for (final zone in zones) {
       if (zone.geometry.length < 3) continue;
+      if (!zone.hasForecast) continue;
       final color = zoneColor(zone);
       newCache[zone.zoneId] = await buildCountBitmap(zone.freeCount, color);
       newById[zone.zoneId] = zone;
