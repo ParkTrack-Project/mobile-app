@@ -47,6 +47,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   Map<int, Uint8List> _zoneLabelCache = {};
   Map<int, Zone> _zonesById = {};
+  int _bitmapGeneration = 0;
   List<Point>? _routePolyline;
   int? _activeRouteZoneId;
   DrivingSession? _drivingSession;
@@ -97,9 +98,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   Future<void> _updateZoneBitmaps(List<Zone> zones) async {
+    final generation = ++_bitmapGeneration;
     final newCache = <int, Uint8List>{};
     final newById = <int, Zone>{};
     for (final zone in zones) {
+      if (_bitmapGeneration != generation) return;
       if (zone.geometry.length < 3) continue;
       final color = zoneColor(zone);
       newCache[zone.zoneId] = await buildCountBitmap(
@@ -108,6 +111,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       );
       newById[zone.zoneId] = zone;
     }
+    if (_bitmapGeneration != generation) return;
     if (mounted) {
       setState(() {
         _zoneLabelCache = newCache;
