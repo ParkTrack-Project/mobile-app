@@ -9,7 +9,8 @@ class RoutingApi {
   Future<RoutingSearchResponseDto> searchParking(
     RoutingSearchRequestDto request,
   ) async {
-    final response = await _dio.post('/routing/search', data: request.toJson());
+    final data = request.toJson()..removeWhere((_, v) => v == null);
+    final response = await _dio.post('/routing/search', data: data);
     return RoutingSearchResponseDto.fromJson(
         response.data as Map<String, dynamic>);
   }
@@ -17,7 +18,7 @@ class RoutingApi {
   Future<RouteDto> createRoute(RoutingSearchRequestDto request,
       {int? selectedZoneId}) async {
     final data = {
-      ...request.toJson(),
+      ...request.toJson()..removeWhere((_, v) => v == null),
       if (selectedZoneId != null) 'selected_zone_id': selectedZoneId,
     };
     final response = await _dio.post('/routing/new', data: data);
