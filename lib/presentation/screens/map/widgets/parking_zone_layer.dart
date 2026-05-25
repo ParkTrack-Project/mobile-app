@@ -127,30 +127,30 @@ MapObject buildZoneLabels({
   );
 }
 
-Future<Uint8List> buildCountBitmap(int count, Color color) async {
+Future<Uint8List> buildCountBitmap(int? count, Color color) async {
   const size = 72.0;
   final center = Offset(size / 2, size / 2);
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder);
-  // White outer ring for contrast against any map background
   canvas.drawCircle(center, size / 2 - 1, Paint()..color = Colors.white);
-  // Colored fill
   canvas.drawCircle(center, size / 2 - 3, Paint()..color = color);
-  final textPainter = TextPainter(
-    text: TextSpan(
-      text: '$count',
-      style: const TextStyle(
-        color: Colors.white,
-        fontSize: 28,
-        fontWeight: FontWeight.bold,
+  if (count != null) {
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: '$count',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 28,
+          fontWeight: FontWeight.bold,
+        ),
       ),
-    ),
-    textDirection: TextDirection.ltr,
-  )..layout();
-  textPainter.paint(
-    canvas,
-    Offset((size - textPainter.width) / 2, (size - textPainter.height) / 2),
-  );
+      textDirection: TextDirection.ltr,
+    )..layout();
+    textPainter.paint(
+      canvas,
+      Offset((size - textPainter.width) / 2, (size - textPainter.height) / 2),
+    );
+  }
   final picture = recorder.endRecording();
   final image = await picture.toImage(size.toInt(), size.toInt());
   final data = await image.toByteData(format: ui.ImageByteFormat.png);
