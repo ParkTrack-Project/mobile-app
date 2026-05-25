@@ -127,29 +127,42 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   Future<Uint8List> _buildNavArrowBitmap() async {
-    const size = 56.0;
+    const size = 80.0;
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
-    canvas.drawCircle(
-      const Offset(size / 2, size / 2),
-      size / 2 - 1,
-      Paint()..color = AppColors.primary,
+
+    // Drop shadow
+    canvas.drawPath(
+      Path()
+        ..moveTo(size / 2, 4)
+        ..lineTo(size * 0.78, size * 0.72)
+        ..lineTo(size / 2, size * 0.56)
+        ..lineTo(size * 0.22, size * 0.72)
+        ..close(),
+      Paint()
+        ..color = const Color(0x44000000)
+        ..maskFilter = const ui.MaskFilter.blur(ui.BlurStyle.normal, 4),
     );
-    canvas.drawCircle(
-      const Offset(size / 2, size / 2),
-      size / 2 - 1,
+
+    // Arrow fill
+    final arrowPath = Path()
+      ..moveTo(size / 2, 4)
+      ..lineTo(size * 0.78, size * 0.72)
+      ..lineTo(size / 2, size * 0.56)
+      ..lineTo(size * 0.22, size * 0.72)
+      ..close();
+    canvas.drawPath(arrowPath, Paint()..color = AppColors.primary);
+
+    // White outline for contrast
+    canvas.drawPath(
+      arrowPath,
       Paint()
         ..color = Colors.white
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.5,
+        ..style = ui.PaintingStyle.stroke
+        ..strokeWidth = 2.5
+        ..strokeJoin = ui.StrokeJoin.round,
     );
-    final path = Path()
-      ..moveTo(size / 2, 9)
-      ..lineTo(size * 0.7, size * 0.66)
-      ..lineTo(size / 2, size * 0.53)
-      ..lineTo(size * 0.3, size * 0.66)
-      ..close();
-    canvas.drawPath(path, Paint()..color = Colors.white);
+
     final picture = recorder.endRecording();
     final image = await picture.toImage(size.toInt(), size.toInt());
     final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
