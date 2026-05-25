@@ -101,12 +101,15 @@ MapObject buildZoneLabels({
           .map((p) => int.tryParse(p.mapId.value.replaceFirst('zone_label_', '')))
           .whereType<int>()
           .toList();
-      final totalFree = zoneIds
-          .map((id) => zonesById[id]?.freeCount ?? 0)
-          .fold(0, (a, b) => a + b);
       final hasForecast = zoneIds.any((id) => zonesById[id]?.hasForecast == true);
+      final int? totalFree = hasForecast
+          ? zoneIds
+              .where((id) => zonesById[id]?.hasForecast == true)
+              .map((id) => zonesById[id]?.freeCount ?? 0)
+              .fold<int>(0, (a, b) => a + b)
+          : null;
       final Color clusterColor;
-      if (!hasForecast) {
+      if (totalFree == null) {
         clusterColor = AppColors.parkingUnknown;
       } else if (totalFree == 0) {
         clusterColor = AppColors.parkingFull;
@@ -157,14 +160,21 @@ Future<Uint8List> buildCountBitmap(int? count, Color color) async {
   return data!.buffer.asUint8List();
 }
 
-Future<Uint8List> buildClusterBitmap(int totalFree, int clusterSize, Color color) async {
+Future<Uint8List> buildClusterBitmap(int? totalFree, int clusterSize, Color color) async {
   const size = 84.0;
   final center = Offset(size / 2, size / 2);
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder);
   canvas.drawCircle(center, size / 2 - 1, Paint()..color = Colors.white);
   canvas.drawCircle(center, size / 2 - 4, Paint()..color = color);
-  final label = clusterSize <= 1 ? '$totalFree' : '$totalFree\n($clusterSize)';
+  final String label;
+  if (totalFree == null) {
+    label = '($clusterSize)';
+  } else if (clusterSize <= 1) {
+    label = '$totalFree';
+  } else {
+    label = '$totalFree\n($clusterSize)';
+  }
   final textPainter = TextPainter(
     text: TextSpan(
       text: label,
