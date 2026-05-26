@@ -40,8 +40,9 @@ class ZonesRepository {
 
     final forecastMap = <int, Map<String, dynamic>>{};
     for (final f in forecasts) {
-      final id = f['zone_id'];
-      if (id is int) forecastMap[id] = f;
+      final rawId = f['zone_id'];
+      final id = rawId is int ? rawId : int.tryParse(rawId?.toString() ?? '');
+      if (id != null) forecastMap[id] = f;
     }
 
     return zoneDtos.map((dto) {
