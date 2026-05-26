@@ -4,6 +4,7 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 import '../../domain/models/route_result.dart';
 import 'app_providers.dart';
 import 'filters_provider.dart';
+import 'time_selector_provider.dart';
 
 part 'routing_provider.freezed.dart';
 
@@ -56,6 +57,8 @@ class RoutingNotifier extends StateNotifier<RoutingState> {
     try {
       final destination = _ref.read(destinationProvider);
       final filters = _ref.read(filtersProvider);
+      final timeMode = _ref.read(timeSelectorProvider);
+      final useForecast = timeMode.maybeWhen(future: (_) => true, orElse: () => null);
       final candidates = await _ref.read(routingRepositoryProvider).searchParking(
             originLat: originLat,
             originLon: originLon,
@@ -64,6 +67,7 @@ class RoutingNotifier extends StateNotifier<RoutingState> {
             maxPay: filters.maxPayPerHour,
             minConfidence: filters.minConfidence > 0 ? filters.minConfidence : null,
             minFreeCount: filters.hideNoFreeSpots ? 1 : null,
+            useForecast: useForecast,
           );
       state = RoutingState.candidates(candidates);
     } catch (e) {
@@ -83,12 +87,15 @@ class RoutingNotifier extends StateNotifier<RoutingState> {
     state = const RoutingState.searching();
     try {
       final destination = _ref.read(destinationProvider);
+      final timeMode = _ref.read(timeSelectorProvider);
+      final useForecast = timeMode.maybeWhen(future: (_) => true, orElse: () => null);
       final route = await _ref.read(routingRepositoryProvider).createRoute(
             originLat: originLat,
             originLon: originLon,
             destinationLat: destination?.latitude,
             destinationLon: destination?.longitude,
             selectedZoneId: selectedZoneId,
+            useForecast: useForecast,
           );
       state = RoutingState.routePreview(route);
     } catch (e) {

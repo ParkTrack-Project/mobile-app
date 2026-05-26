@@ -16,6 +16,7 @@ class RoutingRepository {
     int? maxPay,
     int? minFreeCount,
     double? minConfidence,
+    bool? useForecast,
   }) async {
     final request = RoutingSearchRequestDto(
       mode: destinationLat != null ? 'route_to_destination' : 'find_parking',
@@ -26,6 +27,7 @@ class RoutingRepository {
       maxPay: maxPay,
       minFreeCount: minFreeCount,
       minConfidence: minConfidence,
+      useForecast: useForecast,
     );
     final response = await _api.searchParking(request);
     return response.candidates.map(_mapCandidate).toList();
@@ -37,6 +39,7 @@ class RoutingRepository {
     double? destinationLat,
     double? destinationLon,
     required int selectedZoneId,
+    bool? useForecast,
   }) async {
     final request = RoutingSearchRequestDto(
       mode: destinationLat != null ? 'route_to_destination' : 'find_parking',
@@ -44,6 +47,7 @@ class RoutingRepository {
       destination: destinationLat != null
           ? LocationDto(latitude: destinationLat, longitude: destinationLon!)
           : null,
+      useForecast: useForecast,
     );
     final dto = await _api.createRoute(request, selectedZoneId: selectedZoneId);
     return _mapRoute(dto);
