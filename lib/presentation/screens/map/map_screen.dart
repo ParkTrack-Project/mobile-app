@@ -647,6 +647,21 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           zones: zones,
           bitmapCache: _zoneLabelCache,
           zonesById: _zonesById,
+          onZoneTap: (zone) {
+            if (_isSelectingOnMap && candidateIds.contains(zone.zoneId)) {
+              _buildRouteForZone(zone.zoneId);
+              return;
+            }
+            if (_isParkingCardOpen) return;
+            setState(() => _isParkingCardOpen = true);
+            showParkingCard(
+              context,
+              zone,
+              onBuildRoute: () => _buildRouteForZone(zone.zoneId),
+            ).then((_) {
+              if (mounted) setState(() => _isParkingCardOpen = false);
+            });
+          },
           onClusterTap: (_, cluster) {
             if (cluster.placemarks.isEmpty) return;
             final lats = cluster.placemarks.map((p) => p.point.latitude);

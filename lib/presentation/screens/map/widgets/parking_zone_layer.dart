@@ -76,6 +76,7 @@ MapObject buildZoneLabels({
   required Map<int, Uint8List> bitmapCache,
   required Map<int, Zone> zonesById,
   ClusterTapCallback? onClusterTap,
+  void Function(Zone)? onZoneTap,
 }) {
   final placemarks = zones
       .where((z) => !_isDegenerate(z.geometry) && bitmapCache.containsKey(z.zoneId))
@@ -87,6 +88,7 @@ MapObject buildZoneLabels({
               image: BitmapDescriptor.fromBytes(bitmapCache[zone.zoneId]!),
               scale: 1.0,
             )),
+            onTap: onZoneTap != null ? (_, __) => onZoneTap(zone) : null,
           ))
       .toList();
 
