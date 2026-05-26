@@ -908,7 +908,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               left: 0,
               right: 0,
               child: NavigationBottomBar(
-                onFinish: () => ref.read(routingProvider.notifier).reset(),
+                onFinish: () {
+                  ref.read(navigationProvider.notifier).stop();
+                  ref.read(routingProvider.notifier).reset();
+                },
               ),
             ),
           if (_navBuilding)
