@@ -97,18 +97,26 @@ class ZonesRepository {
   Zone _mapZoneWithForecast(ZoneMapItemDto dto, Map<String, dynamic> forecast) => Zone(
         zoneId: dto.zoneId,
         zoneType: _parseZoneType(dto.zoneType),
-        capacity: dto.capacity,
+        capacity: (forecast['capacity'] as num?)?.toInt() ?? dto.capacity,
         freeCount: (forecast['predicted_free_count'] as num?)?.toInt() ?? dto.freeCount,
         confidence: (forecast['confidence'] as num?)?.toDouble() ?? dto.confidence,
-        pay: dto.pay,
-        geometry: _parseGeometry(dto.geometry),
-        isActive: dto.isActive,
-        locationType: _parseLocationType(dto.locationType),
+        pay: (forecast['pay'] as num?)?.toInt() ?? dto.pay,
+        geometry: forecast['geometry'] != null
+            ? _parseGeometry(forecast['geometry'] as Map<String, dynamic>)
+            : _parseGeometry(dto.geometry),
+        isActive: forecast['is_active'] as bool? ?? dto.isActive,
+        locationType: _parseLocationType(forecast['location_type'] as String? ?? dto.locationType),
         isPrivate: dto.isPrivate,
-        isAccessible: dto.isAccessible,
-        confidenceLevel: dto.confidenceLevel,
+        isAccessible: forecast['is_accessible'] as bool? ?? dto.isAccessible,
+        confidenceLevel: forecast['confidence_level'] as String? ?? dto.confidenceLevel,
         occupancyUpdatedAt: dto.occupancyUpdatedAt != null
             ? DateTime.tryParse(dto.occupancyUpdatedAt!)
+            : null,
+        forecastFor: forecast['predicted_for'] != null
+            ? DateTime.tryParse(forecast['predicted_for'] as String)
+            : null,
+        forecastGeneratedAt: forecast['generated_at'] != null
+            ? DateTime.tryParse(forecast['generated_at'] as String)
             : null,
       );
 

@@ -194,8 +194,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
   }
 
-  Future<void> _fetchZones() async {
+  Future<void> _fetchZones({bool clearCache = false}) async {
     if (_mapController == null) return;
+    if (clearCache) {
+      _zoneLabelCache.clear();
+      _zonesById.clear();
+    }
     try {
       final visibleRegion = await _mapController!.getVisibleRegion();
       final bbox =
@@ -475,7 +479,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       orElse: () => false,
     );
 
-    ref.listen(timeSelectorProvider, (_, __) => _fetchZones());
+    ref.listen(timeSelectorProvider, (_, __) => _fetchZones(clearCache: true));
     ref.listen(filteredZonesProvider, (_, zones) => _updateZoneBitmaps(zones));
 
     ref.listen(navigationProvider, (prev, nav) {
@@ -1237,6 +1241,27 @@ class _FiltersSheet extends ConsumerWidget {
                   ),
                 ],
               ),
+            const Divider(),
+            const Text(
+              'Минимум свободных мест',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              filters.minFreeCount == 0 ? 'Любое' : '${filters.minFreeCount}+',
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            Slider(
+              value: filters.minFreeCount.toDouble(),
+              min: 0,
+              max: 20,
+              divisions: 20,
+              label: filters.minFreeCount == 0 ? 'Любое' : '${filters.minFreeCount}+',
+              onChanged: (v) => notifier.setMinFreeCount(v.round()),
+            ),
             const Divider(),
             const Text(
               'Тип парковки',
