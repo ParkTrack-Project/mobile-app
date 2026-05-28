@@ -34,6 +34,7 @@ class MapScreen extends ConsumerStatefulWidget {
 class _MapScreenState extends ConsumerState<MapScreen> {
   YandexMapController? _mapController;
   Timer? _debounce;
+  Timer? _timeDebounce;
   Position? _userPosition;
   Point? _lastCameraTarget;
   double _currentAzimuth = 0;
@@ -71,6 +72,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   @override
   void dispose() {
     _debounce?.cancel();
+    _timeDebounce?.cancel();
     _drivingSession?.close();
     super.dispose();
   }
@@ -478,7 +480,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       orElse: () => false,
     );
 
-    ref.listen(timeSelectorProvider, (_, __) => _fetchZones(clearCache: true));
+    ref.listen(timeSelectorProvider, (_, __) {
+      _timeDebounce?.cancel();
+      _timeDebounce = Timer(const Duration(milliseconds: 600), () => _fetchZones(clearCache: true));
+    });
     ref.listen(filteredZonesProvider, (_, zones) => _updateZoneBitmaps(zones));
 
     ref.listen(navigationProvider, (prev, nav) {
