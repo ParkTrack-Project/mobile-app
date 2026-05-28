@@ -13,6 +13,7 @@ class FiltersState with _$FiltersState {
     @Default(false) bool hideInaccessible,
     @Default({}) Set<String> hiddenLocationTypes,
     @Default(true) bool hideInactive,
+    @Default(0) int minFreeCount,
   }) = _FiltersState;
 }
 
@@ -45,6 +46,8 @@ class FiltersNotifier extends StateNotifier<FiltersState> {
 
   void toggleHideInactive() =>
       state = state.copyWith(hideInactive: !state.hideInactive);
+
+  void setMinFreeCount(int value) => state = state.copyWith(minFreeCount: value);
 
   void reset() => state = const FiltersState();
 }

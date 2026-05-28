@@ -24,5 +24,7 @@ class Zone with _$Zone {
     bool? isAccessible,
     String? confidenceLevel,
     DateTime? occupancyUpdatedAt,
+    DateTime? forecastFor,
+    DateTime? forecastGeneratedAt,
   }) = _Zone;
 }
