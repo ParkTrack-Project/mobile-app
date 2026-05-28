@@ -16,6 +16,7 @@ import '../../providers/time_selector_provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/nav_math.dart';
 import '../../../core/utils/navigation_deeplink.dart';
+import '../../../core/utils/error_snackbar.dart';
 import 'widgets/candidates_sheet.dart';
 import 'widgets/navigation_overlay.dart' show NavigationTurnCard, NavigationBottomBar;
 import 'widgets/parking_zone_layer.dart';
@@ -446,11 +447,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
       await _mapController?.toggleUserLayer(visible: false);
       await _mapController?.toggleTrafficLayer(visible: true);
-    } catch (e) {
+    } catch (e, st) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Не удалось построить маршрут: $e')),
-        );
+        showErrorSnackBar(context, 'Не удалось построить маршрут', error: e, stackTrace: st);
       }
     } finally {
       if (mounted) setState(() => _navBuilding = false);
@@ -500,10 +499,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
     ref.listen(rawZonesProvider, (_, next) {
       next.whenOrNull(
-        error: (e, _) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Ошибка загрузки зон: $e')),
-          );
+        error: (e, st) {
+          showErrorSnackBar(context, 'Не удалось загрузить парковки', error: e, stackTrace: st);
         },
       );
     });
@@ -534,9 +531,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         },
         searching: () async {},
         error: (message) async {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Ошибка маршрута: $message')),
-          );
+          showErrorSnackBar(context, 'Ошибка при построении маршрута', error: message);
         },
         candidates: (candidates) async {
           if (_isCandidatesSheetOpen || candidates.isEmpty) return;
