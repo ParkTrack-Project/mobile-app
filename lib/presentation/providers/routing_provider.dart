@@ -57,8 +57,7 @@ class RoutingNotifier extends StateNotifier<RoutingState> {
     try {
       final destination = _ref.read(destinationProvider);
       final filters = _ref.read(filtersProvider);
-      final timeMode = _ref.read(timeSelectorProvider);
-      final useForecast = timeMode.maybeWhen(future: (_) => true, orElse: () => null);
+      final useForecast = true;
       final candidates = await _ref.read(routingRepositoryProvider).searchParking(
             originLat: originLat,
             originLon: originLon,
