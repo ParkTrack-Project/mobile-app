@@ -238,18 +238,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       _userPosition = pos;
       return pos;
     } on TimeoutException {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Не удалось быстро получить геопозицию')),
-        );
-      }
       return null;
     } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Не удалось получить геопозицию')),
-        );
-      }
       return null;
     }
   }
@@ -734,7 +724,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             mapObjects: mapObjects,
             onMapCreated: (controller) async {
               _mapController = controller;
-              const fallback = Point(latitude: 59.7390, longitude: 30.4020);
+              const fallback = Point(latitude: 61.789114, longitude: 34.359757);
               _lastCameraTarget = fallback;
               await controller.moveCamera(
                 CameraUpdate.newCameraPosition(
