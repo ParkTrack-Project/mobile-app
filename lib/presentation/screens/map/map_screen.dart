@@ -734,7 +734,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               _fetchZones();
               final pos = await _getCurrentPosition();
               if (pos != null && mounted) {
-                final target = Point(latitude: pos.latitude, longitude: pos.longitude);
+                final target = Point(latitude: 61.789114, longitude: 34.359757);
                 _lastCameraTarget = target;
                 await controller.moveCamera(
                   CameraUpdate.newCameraPosition(
