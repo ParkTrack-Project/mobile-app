@@ -7,7 +7,7 @@ String _formatDuration(int seconds) {
   if (mins < 60) return '~$mins мин';
   final h = mins ~/ 60;
   final m = mins % 60;
-  return m == 0 ? '~${h}ч' : '~${h}ч ${m}мин';
+  return m == 0 ? '~${h}ч' : '~${h}ч ${m}мин';
 }
 
 class _CandidateSubtitle extends StatelessWidget {
@@ -26,7 +26,7 @@ class _CandidateSubtitle extends StatelessWidget {
       parts.add(_formatDuration(candidate.durationFromOriginSeconds!));
     if (candidate.predictedFreeCount != null)
       parts.add('прогноз: ${candidate.predictedFreeCount}');
-    return Text(parts.join(' • '));
+    return Text(parts.join(' • '), overflow: TextOverflow.ellipsis, maxLines: 2);
   }
 }
 

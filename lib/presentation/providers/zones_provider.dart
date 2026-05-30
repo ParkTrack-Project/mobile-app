@@ -36,6 +36,10 @@ class ZonesNotifier extends StateNotifier<AsyncValue<List<Zone>>> {
     if (_lastBbox != null) await fetchZones(_lastBbox!);
   }
 
+  void clearZones() {
+    state = const AsyncValue.loading();
+  }
+
   void setErrorState(Object error, StackTrace stackTrace) {
     state = AsyncValue.error(error, stackTrace);
   }

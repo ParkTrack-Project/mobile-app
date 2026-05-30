@@ -193,12 +193,14 @@ class _NavBottomBar extends StatelessWidget {
               label: 'времени',
             ),
           ),
+          const SizedBox(width: 12),
           Expanded(
             child: _StatCell(
               value: formatNavDistance(nav.remainingMeters),
               label: 'до цели',
             ),
           ),
+          const SizedBox(width: 12),
           Expanded(
             child: _StatCell(
               value: '${nav.speedKmh.round()}',
@@ -206,12 +208,12 @@ class _NavBottomBar extends StatelessWidget {
               valueColor: speedColor,
             ),
           ),
-          TextButton(
+          IconButton(
             onPressed: () => _confirmFinish(context),
-            child: const Text(
-              'Завершить',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
-            ),
+            icon: const Icon(Icons.stop_circle_outlined),
+            color: AppColors.textSecondary,
+            iconSize: 28,
+            tooltip: 'Завершить',
           ),
         ],
       ),
@@ -234,6 +236,9 @@ class _StatCell extends StatelessWidget {
       children: [
         Text(
           value,
+          maxLines: 1,
+          softWrap: false,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.bold,

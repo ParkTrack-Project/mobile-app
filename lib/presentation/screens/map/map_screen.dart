@@ -205,9 +205,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
     try {
       final visibleRegion = await _mapController!.getVisibleRegion();
+      final bottomLeft = visibleRegion.bottomLeft;
+      final topRight = visibleRegion.topRight;
+      final dLon = (topRight.longitude - bottomLeft.longitude) * 0.5;
+      final dLat = (topRight.latitude - bottomLeft.latitude) * 0.5;
       final bbox =
-          '${visibleRegion.bottomLeft.longitude},${visibleRegion.bottomLeft.latitude},'
-          '${visibleRegion.topRight.longitude},${visibleRegion.topRight.latitude}';
+          '${bottomLeft.longitude - dLon},${bottomLeft.latitude - dLat},'
+          '${topRight.longitude + dLon},${topRight.latitude + dLat}';
       await ref.read(rawZonesProvider.notifier).fetchZones(bbox);
     } catch (e, st) {
       ref.read(rawZonesProvider.notifier).setErrorState(e, st);
@@ -471,8 +475,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     );
 
     ref.listen(timeSelectorProvider, (_, __) {
+      ref.read(rawZonesProvider.notifier).clearZones();
+      _zoneLabelCache.clear();
+      _zonesById.clear();
       _timeDebounce?.cancel();
-      _timeDebounce = Timer(const Duration(milliseconds: 600), () => _fetchZones(clearCache: true));
+      _timeDebounce = Timer(
+        const Duration(milliseconds: 600),
+        () => _fetchZones(clearCache: false),
+      );
     });
     ref.listen(filteredZonesProvider, (_, zones) => _updateZoneBitmaps(zones));
 
@@ -807,14 +817,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           if (destination == null && !isNavigating)
             Positioned(
               bottom: bottomInset + 12,
-              left: 12,
+              right: 12,
               child: FloatingActionButton.extended(
                 heroTag: 'find_parking',
                 onPressed: isRoutingLoading ? null : _findParking,
                 backgroundColor: AppColors.primary,
                 icon: const Icon(Icons.local_parking, color: Colors.white),
                 label: Text(
-                  isRoutingLoading ? 'Ищем...' : 'Где припарковаться?',
+                  isRoutingLoading ? 'Ищем...' : 'Припарковаться',
                   style: const TextStyle(color: Colors.white),
                 ),
               ),
@@ -846,12 +856,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               ),
             ),
           ),
-          // ─── Таймлайн: полная ширина, своя строка выше кнопок ──────
+          // ─── Селектор времени: левый край, выше кнопок ─────────
           if (destination == null && !isNavigating)
             Positioned(
               bottom: bottomInset + 76,
-              left: 0,
-              right: 0,
+              left: 12,
               child: const TimeSelectorWidget(),
             ),
           // ─── Карточка назначения ────────────────────────────────────

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../domain/models/zone.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../presentation/providers/time_selector_provider.dart';
+import '../../../../presentation/providers/zones_provider.dart';
 
 Future<void> showParkingCard(
   BuildContext context,
@@ -28,119 +29,159 @@ class _ParkingCardSheet extends ConsumerWidget {
     final isFuture = timeMode.maybeWhen(future: (_) => true, orElse: () => false);
     final userSelectedAt = timeMode.maybeWhen(future: (at) => at, orElse: () => null);
 
-    return DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.45,
-      minChildSize: 0.3,
-      maxChildSize: 0.75,
-      builder: (_, controller) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: ListView(
-          controller: controller,
+    final zonesAsync = ref.watch(rawZonesProvider);
+    final isLoading = zonesAsync is AsyncLoading;
+    final currentZone = zonesAsync.valueOrNull
+            ?.where((z) => z.zoneId == zone.zoneId)
+            .firstOrNull ??
+        zone;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: SingleChildScrollView(
+        child: Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Парковка #${zone.zoneId}',
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-                if (zone.isPrivate == true)
-                  _Badge('Частная', Colors.orange),
-                if (zone.isAccessible == true)
-                  _Badge('♿', AppColors.primary),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Парковка #${currentZone.zoneId}',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  if (currentZone.isPrivate == true)
+                    _Badge('Частная', Colors.orange),
+                  if (currentZone.isAccessible == true)
+                    _Badge('♿', AppColors.primary),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (isLoading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Center(
+                    child: Text(
+                      'Данные загружаются...',
+                      style: TextStyle(color: AppColors.textSecondary),
+                    ),
+                  ),
+                )
+              else ...[
+                _InfoRow(
+                  icon: Icons.local_parking,
+                  label: 'Мест',
+                  value: currentZone.hasForecast
+                      ? '${currentZone.freeCount} / ${currentZone.capacity} свободно'
+                      : 'Нет прогноза',
+                  valueColor:
+                      currentZone.hasForecast ? null : AppColors.textSecondary,
+                ),
+                if (isFuture &&
+                    currentZone.hasForecast &&
+                    currentZone.forecastFor != null)
+                  _InfoRow(
+                    icon: Icons.schedule,
+                    label: 'Прогноз на',
+                    value: _formatDateTime(currentZone.forecastFor!),
+                  ),
+                if (isFuture &&
+                    currentZone.hasForecast &&
+                    currentZone.forecastGeneratedAt != null)
+                  _InfoRow(
+                    icon: Icons.build_circle_outlined,
+                    label: 'Создан',
+                    value: _formatDateTime(currentZone.forecastGeneratedAt!),
+                  ),
+                _InfoRow(
+                  icon: Icons.payments_outlined,
+                  label: 'Стоимость',
+                  value: currentZone.pay == 0
+                      ? 'Бесплатно'
+                      : '${currentZone.pay} ₽/ч',
+                  valueColor:
+                      currentZone.pay == 0 ? AppColors.primary : null,
+                ),
+                _InfoRow(
+                  icon: Icons.verified_outlined,
+                  label: 'Уверенность',
+                  value: _confidenceLabel(currentZone),
+                ),
+                if (currentZone.locationType != null)
+                  _InfoRow(
+                    icon: Icons.place_outlined,
+                    label: 'Тип',
+                    value: _locationTypeLabel(currentZone.locationType!),
+                  ),
+                _InfoRow(
+                  icon: Icons.directions_car_outlined,
+                  label: 'Постановка',
+                  value: currentZone.zoneType == ZoneType.parallel
+                      ? 'Параллельная'
+                      : 'Обычная',
+                ),
+                if (!isFuture && currentZone.occupancyUpdatedAt != null)
+                  _InfoRow(
+                    icon: Icons.update,
+                    label: 'Обновлено',
+                    value: _formatDateTime(currentZone.occupancyUpdatedAt!),
+                  ),
+                if (isFuture &&
+                    currentZone.forecastFor != null &&
+                    userSelectedAt != null)
+                  _StaleForecastBanner(
+                    forecastFor: currentZone.forecastFor!,
+                    userSelectedAt: userSelectedAt,
+                    onSnap: () {
+                      ref
+                          .read(timeSelectorProvider.notifier)
+                          .setFuture(currentZone.forecastFor!);
+                      Navigator.pop(context);
+                    },
+                  ),
               ],
-            ),
-            const SizedBox(height: 12),
-            _InfoRow(
-              icon: Icons.local_parking,
-              label: 'Мест',
-              value: zone.hasForecast
-                  ? '${zone.freeCount} / ${zone.capacity} свободно'
-                  : 'Нет прогноза',
-              valueColor: zone.hasForecast ? null : AppColors.textSecondary,
-            ),
-            if (isFuture && zone.hasForecast && zone.forecastFor != null)
-              _InfoRow(
-                icon: Icons.schedule,
-                label: 'Прогноз на',
-                value: _formatDateTime(zone.forecastFor!),
-              ),
-            if (isFuture && zone.hasForecast && zone.forecastGeneratedAt != null)
-              _InfoRow(
-                icon: Icons.build_circle_outlined,
-                label: 'Создан',
-                value: _formatDateTime(zone.forecastGeneratedAt!),
-              ),
-            _InfoRow(
-              icon: Icons.payments_outlined,
-              label: 'Стоимость',
-              value: zone.pay == 0 ? 'Бесплатно' : '${zone.pay} ₽/ч',
-              valueColor: zone.pay == 0 ? AppColors.primary : null,
-            ),
-            _InfoRow(
-              icon: Icons.verified_outlined,
-              label: 'Уверенность',
-              value: zone.confidenceLevel ?? '${(zone.confidence * 100).round()}%',
-            ),
-            if (zone.locationType != null)
-              _InfoRow(
-                icon: Icons.place_outlined,
-                label: 'Тип',
-                value: _locationTypeLabel(zone.locationType!),
-              ),
-            _InfoRow(
-              icon: Icons.directions_car_outlined,
-              label: 'Постановка',
-              value: zone.zoneType == ZoneType.parallel ? 'Параллельная' : 'Обычная',
-            ),
-            if (!isFuture && zone.occupancyUpdatedAt != null)
-              _InfoRow(
-                icon: Icons.update,
-                label: 'Обновлено',
-                value: _formatDateTime(zone.occupancyUpdatedAt!),
-              ),
-            if (isFuture && zone.forecastFor != null && userSelectedAt != null)
-              _StaleForecastBanner(
-                forecastFor: zone.forecastFor!,
-                userSelectedAt: userSelectedAt,
-                onSnap: () {
-                  ref.read(timeSelectorProvider.notifier).setFuture(zone.forecastFor!);
+              const SizedBox(height: 20),
+              FilledButton.icon(
+                onPressed: () {
                   Navigator.pop(context);
+                  onBuildRoute?.call();
                 },
+                icon: const Icon(Icons.directions),
+                label: const Text('Построить маршрут'),
               ),
-            const SizedBox(height: 20),
-            FilledButton.icon(
-              onPressed: () {
-                Navigator.pop(context);
-                onBuildRoute?.call();
-              },
-              icon: const Icon(Icons.directions),
-              label: const Text('Построить маршрут'),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  String _confidenceLabel(Zone z) {
+    const labels = {'low': 'низкая', 'medium': 'средняя', 'high': 'высокая'};
+    if (z.confidenceLevel != null) {
+      return labels[z.confidenceLevel!.toLowerCase()] ?? z.confidenceLevel!;
+    }
+    return '${(z.confidence * 100).round()}%';
   }
 
   String _locationTypeLabel(LocationType type) => switch (type) {
@@ -254,7 +295,8 @@ class _InfoRow extends StatelessWidget {
           Icon(icon, size: 20, color: AppColors.textSecondary),
           const SizedBox(width: 12),
           Text(label,
-              style: const TextStyle(color: AppColors.textSecondary, fontSize: 14)),
+              style:
+                  const TextStyle(color: AppColors.textSecondary, fontSize: 14)),
           const Spacer(),
           Text(
             value,
@@ -282,12 +324,13 @@ class _Badge extends StatelessWidget {
       margin: const EdgeInsets.only(left: 8),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
+        color: color.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.5)),
+        border: Border.all(color: color.withValues(alpha: 0.5)),
       ),
       child: Text(text,
-          style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600)),
+          style: TextStyle(
+              color: color, fontSize: 12, fontWeight: FontWeight.w600)),
     );
   }
 }
