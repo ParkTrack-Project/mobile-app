@@ -11,210 +11,165 @@ class TimeSelectorWidget extends ConsumerStatefulWidget {
 }
 
 class _TimeSelectorWidgetState extends ConsumerState<TimeSelectorWidget> {
-  static const _step = Duration(minutes: 30);
-  static const _hoursBefore = 24;
-  static const _hoursAfter = 24;
+  DateTime? _selected;
 
-  late final List<DateTime> _ticks;
-  late final int _centerIndex;
-  late final PageController _controller;
-  int _selectedIndex = 0;
+  bool get _isNow => _selected == null;
 
-  @override
-  void initState() {
-    super.initState();
+  void _resetToNow() {
+    setState(() => _selected = null);
+    ref.read(timeSelectorProvider.notifier).setNow();
+  }
+
+  void _apply(DateTime dt) {
+    setState(() => _selected = dt);
     final now = DateTime.now();
-    final alignedNow = DateTime(
-      now.year,
-      now.month,
-      now.day,
-      now.hour,
-      now.minute < 30 ? 0 : 30,
-    );
-    _ticks = [
-      for (var i = -(_hoursBefore * 2); i <= _hoursAfter * 2; i++)
-        alignedNow.add(_step * i),
-    ];
-    _centerIndex = _hoursBefore * 2;
-    _selectedIndex = _centerIndex;
-    _controller = PageController(
-      viewportFraction: 0.17,
-      initialPage: _centerIndex,
-    );
-
-    _controller.addListener(() {
-      final p = _controller.page;
-      if (p == null) return;
-      final rounded = p.round().clamp(0, _ticks.length - 1);
-      if (rounded != _selectedIndex) {
-        setState(() => _selectedIndex = rounded);
-      }
-    });
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _applyTimeMode(_centerIndex);
-    });
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _applyTimeMode(int index) {
-    final selected = _ticks[index];
-    final now = _ticks[_centerIndex];
+    final diff = dt.difference(now).inMinutes;
     final notifier = ref.read(timeSelectorProvider.notifier);
-    final diff = selected.difference(now).inMinutes;
     if (diff.abs() < 15) {
       notifier.setNow();
     } else if (diff < 0) {
-      notifier.setPast(selected);
+      notifier.setPast(dt);
     } else {
-      notifier.setFuture(selected);
+      notifier.setFuture(dt);
     }
   }
 
-  void _resetToNow() {
-    _controller.animateToPage(
-      _centerIndex,
-      duration: const Duration(milliseconds: 400),
-      curve: Curves.easeInOut,
+  Future<void> _pickDate() async {
+    final base = _selected ?? DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: base,
+      firstDate: DateTime.now().subtract(const Duration(days: 30)),
+      lastDate: DateTime.now().add(const Duration(days: 30)),
     );
-    setState(() => _selectedIndex = _centerIndex);
-    _applyTimeMode(_centerIndex);
+    if (picked == null) return;
+    final current = _selected ?? DateTime.now();
+    _apply(DateTime(picked.year, picked.month, picked.day, current.hour, current.minute));
   }
 
-  void _selectIndex(int index) {
-    _controller.animateToPage(
-      index,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
+  Future<void> _pickTime() async {
+    final base = _selected ?? DateTime.now();
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: base.hour, minute: base.minute),
     );
-    setState(() => _selectedIndex = index);
-    _applyTimeMode(index);
+    if (picked == null) return;
+    final current = _selected ?? DateTime.now();
+    _apply(DateTime(current.year, current.month, current.day, picked.hour, picked.minute));
+  }
+
+  String _dateLabel() {
+    if (_isNow) {
+      final now = DateTime.now();
+      return _dayLabel(now);
+    }
+    return _dayLabel(_selected!);
+  }
+
+  String _dayLabel(DateTime dt) {
+    final now = DateTime.now();
+    if (dt.year == now.year && dt.month == now.month && dt.day == now.day) return 'Сегодня';
+    final tomorrow = now.add(const Duration(days: 1));
+    if (dt.year == tomorrow.year && dt.month == tomorrow.month && dt.day == tomorrow.day) {
+      return 'Завтра';
+    }
+    const months = ['', 'янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+    return '${dt.day} ${months[dt.month]}';
+  }
+
+  String _timeLabel() {
+    if (_isNow) return 'сейчас';
+    final h = _selected!.hour.toString().padLeft(2, '0');
+    final m = _selected!.minute.toString().padLeft(2, '0');
+    return '$h:$m';
   }
 
   @override
   Widget build(BuildContext context) {
-    final isOffCenter = _selectedIndex != _centerIndex;
-
-    return Column(
+    return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        AnimatedOpacity(
-          opacity: isOffCenter ? 1.0 : 0.0,
-          duration: const Duration(milliseconds: 200),
-          child: IgnorePointer(
-            ignoring: !isOffCenter,
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.1),
-                      blurRadius: 6,
-                    ),
-                  ],
-                ),
-                child: TextButton.icon(
-                  onPressed: _resetToNow,
-                  icon: const Icon(Icons.restore, size: 16),
-                  label: const Text('Сейчас'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: AppColors.primary,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                    textStyle: const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w600),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    minimumSize: Size.zero,
-                  ),
-                ),
-              ),
-            ),
+        if (!_isNow) ...[
+          _Chip(
+            label: 'Сейчас',
+            icon: Icons.restore,
+            onTap: _resetToNow,
+            active: false,
           ),
+          const SizedBox(width: 6),
+        ],
+        _Chip(
+          label: _dateLabel(),
+          icon: Icons.calendar_today_outlined,
+          onTap: _pickDate,
+          active: !_isNow,
         ),
-        Container(
-          height: 62,
-          margin: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.1),
-                blurRadius: 8,
-              ),
-            ],
-          ),
-          child: PageView.builder(
-            controller: _controller,
-            physics: const BouncingScrollPhysics(),
-            itemCount: _ticks.length,
-            onPageChanged: (index) => _applyTimeMode(index),
-            itemBuilder: (_, index) {
-              final tick = _ticks[index];
-              final isSelected = index == _selectedIndex;
-              final isNow = index == _centerIndex;
-              return GestureDetector(
-                onTap: () => _selectIndex(index),
-                child: Center(
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 120),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? AppColors.primary.withValues(alpha: 0.12)
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Container(
-                          width: isSelected ? 3 : 2,
-                          height: isSelected ? 14 : 10,
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? AppColors.primary
-                                : Colors.grey[400],
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          isNow ? 'Сейчас' : _formatTick(tick),
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: isSelected
-                                ? AppColors.primary
-                                : AppColors.textSecondary,
-                            fontWeight: isSelected
-                                ? FontWeight.w700
-                                : FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
+        const SizedBox(width: 6),
+        _Chip(
+          label: _timeLabel(),
+          icon: Icons.access_time_outlined,
+          onTap: _pickTime,
+          active: !_isNow,
         ),
       ],
     );
   }
+}
 
-  String _formatTick(DateTime dt) {
-    final hh = dt.hour.toString().padLeft(2, '0');
-    final mm = dt.minute.toString().padLeft(2, '0');
-    return '$hh:$mm';
+class _Chip extends StatelessWidget {
+  const _Chip({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+    required this.active,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: active ? AppColors.primary.withValues(alpha: 0.1) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: active ? AppColors.primary : Colors.grey.shade300,
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.08),
+              blurRadius: 4,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 14,
+              color: active ? AppColors.primary : AppColors.textSecondary,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: active ? FontWeight.w600 : FontWeight.w500,
+                color: active ? AppColors.primary : AppColors.onSurface,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
