@@ -176,23 +176,7 @@ class _ParkingCardSheet extends ConsumerWidget {
     );
   }
 
-  String _confidenceLabel(Zone z) {
-    const labels = {
-      'very_low': 'Очень низкая',
-      'low': 'Низкая',
-      'medium': 'Средняя',
-      'high': 'Высокая',
-      'very_high': 'Очень высокая',
-    };
-    if (z.confidenceLevel != null) {
-      final key = z.confidenceLevel!.toLowerCase();
-      final mapped = labels[key];
-      if (mapped != null) return mapped;
-      final raw = z.confidenceLevel!;
-      return raw[0].toUpperCase() + raw.substring(1).toLowerCase();
-    }
-    return '${(z.confidence * 100).round()}%';
-  }
+  String _confidenceLabel(Zone z) => '${(z.confidence * 100).round()}%';
 
   String _locationTypeLabel(LocationType type) => switch (type) {
         LocationType.street => 'Уличная',
