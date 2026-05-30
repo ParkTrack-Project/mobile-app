@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../presentation/providers/time_selector_provider.dart';
@@ -16,31 +17,16 @@ class TimeSelectorWidget extends ConsumerWidget {
       orElse: () => null,
     );
 
-    Future<void> pickDate() async {
-      final base = selectedDt ?? DateTime.now();
-      final picked = await showDatePicker(
+    void openPicker() {
+      showModalBottomSheet(
         context: context,
-        initialDate: base,
-        firstDate: DateTime.now().subtract(const Duration(days: 30)),
-        lastDate: DateTime.now().add(const Duration(days: 30)),
-        locale: const Locale('ru', 'RU'),
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => _TimePickerSheet(
+          initial: selectedDt,
+          onApply: (dt) => _apply(ref, dt),
+        ),
       );
-      if (picked == null || !context.mounted) return;
-      final current = selectedDt ?? DateTime.now();
-      final dt = DateTime(picked.year, picked.month, picked.day, current.hour, current.minute);
-      _apply(ref, dt);
-    }
-
-    Future<void> pickTime() async {
-      final base = selectedDt ?? DateTime.now();
-      final picked = await showTimePicker(
-        context: context,
-        initialTime: TimeOfDay(hour: base.hour, minute: base.minute),
-      );
-      if (picked == null || !context.mounted) return;
-      final current = selectedDt ?? DateTime.now();
-      final dt = DateTime(current.year, current.month, current.day, picked.hour, picked.minute);
-      _apply(ref, dt);
     }
 
     return Row(
@@ -56,61 +42,200 @@ class TimeSelectorWidget extends ConsumerWidget {
           const SizedBox(width: 6),
         ],
         _Chip(
-          label: _dateLabel(selectedDt),
-          icon: Icons.calendar_today_outlined,
-          active: !isNow,
-          onTap: pickDate,
-        ),
-        const SizedBox(width: 6),
-        _Chip(
-          label: _timeLabel(selectedDt),
+          label: isNow ? 'Время' : _selectionLabel(selectedDt!),
           icon: Icons.access_time_outlined,
           active: !isNow,
-          onTap: pickTime,
+          onTap: openPicker,
         ),
       ],
     );
   }
 
-  void _apply(WidgetRef ref, DateTime dt) {
+  void _apply(WidgetRef ref, DateTime? dt) {
+    if (dt == null) {
+      ref.read(timeSelectorProvider.notifier).setNow();
+      return;
+    }
     final now = DateTime.now();
     final diff = dt.difference(now).inMinutes;
-    final notifier = ref.read(timeSelectorProvider.notifier);
     if (diff.abs() < 15) {
-      notifier.setNow();
+      ref.read(timeSelectorProvider.notifier).setNow();
     } else if (diff < 0) {
-      notifier.setPast(dt);
+      ref.read(timeSelectorProvider.notifier).setPast(dt);
     } else {
-      notifier.setFuture(dt);
+      ref.read(timeSelectorProvider.notifier).setFuture(dt);
     }
   }
 
-  String _dateLabel(DateTime? dt) {
-    if (dt == null) {
-      final now = DateTime.now();
-      return _dayLabel(now);
-    }
-    return _dayLabel(dt);
-  }
-
-  String _dayLabel(DateTime dt) {
+  String _selectionLabel(DateTime dt) {
     final now = DateTime.now();
-    if (dt.year == now.year && dt.month == now.month && dt.day == now.day) return 'Сегодня';
-    final tomorrow = now.add(const Duration(days: 1));
-    if (dt.year == tomorrow.year && dt.month == tomorrow.month && dt.day == tomorrow.day) {
-      return 'Завтра';
-    }
-    const months = ['', 'янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
-    return '${dt.day} ${months[dt.month]}';
-  }
-
-  String _timeLabel(DateTime? dt) {
-    if (dt == null) return 'сейчас';
+    final tomorrow = DateTime(now.year, now.month, now.day + 1);
+    final yesterday = DateTime(now.year, now.month, now.day - 1);
+    final dtDay = DateTime(dt.year, dt.month, dt.day);
     final h = dt.hour.toString().padLeft(2, '0');
     final m = dt.minute.toString().padLeft(2, '0');
-    return '$h:$m';
+    final time = '$h:$m';
+    if (dtDay == DateTime(now.year, now.month, now.day)) return 'Сегодня $time';
+    if (dtDay == DateTime(tomorrow.year, tomorrow.month, tomorrow.day)) return 'Завтра $time';
+    if (dtDay == DateTime(yesterday.year, yesterday.month, yesterday.day)) return 'Вчера $time';
+    const months = ['', 'янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+    return '${dt.day} ${months[dt.month]} $time';
   }
 }
+
+// ─── Bottom sheet ───────────────────────────────────────────────────────────
+
+class _TimePickerSheet extends StatefulWidget {
+  final DateTime? initial;
+  final void Function(DateTime? dt) onApply;
+
+  const _TimePickerSheet({required this.initial, required this.onApply});
+
+  @override
+  State<_TimePickerSheet> createState() => _TimePickerSheetState();
+}
+
+class _TimePickerSheetState extends State<_TimePickerSheet> {
+  static const _step = 30;
+
+  late int _dayOffset; // -1 вчера, 0 сегодня, 1 завтра
+  late DateTime _time;
+
+  @override
+  void initState() {
+    super.initState();
+    final base = widget.initial ?? DateTime.now();
+    final today = _dayOnly(DateTime.now());
+    final baseDay = _dayOnly(base);
+    _dayOffset = baseDay.difference(today).inDays.clamp(-1, 1);
+    _time = _snapTo30(base);
+  }
+
+  static DateTime _dayOnly(DateTime dt) => DateTime(dt.year, dt.month, dt.day);
+
+  static DateTime _snapTo30(DateTime dt) {
+    final snapped = ((dt.minute / _step).round() * _step) % 60;
+    final hourAdd = ((dt.minute / _step).round() * _step) ~/ 60;
+    return DateTime(dt.year, dt.month, dt.day, (dt.hour + hourAdd) % 24, snapped);
+  }
+
+  DateTime get _result {
+    final base = _dayOnly(DateTime.now()).add(Duration(days: _dayOffset));
+    return DateTime(base.year, base.month, base.day, _time.hour, _time.minute);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final days = [
+      (-1, 'Вчера'),
+      (0, 'Сегодня'),
+      (1, 'Завтра'),
+    ];
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: EdgeInsets.fromLTRB(
+        20, 16, 20, MediaQuery.of(context).padding.bottom + 20,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 40, height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Выбрать время',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 16),
+          // День
+          Row(
+            children: days.map((pair) {
+              final (offset, label) = pair;
+              final sel = _dayOffset == offset;
+              return Expanded(
+                child: GestureDetector(
+                  onTap: () => setState(() => _dayOffset = offset),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: sel ? AppColors.primary : Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Center(
+                      child: Text(
+                        label,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                          color: sel ? Colors.white : AppColors.onSurface,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 8),
+          // Барабан времени
+          SizedBox(
+            height: 150,
+            child: CupertinoDatePicker(
+              mode: CupertinoDatePickerMode.time,
+              use24hFormat: true,
+              minuteInterval: _step,
+              initialDateTime: _time,
+              onDateTimeChanged: (dt) {
+                setState(() => _time = DateTime(
+                      _time.year, _time.month, _time.day,
+                      dt.hour, dt.minute,
+                    ));
+              },
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    widget.onApply(null);
+                  },
+                  child: const Text('Сейчас'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 2,
+                child: FilledButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    widget.onApply(_result);
+                  },
+                  child: const Text('Применить'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Chip ───────────────────────────────────────────────────────────────────
 
 class _Chip extends StatelessWidget {
   const _Chip({
