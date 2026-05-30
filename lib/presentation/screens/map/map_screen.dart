@@ -813,23 +813,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               ),
             ),
           ),
-          // ─── Нижняя строка: FAB слева + кнопки справа ─────────────
-          if (destination == null && !isNavigating)
-            Positioned(
-              bottom: bottomInset + 12,
-              right: 12,
-              child: FloatingActionButton.extended(
-                heroTag: 'find_parking',
-                onPressed: isRoutingLoading ? null : _findParking,
-                backgroundColor: AppColors.primary,
-                icon: const Icon(Icons.local_parking, color: Colors.white),
-                label: Text(
-                  isRoutingLoading ? 'Ищем...' : 'Припарковаться',
-                  style: const TextStyle(color: Colors.white),
-                ),
-              ),
-            ),
-          Positioned(
+Positioned(
             right: 12,
             top: 0,
             bottom: 0,
@@ -856,12 +840,29 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               ),
             ),
           ),
-          // ─── Селектор времени: левый край, выше кнопок ─────────
+          // ─── Нижняя строка: селектор времени + Припарковаться ────
           if (destination == null && !isNavigating)
             Positioned(
-              bottom: bottomInset + 76,
+              bottom: bottomInset + 12,
               left: 12,
-              child: const TimeSelectorWidget(),
+              right: 12,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  const TimeSelectorWidget(),
+                  const Spacer(),
+                  FloatingActionButton.extended(
+                    heroTag: 'find_parking',
+                    onPressed: isRoutingLoading ? null : _findParking,
+                    backgroundColor: AppColors.primary,
+                    icon: const Icon(Icons.local_parking, color: Colors.white),
+                    label: Text(
+                      isRoutingLoading ? 'Ищем...' : 'Припарковаться',
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
             ),
           // ─── Карточка назначения ────────────────────────────────────
           if (destination != null && !isNavigating)
