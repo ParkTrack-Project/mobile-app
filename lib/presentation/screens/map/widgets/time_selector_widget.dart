@@ -29,8 +29,9 @@ class TimeSelectorWidget extends ConsumerWidget {
       );
     }
 
-    return Row(
+    return Column(
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (!isNow) ...[
           _Chip(
@@ -39,7 +40,7 @@ class TimeSelectorWidget extends ConsumerWidget {
             active: false,
             onTap: () => ref.read(timeSelectorProvider.notifier).setNow(),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(height: 6),
         ],
         _Chip(
           label: isNow ? 'Время' : _selectionLabel(selectedDt!),
