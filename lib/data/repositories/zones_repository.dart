@@ -18,11 +18,44 @@ class ZonesRepository {
   }
 
   Future<List<Zone>> getZonesPast(String bbox, DateTime at) async {
-    final items = await _occupancyApi.getOccupancyMap(
-      bbox: bbox,
-      at: at.toUtc().toIso8601String(),
-    );
-    return items.map(_mapFromOccupancy).toList();
+    final atStr = at.toUtc().toIso8601String();
+    final zonesFuture = _zonesApi.getZones(bbox: bbox, view: 'map');
+    List<Map<String, dynamic>> items;
+    try {
+      items = await _occupancyApi.getOccupancyMap(bbox: bbox, at: atStr);
+    } catch (_) {
+      items = [];
+    }
+
+    final occupancyMap = <int, Map<String, dynamic>>{};
+    for (final item in items) {
+      final rawId = item['zone_id'];
+      final id = rawId is int ? rawId : int.tryParse(rawId?.toString() ?? '');
+      if (id != null) occupancyMap[id] = item;
+    }
+
+    final zoneDtos = await zonesFuture;
+    return zoneDtos.map((dto) {
+      final occ = occupancyMap[dto.zoneId];
+      if (occ == null) return _mapZone(dto).copyWith(hasForecast: false);
+      return Zone(
+        zoneId: dto.zoneId,
+        zoneType: _parseZoneType(dto.zoneType),
+        capacity: occ['capacity'] as int? ?? dto.capacity,
+        freeCount: occ['free_count'] as int? ?? dto.freeCount,
+        confidence: (occ['confidence'] as num?)?.toDouble() ?? dto.confidence,
+        confidenceLevel: occ['confidence_level'] as String? ?? dto.confidenceLevel,
+        pay: dto.pay,
+        geometry: _parseGeometry(dto.geometry),
+        isActive: occ['is_active'] as bool? ?? dto.isActive,
+        locationType: _parseLocationType(occ['location_type'] as String? ?? dto.locationType),
+        isPrivate: dto.isPrivate,
+        isAccessible: occ['is_accessible'] as bool? ?? dto.isAccessible,
+        occupancyUpdatedAt: occ['observed_at'] != null
+            ? DateTime.tryParse(occ['observed_at'] as String)
+            : null,
+      );
+    }).toList();
   }
 
   Future<List<Zone>> getZonesFuture(String bbox, DateTime at) async {
@@ -117,20 +150,6 @@ class ZonesRepository {
             : null,
         forecastGeneratedAt: forecast['generated_at'] != null
             ? DateTime.tryParse(forecast['generated_at'] as String)
-            : null,
-      );
-
-  Zone _mapFromOccupancy(Map<String, dynamic> json) => Zone(
-        zoneId: json['zone_id'] as int,
-        zoneType: _parseZoneType(json['zone_type'] as String? ?? 'standard'),
-        capacity: json['capacity'] as int? ?? 0,
-        freeCount: json['free_count'] as int? ?? 0,
-        confidence: (json['confidence'] as num?)?.toDouble() ?? 0.0,
-        pay: json['pay'] as int? ?? 0,
-        geometry: _parseGeometry(json['geometry'] as Map<String, dynamic>? ?? {}),
-        isActive: true,
-        occupancyUpdatedAt: json['observed_at'] != null
-            ? DateTime.tryParse(json['observed_at'] as String)
             : null,
       );
 
