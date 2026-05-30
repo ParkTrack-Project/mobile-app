@@ -843,9 +843,9 @@ Positioned(
           // ─── Нижняя строка: селектор времени + Припарковаться ────
           if (destination == null && !isNavigating)
             Positioned(
-              bottom: bottomInset + 12,
-              left: 12,
-              right: 12,
+              bottom: bottomInset + 20,
+              left: 16,
+              right: 16,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
