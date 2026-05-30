@@ -3,25 +3,76 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../presentation/providers/time_selector_provider.dart';
 import '../../../../core/theme/app_colors.dart';
 
-class TimeSelectorWidget extends ConsumerStatefulWidget {
+class TimeSelectorWidget extends ConsumerWidget {
   const TimeSelectorWidget({super.key});
 
   @override
-  ConsumerState<TimeSelectorWidget> createState() => _TimeSelectorWidgetState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final timeMode = ref.watch(timeSelectorProvider);
+    final isNow = timeMode.maybeWhen(now: () => true, orElse: () => false);
+    final selectedDt = timeMode.maybeWhen(
+      future: (at) => at,
+      past: (at) => at,
+      orElse: () => null,
+    );
 
-class _TimeSelectorWidgetState extends ConsumerState<TimeSelectorWidget> {
-  DateTime? _selected;
+    Future<void> pickDate() async {
+      final base = selectedDt ?? DateTime.now();
+      final picked = await showDatePicker(
+        context: context,
+        initialDate: base,
+        firstDate: DateTime.now().subtract(const Duration(days: 30)),
+        lastDate: DateTime.now().add(const Duration(days: 30)),
+        locale: const Locale('ru', 'RU'),
+      );
+      if (picked == null || !context.mounted) return;
+      final current = selectedDt ?? DateTime.now();
+      final dt = DateTime(picked.year, picked.month, picked.day, current.hour, current.minute);
+      _apply(ref, dt);
+    }
 
-  bool get _isNow => _selected == null;
+    Future<void> pickTime() async {
+      final base = selectedDt ?? DateTime.now();
+      final picked = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay(hour: base.hour, minute: base.minute),
+      );
+      if (picked == null || !context.mounted) return;
+      final current = selectedDt ?? DateTime.now();
+      final dt = DateTime(current.year, current.month, current.day, picked.hour, picked.minute);
+      _apply(ref, dt);
+    }
 
-  void _resetToNow() {
-    setState(() => _selected = null);
-    ref.read(timeSelectorProvider.notifier).setNow();
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (!isNow) ...[
+          _Chip(
+            label: 'Сейчас',
+            icon: Icons.restore,
+            active: false,
+            onTap: () => ref.read(timeSelectorProvider.notifier).setNow(),
+          ),
+          const SizedBox(width: 6),
+        ],
+        _Chip(
+          label: _dateLabel(selectedDt),
+          icon: Icons.calendar_today_outlined,
+          active: !isNow,
+          onTap: pickDate,
+        ),
+        const SizedBox(width: 6),
+        _Chip(
+          label: _timeLabel(selectedDt),
+          icon: Icons.access_time_outlined,
+          active: !isNow,
+          onTap: pickTime,
+        ),
+      ],
+    );
   }
 
-  void _apply(DateTime dt) {
-    setState(() => _selected = dt);
+  void _apply(WidgetRef ref, DateTime dt) {
     final now = DateTime.now();
     final diff = dt.difference(now).inMinutes;
     final notifier = ref.read(timeSelectorProvider.notifier);
@@ -34,36 +85,12 @@ class _TimeSelectorWidgetState extends ConsumerState<TimeSelectorWidget> {
     }
   }
 
-  Future<void> _pickDate() async {
-    final base = _selected ?? DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: base,
-      firstDate: DateTime.now().subtract(const Duration(days: 30)),
-      lastDate: DateTime.now().add(const Duration(days: 30)),
-    );
-    if (picked == null) return;
-    final current = _selected ?? DateTime.now();
-    _apply(DateTime(picked.year, picked.month, picked.day, current.hour, current.minute));
-  }
-
-  Future<void> _pickTime() async {
-    final base = _selected ?? DateTime.now();
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay(hour: base.hour, minute: base.minute),
-    );
-    if (picked == null) return;
-    final current = _selected ?? DateTime.now();
-    _apply(DateTime(current.year, current.month, current.day, picked.hour, picked.minute));
-  }
-
-  String _dateLabel() {
-    if (_isNow) {
+  String _dateLabel(DateTime? dt) {
+    if (dt == null) {
       final now = DateTime.now();
       return _dayLabel(now);
     }
-    return _dayLabel(_selected!);
+    return _dayLabel(dt);
   }
 
   String _dayLabel(DateTime dt) {
@@ -77,42 +104,11 @@ class _TimeSelectorWidgetState extends ConsumerState<TimeSelectorWidget> {
     return '${dt.day} ${months[dt.month]}';
   }
 
-  String _timeLabel() {
-    if (_isNow) return 'сейчас';
-    final h = _selected!.hour.toString().padLeft(2, '0');
-    final m = _selected!.minute.toString().padLeft(2, '0');
+  String _timeLabel(DateTime? dt) {
+    if (dt == null) return 'сейчас';
+    final h = dt.hour.toString().padLeft(2, '0');
+    final m = dt.minute.toString().padLeft(2, '0');
     return '$h:$m';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (!_isNow) ...[
-          _Chip(
-            label: 'Сейчас',
-            icon: Icons.restore,
-            onTap: _resetToNow,
-            active: false,
-          ),
-          const SizedBox(width: 6),
-        ],
-        _Chip(
-          label: _dateLabel(),
-          icon: Icons.calendar_today_outlined,
-          onTap: _pickDate,
-          active: !_isNow,
-        ),
-        const SizedBox(width: 6),
-        _Chip(
-          label: _timeLabel(),
-          icon: Icons.access_time_outlined,
-          onTap: _pickTime,
-          active: !_isNow,
-        ),
-      ],
-    );
   }
 }
 
@@ -120,51 +116,50 @@ class _Chip extends StatelessWidget {
   const _Chip({
     required this.label,
     required this.icon,
-    required this.onTap,
     required this.active,
+    required this.onTap,
   });
 
   final String label;
   final IconData icon;
-  final VoidCallback onTap;
   final bool active;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final bg = active ? AppColors.primary : Colors.white;
+    final fg = active ? Colors.white : AppColors.onSurface;
+    final iconColor = active ? Colors.white : AppColors.textSecondary;
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: active ? AppColors.primary.withValues(alpha: 0.1) : Colors.white,
+          color: bg,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: active ? AppColors.primary : Colors.grey.shade300,
-            width: 1,
+            color: active ? AppColors.primary : Colors.grey.shade400,
           ),
-          boxShadow: [
+          boxShadow: const [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 4,
-              offset: const Offset(0, 1),
+              color: Color(0x33000000),
+              blurRadius: 6,
+              offset: Offset(0, 2),
             ),
           ],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              size: 14,
-              color: active ? AppColors.primary : AppColors.textSecondary,
-            ),
+            Icon(icon, size: 14, color: iconColor),
             const SizedBox(width: 5),
             Text(
               label,
               style: TextStyle(
                 fontSize: 13,
-                fontWeight: active ? FontWeight.w600 : FontWeight.w500,
-                color: active ? AppColors.primary : AppColors.onSurface,
+                fontWeight: FontWeight.w600,
+                color: fg,
               ),
             ),
           ],
