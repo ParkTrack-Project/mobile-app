@@ -27,6 +27,7 @@ class _ParkingCardSheet extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final timeMode = ref.watch(timeSelectorProvider);
     final isFuture = timeMode.maybeWhen(future: (_) => true, orElse: () => false);
+    final isPast = timeMode.maybeWhen(past: (_) => true, orElse: () => false);
     final userSelectedAt = timeMode.maybeWhen(future: (at) => at, orElse: () => null);
 
     final zonesAsync = ref.watch(rawZonesProvider);
@@ -122,11 +123,12 @@ class _ParkingCardSheet extends ConsumerWidget {
                   valueColor:
                       currentZone.pay == 0 ? AppColors.primary : null,
                 ),
-                _InfoRow(
-                  icon: Icons.verified_outlined,
-                  label: 'Уверенность',
-                  value: _confidenceLabel(currentZone),
-                ),
+                if (!isPast)
+                  _InfoRow(
+                    icon: Icons.verified_outlined,
+                    label: 'Уверенность',
+                    value: _confidenceLabel(currentZone),
+                  ),
                 if (currentZone.locationType != null)
                   _InfoRow(
                     icon: Icons.place_outlined,
