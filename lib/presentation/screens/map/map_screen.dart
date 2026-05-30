@@ -847,7 +847,7 @@ Positioned(
               left: 12,
               right: 12,
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   const TimeSelectorWidget(),
                   const Spacer(),
