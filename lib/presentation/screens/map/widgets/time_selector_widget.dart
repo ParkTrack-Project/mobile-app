@@ -253,24 +253,21 @@ class _Chip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = active ? AppColors.primary : Colors.white;
-    final fg = active ? Colors.white : AppColors.onSurface;
-    final iconColor = active ? Colors.white : AppColors.textSecondary;
+    final borderColor = active ? AppColors.primary : Colors.grey.shade400;
+    final textColor = active ? AppColors.primary : AppColors.onSurface;
+    final iconColor = active ? AppColors.primary : AppColors.textSecondary;
 
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: bg,
+          color: Colors.white,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: active ? AppColors.primary : Colors.grey.shade400,
-            width: 1.5,
-          ),
+          border: Border.all(color: borderColor, width: active ? 1.5 : 1.0),
           boxShadow: const [
             BoxShadow(
-              color: Color(0x44000000),
+              color: Color(0x33000000),
               blurRadius: 8,
               offset: Offset(0, 3),
             ),
@@ -286,7 +283,7 @@ class _Chip extends StatelessWidget {
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
-                color: fg,
+                color: textColor,
               ),
             ),
           ],
