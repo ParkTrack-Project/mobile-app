@@ -840,28 +840,27 @@ Positioned(
               ),
             ),
           ),
-          // ─── Нижняя строка: селектор времени + Припарковаться ────
+          // ─── Селектор времени: всегда левый край ──────────────
           if (destination == null && !isNavigating)
             Positioned(
               bottom: bottomInset + 20,
               left: 16,
+              child: const TimeSelectorWidget(),
+            ),
+          // ─── FAB: всегда правый край ───────────────────────────
+          if (destination == null && !isNavigating)
+            Positioned(
+              bottom: bottomInset + 20,
               right: 16,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  const TimeSelectorWidget(),
-                  const SizedBox(width: 16),
-                  FloatingActionButton.extended(
-                    heroTag: 'find_parking',
-                    onPressed: isRoutingLoading ? null : _findParking,
-                    backgroundColor: AppColors.primary,
-                    icon: const Icon(Icons.local_parking, color: Colors.white),
-                    label: Text(
-                      isRoutingLoading ? 'Ищем...' : 'Припарковаться',
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                  ),
-                ],
+              child: FloatingActionButton.extended(
+                heroTag: 'find_parking',
+                onPressed: isRoutingLoading ? null : _findParking,
+                backgroundColor: AppColors.primary,
+                icon: const Icon(Icons.local_parking, color: Colors.white),
+                label: Text(
+                  isRoutingLoading ? 'Ищем...' : 'Припарковаться',
+                  style: const TextStyle(color: Colors.white),
+                ),
               ),
             ),
           // ─── Карточка назначения ────────────────────────────────────
