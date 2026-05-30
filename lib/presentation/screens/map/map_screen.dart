@@ -850,7 +850,7 @@ Positioned(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   const TimeSelectorWidget(),
-                  const Spacer(),
+                  const SizedBox(width: 16),
                   FloatingActionButton.extended(
                     heroTag: 'find_parking',
                     onPressed: isRoutingLoading ? null : _findParking,
