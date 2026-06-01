@@ -22,4 +22,7 @@ class AuthApi {
     final response = await _dio.get('/auth/me');
     return UserDto.fromJson(response.data as Map<String, dynamic>);
   }
+
+  Future<void> requestPasswordReset(String email) =>
+      _dio.post('/auth/password-reset/request', data: {'email': email});
 }
