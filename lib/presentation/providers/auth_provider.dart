@@ -76,6 +76,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
     await _ref.read(authRepositoryProvider).logout();
     state = const AuthState.unauthenticated();
   }
+
+  Future<void> requestPasswordReset(String email) =>
+      _ref.read(authRepositoryProvider).requestPasswordReset(email);
 }
 
 final authStateProvider = StateNotifierProvider<AuthNotifier, AuthState>(

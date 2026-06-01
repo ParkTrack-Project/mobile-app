@@ -7,6 +7,7 @@ import '../../presentation/screens/auth/register_screen.dart';
 import '../../presentation/screens/map/map_screen.dart';
 import '../../presentation/screens/profile/profile_screen.dart';
 import '../../presentation/screens/search/search_screen.dart';
+import '../../presentation/screens/auth/password_reset_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authStateProvider);
@@ -24,11 +25,12 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       final isLoginRoute = state.matchedLocation == '/login';
       final isRegisterRoute = state.matchedLocation == '/register';
+      final isPasswordResetRoute = state.matchedLocation == '/password-reset';
       final isSplashRoute = state.matchedLocation == '/';
 
       if (isUnauth) {
         if (isSplashRoute) return '/login';
-        if (!isLoginRoute && !isRegisterRoute) return '/login';
+        if (!isLoginRoute && !isRegisterRoute && !isPasswordResetRoute) return '/login';
       }
 
       if (isAuth && (isSplashRoute || isLoginRoute || isRegisterRoute)) return '/map';
@@ -42,6 +44,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/map', builder: (_, __) => const MapScreen()),
       GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
       GoRoute(path: '/search', builder: (_, __) => const SearchScreen()),
+      GoRoute(path: '/password-reset', builder: (_, __) => const PasswordResetScreen()),
     ],
   );
 });

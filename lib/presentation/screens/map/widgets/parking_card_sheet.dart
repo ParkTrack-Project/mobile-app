@@ -38,7 +38,10 @@ class _ParkingCardSheet extends ConsumerWidget {
         zone;
 
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom +
+                MediaQuery.of(context).padding.bottom,
+      ),
       child: SingleChildScrollView(
         child: Container(
           decoration: const BoxDecoration(

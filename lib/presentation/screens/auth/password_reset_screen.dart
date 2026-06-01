@@ -4,34 +4,36 @@ import 'package:go_router/go_router.dart';
 import '../../providers/auth_provider.dart';
 import '../../../core/network/api_exception.dart';
 
-class LoginScreen extends ConsumerStatefulWidget {
-  const LoginScreen({super.key});
+class PasswordResetScreen extends ConsumerStatefulWidget {
+  const PasswordResetScreen({super.key});
 
   @override
-  ConsumerState<LoginScreen> createState() => _LoginScreenState();
+  ConsumerState<PasswordResetScreen> createState() => _PasswordResetScreenState();
 }
 
-class _LoginScreenState extends ConsumerState<LoginScreen> {
+class _PasswordResetScreenState extends ConsumerState<PasswordResetScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _loginCtrl = TextEditingController();
-  final _passwordCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
   bool _loading = false;
-  bool _obscure = true;
 
   @override
   void dispose() {
-    _loginCtrl.dispose();
-    _passwordCtrl.dispose();
+    _emailCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    final email = _emailCtrl.text.trim();
     setState(() => _loading = true);
     try {
-      await ref
-          .read(authStateProvider.notifier)
-          .login(_loginCtrl.text.trim(), _passwordCtrl.text);
+      await ref.read(authStateProvider.notifier).requestPasswordReset(email);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Ссылка для сброса отправлена на $email')),
+        );
+        context.pop();
+      }
     } on ApiException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -46,6 +48,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(title: const Text('Сброс пароля')),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -55,18 +58,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Icon(Icons.local_parking, size: 64, color: Color(0xFF2E7D32)),
-                  const SizedBox(height: 8),
+                  const Icon(Icons.lock_reset_outlined, size: 64, color: Color(0xFF2E7D32)),
+                  const SizedBox(height: 16),
                   Text(
-                    'ParkTrack',
+                    'Введите email, указанный при регистрации. Мы отправим ссылку для сброса пароля.',
                     textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
+                    style: Theme.of(context).textTheme.bodyMedium,
                   ),
-                  const SizedBox(height: 40),
+                  const SizedBox(height: 32),
                   TextFormField(
-                    controller: _loginCtrl,
+                    controller: _emailCtrl,
                     decoration: const InputDecoration(
                       labelText: 'Email',
                       prefixIcon: Icon(Icons.email_outlined),
@@ -75,24 +76,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     keyboardType: TextInputType.emailAddress,
                     validator: (v) =>
                         v == null || v.isEmpty ? 'Введите email' : null,
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _passwordCtrl,
-                    decoration: InputDecoration(
-                      labelText: 'Пароль',
-                      prefixIcon: const Icon(Icons.lock_outlined),
-                      border: const OutlineInputBorder(),
-                      suffixIcon: IconButton(
-                        icon: Icon(_obscure
-                            ? Icons.visibility_outlined
-                            : Icons.visibility_off_outlined),
-                        onPressed: () => setState(() => _obscure = !_obscure),
-                      ),
-                    ),
-                    obscureText: _obscure,
-                    validator: (v) =>
-                        v == null || v.length < 6 ? 'Минимум 6 символов' : null,
                   ),
                   const SizedBox(height: 24),
                   FilledButton(
@@ -109,16 +92,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               color: Colors.white,
                             ),
                           )
-                        : const Text('Войти'),
-                  ),
-                  const SizedBox(height: 16),
-                  TextButton(
-                    onPressed: () => context.push('/register'),
-                    child: const Text('Нет аккаунта? Зарегистрироваться'),
-                  ),
-                  TextButton(
-                    onPressed: () => context.push('/password-reset'),
-                    child: const Text('Забыли пароль?'),
+                        : const Text('Отправить'),
                   ),
                 ],
               ),

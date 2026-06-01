@@ -59,6 +59,16 @@ class AuthRepository {
     }
   }
 
+  Future<void> requestPasswordReset(String email) async {
+    try {
+      await _api.requestPasswordReset(email);
+    } on DioException catch (e) {
+      throw ApiException.fromStatusCode(e.response?.statusCode ?? 0);
+    } catch (e) {
+      throw ApiException('Ошибка: $e');
+    }
+  }
+
   User _mapUser(UserDto dto) => User(
         userId: dto.userId,
         email: dto.email,
