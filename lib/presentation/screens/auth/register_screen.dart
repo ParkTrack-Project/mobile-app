@@ -34,7 +34,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       await ref.read(authStateProvider.notifier).register(
             _emailCtrl.text.trim(),
             _passwordCtrl.text,
-            fullName: _nameCtrl.text.trim().isEmpty ? null : _nameCtrl.text.trim(),
+            fullName: _nameCtrl.text.trim(),
           );
     } on ApiException catch (e) {
       if (mounted) {
@@ -62,10 +62,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 TextFormField(
                   controller: _nameCtrl,
                   decoration: const InputDecoration(
-                    labelText: 'Имя (необязательно)',
+                    labelText: 'Имя',
                     prefixIcon: Icon(Icons.person_outlined),
                     border: OutlineInputBorder(),
                   ),
+                  validator: (v) => v == null || v.trim().isEmpty ? 'Введите имя' : null,
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
