@@ -73,6 +73,7 @@ class AppStrings {
   final String alreadyHaveAccount;
   final String registration;
   final String resetPassword;
+  final String passwordResetInstructions;
   final String sendInstructions;
   final String hideFull;
   final String hidePrivate;
@@ -145,8 +146,6 @@ class AppStrings {
   final String editProfile;
   final String save;
   final String profileUpdated;
-  final String desktopMapUnavailable;
-  final String openWebVersion;
 
   AppStrings({
     required this.appTitle,
@@ -168,6 +167,7 @@ class AppStrings {
     required this.filters,
     required this.apply,
     required this.reset,
+    required this.passwordResetInstructions,
     required this.logout,
     required this.settings,
     required this.appearance,
@@ -291,8 +291,6 @@ class AppStrings {
     required this.editProfile,
     required this.save,
     required this.profileUpdated,
-    required this.desktopMapUnavailable,
-    required this.openWebVersion,
   });
 
   static AppStrings ru = AppStrings(
@@ -315,6 +313,7 @@ class AppStrings {
     filters: 'Фильтры',
     apply: 'Применить',
     reset: 'Сбросить',
+    passwordResetInstructions: 'Введите свой email чтобы получить инструкции по сбросу пароля.',
     logout: 'Выйти',
     settings: 'Настройки',
     appearance: 'Внешний вид',
@@ -330,7 +329,7 @@ class AppStrings {
     langEnglish: 'English',
     langSystem: 'Системный',
     account: 'Аккаунт',
-    notAuthenticated: 'Не авторизован',
+    notAuthenticated: 'Неверные данные для входа',
     logoutConfirm: 'Вы уверены, что хотите выйти из аккаунта?',
     cancel: 'Отмена',
     inAppRoute: 'В приложении',
@@ -455,9 +454,6 @@ class AppStrings {
     editProfile: 'Редактировать профиль',
     save: 'Сохранить',
     profileUpdated: 'Профиль обновлен',
-    desktopMapUnavailable:
-        'Яндекс Карты пока не поддерживают нативные приложения Flutter для macOS.',
-    openWebVersion: 'Открыть веб-версию',
   );
 
   static AppStrings en = AppStrings(
@@ -480,6 +476,7 @@ class AppStrings {
     filters: 'Filters',
     apply: 'Apply',
     reset: 'Reset',
+    passwordResetInstructions: 'Enter your email to receive password reset instructions.',
     logout: 'Logout',
     settings: 'Settings',
     appearance: 'Appearance',
@@ -495,7 +492,7 @@ class AppStrings {
     langEnglish: 'English',
     langSystem: 'System',
     account: 'Account',
-    notAuthenticated: 'Not authenticated',
+    notAuthenticated: 'Invalid login credentials',
     logoutConfirm: 'Are you sure you want to sign out?',
     cancel: 'Cancel',
     inAppRoute: 'In-app',
@@ -619,9 +616,6 @@ class AppStrings {
     editProfile: 'Edit Profile',
     save: 'Save',
     profileUpdated: 'Profile updated',
-    desktopMapUnavailable:
-        'Yandex Maps does not currently support native Flutter apps for macOS.',
-    openWebVersion: 'Open web version',
   );
 }
 

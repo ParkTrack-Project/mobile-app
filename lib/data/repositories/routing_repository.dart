@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:yandex_mapkit/yandex_mapkit.dart';
 import '../api/routing_api.dart';
 import '../models/routing_models.dart';
@@ -17,6 +18,7 @@ class RoutingRepository {
     int? minFreeCount,
     double? minConfidence,
     bool? useForecast,
+    CancelToken? cancelToken,
   }) async {
     final request = RoutingSearchRequestDto(
       mode: destinationLat != null ? 'route_to_destination' : 'find_parking',
@@ -29,7 +31,10 @@ class RoutingRepository {
       minConfidence: minConfidence,
       useForecast: useForecast,
     );
-    final response = await _api.searchParking(request);
+    final response = await _api.searchParking(
+      request,
+      cancelToken: cancelToken,
+    );
     return response.candidates.map(_mapCandidate).toList();
   }
 
@@ -40,6 +45,7 @@ class RoutingRepository {
     double? destinationLon,
     required int selectedZoneId,
     bool? useForecast,
+    CancelToken? cancelToken,
   }) async {
     final request = RoutingSearchRequestDto(
       mode: destinationLat != null ? 'route_to_destination' : 'find_parking',
@@ -49,34 +55,38 @@ class RoutingRepository {
           : null,
       useForecast: useForecast,
     );
-    final dto = await _api.createRoute(request, selectedZoneId: selectedZoneId);
+    final dto = await _api.createRoute(
+      request,
+      selectedZoneId: selectedZoneId,
+      cancelToken: cancelToken,
+    );
     return _mapRoute(dto);
   }
 
   RouteCandidate _mapCandidate(RouteCandidateDto dto) => RouteCandidate(
-        zoneId: dto.zoneId,
-        rank: dto.rank,
-        freeCount: dto.currentFreeCount,
-        confidence: dto.currentConfidence,
-        pay: dto.pay,
-        distanceToDestinationMeters: dto.distanceToDestinationMeters,
-        durationFromOriginSeconds: dto.durationFromOriginSeconds,
-        predictedFreeCount: dto.predictedFreeCount,
-        eta: dto.eta,
-        routePolyline: _parsePolyline(dto.routeGeometry),
-      );
+    zoneId: dto.zoneId,
+    rank: dto.rank,
+    freeCount: dto.currentFreeCount,
+    confidence: dto.currentConfidence,
+    pay: dto.pay,
+    distanceToDestinationMeters: dto.distanceToDestinationMeters,
+    durationFromOriginSeconds: dto.durationFromOriginSeconds,
+    predictedFreeCount: dto.predictedFreeCount,
+    eta: dto.eta,
+    routePolyline: _parsePolyline(dto.routeGeometry),
+  );
 
   ActiveRoute _mapRoute(RouteDto dto) => ActiveRoute(
-        routeId: dto.routeId,
-        status: dto.status,
-        selectedZoneId: dto.selectedZoneId ?? 0,
-        arrivalTime: dto.arrivalTime,
-        deeplinkUrl: dto.deeplinkUrl,
-        routePolyline: null,
-        candidates: dto.selectedCandidate != null
-            ? [_mapCandidate(dto.selectedCandidate!)]
-            : [],
-      );
+    routeId: dto.routeId,
+    status: dto.status,
+    selectedZoneId: dto.selectedZoneId ?? 0,
+    arrivalTime: dto.arrivalTime,
+    deeplinkUrl: dto.deeplinkUrl,
+    routePolyline: null,
+    candidates: dto.selectedCandidate != null
+        ? [_mapCandidate(dto.selectedCandidate!)]
+        : [],
+  );
 
   List<Point>? _parsePolyline(Map<String, dynamic>? geometry) {
     if (geometry == null) return null;
@@ -84,7 +94,10 @@ class RoutingRepository {
     if (coordinates == null) return null;
     return coordinates.map((c) {
       final coord = c as List;
-      return Point(latitude: (coord[1] as num).toDouble(), longitude: (coord[0] as num).toDouble());
+      return Point(
+        latitude: (coord[1] as num).toDouble(),
+        longitude: (coord[0] as num).toDouble(),
+      );
     }).toList();
   }
 }

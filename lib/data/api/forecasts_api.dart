@@ -8,13 +8,18 @@ class ForecastsApi {
   Future<List<Map<String, dynamic>>> getForecastsMap({
     required String bbox,
     required String at,
+    CancelToken? cancelToken,
   }) async {
-    final response = await _dio.get('/forecasts', queryParameters: {
-      'bbox': bbox,
-      'at': at,
-      'view': 'map',
-      'latest_model_only': true,
-    });
+    final response = await _dio.get(
+      '/forecasts',
+      queryParameters: {
+        'bbox': bbox,
+        'at': at,
+        'view': 'map',
+        'latest_model_only': true,
+      },
+      cancelToken: cancelToken,
+    );
     return (response.data as List).cast<Map<String, dynamic>>();
   }
 }

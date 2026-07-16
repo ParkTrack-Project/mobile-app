@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' show max;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:yandex_mapkit/yandex_mapkit.dart';
@@ -44,16 +45,22 @@ class NavigationNotifier extends Notifier<NavigationData?> {
   double _totalSeconds = 0;
   double _totalMeters = 0;
   List<Point> _route = [];
+  PreparedRoute? _preparedRoute;
   double _destLat = 0;
   double _destLon = 0;
   int _zoneId = 0;
+  int _navigationGeneration = 0;
+  int _offRouteSamples = 0;
 
   double? _smoothLat;
   double? _smoothLon;
   double? _smoothHeading;
 
   @override
-  NavigationData? build() => null;
+  NavigationData? build() {
+    ref.onDispose(_disposeResources);
+    return null;
+  }
 
   Future<void> startNavigation({
     required int zoneId,
@@ -64,6 +71,7 @@ class NavigationNotifier extends Notifier<NavigationData?> {
     required double destLon,
     required AppStrings s,
   }) async {
+    _navigationGeneration++;
     _cleanupTimers();
     await _sub?.cancel();
 
@@ -71,12 +79,20 @@ class NavigationNotifier extends Notifier<NavigationData?> {
     _totalSeconds = totalSeconds;
     _totalMeters = totalMeters;
     _route = route;
+    _preparedRoute = PreparedRoute(route);
+    if (_totalMeters <= 0) {
+      _totalMeters = _preparedRoute!.totalDistance;
+    }
+    if (_totalSeconds <= 0 && _totalMeters > 0) {
+      _totalSeconds = _totalMeters / 10;
+    }
     _destLat = destLat;
     _destLon = destLon;
     _zoneId = zoneId;
     _smoothLat = null;
     _smoothLon = null;
     _smoothHeading = null;
+    _offRouteSamples = 0;
 
     _sub = Geolocator.getPositionStream(
       locationSettings: _buildLocationSettings(s),
@@ -84,12 +100,18 @@ class NavigationNotifier extends Notifier<NavigationData?> {
   }
 
   void stop() {
+    _navigationGeneration++;
+    _disposeResources();
+    state = null;
+  }
+
+  void _disposeResources() {
     _cleanupTimers();
     _sub?.cancel();
     _sub = null;
     _drivingSession?.close();
     _drivingSession = null;
-    state = null;
+    _preparedRoute = null;
   }
 
   LocationSettings _buildLocationSettings(AppStrings s) {
@@ -135,19 +157,27 @@ class NavigationNotifier extends Notifier<NavigationData?> {
     _smoothHeading = _emaCircular(rawHeading, _smoothHeading);
 
     final current = Point(latitude: _smoothLat!, longitude: _smoothLon!);
-    final closest = closestOnRoute(current, _route);
+    final preparedRoute = _preparedRoute;
+    if (preparedRoute == null || !preparedRoute.isValid) return;
+    final closest = preparedRoute.match(current, hintSegment: _segmentIndex);
 
     if (closest.segment > _segmentIndex) {
       _segmentIndex = closest.segment;
     }
 
-    final remaining = remainingRouteDistance(_route, _segmentIndex, closest.t);
-    final perp = perpDistToRoute(current, _route, _segmentIndex, closest.t);
+    final remaining = preparedRoute.remainingDistance(closest);
+    final perp = closest.distanceFromRoute;
     final remainingSecs = _totalMeters > 0
         ? (_totalSeconds * remaining / _totalMeters).round()
         : 0;
-    final nextTurn = findNextTurn(_route, _segmentIndex, current);
-    final isOff = perp > 60;
+    final nextTurn = preparedRoute.nextTurn(closest);
+    final offRouteThreshold = max(60.0, pos.accuracy * 1.5);
+    if (pos.accuracy <= 50 && perp > offRouteThreshold) {
+      _offRouteSamples++;
+    } else {
+      _offRouteSamples = 0;
+    }
+    final isOff = _offRouteSamples >= 3;
 
     state = NavigationData(
       zoneId: _zoneId,
@@ -175,7 +205,10 @@ class NavigationNotifier extends Notifier<NavigationData?> {
 
       // Debounced off-route recalculation
       if (isOff) {
-        _recalcDebounce ??= Timer(const Duration(seconds: 5), () => _recalculate(current));
+        _recalcDebounce ??= Timer(
+          const Duration(seconds: 5),
+          () => _recalculate(current),
+        );
       } else {
         _recalcDebounce?.cancel();
         _recalcDebounce = null;
@@ -185,6 +218,7 @@ class NavigationNotifier extends Notifier<NavigationData?> {
 
   Future<void> _recalculate(Point from) async {
     _recalcDebounce = null;
+    final generation = _navigationGeneration;
     final current = state;
     if (current == null) return;
 
@@ -204,7 +238,10 @@ class NavigationNotifier extends Notifier<NavigationData?> {
       await _drivingSession?.close();
       final rws = YandexDriving.requestRoutes(
         points: [
-          RequestPoint(point: from, requestPointType: RequestPointType.wayPoint),
+          RequestPoint(
+            point: from,
+            requestPointType: RequestPointType.wayPoint,
+          ),
           RequestPoint(
             point: Point(latitude: _destLat, longitude: _destLon),
             requestPointType: RequestPointType.wayPoint,
@@ -218,17 +255,18 @@ class NavigationNotifier extends Notifier<NavigationData?> {
       _drivingSession = null;
 
       final dr = result.routes?.firstOrNull;
-      if (dr == null || state == null) return;
+      if (dr == null || state == null || generation != _navigationGeneration) {
+        return;
+      }
 
       _route = dr.geometry;
+      _preparedRoute = PreparedRoute(_route);
       _segmentIndex = 0;
       _totalSeconds = dr.metadata.weight.timeWithTraffic.value ?? _totalSeconds;
       _totalMeters = dr.metadata.weight.distance.value ?? _totalMeters;
 
-      if (_totalMeters == 0 && _route.length >= 2) {
-        for (int i = 0; i < _route.length - 1; i++) {
-          _totalMeters += navDistanceM(_route[i], _route[i + 1]);
-        }
+      if (_totalMeters == 0 && _preparedRoute!.isValid) {
+        _totalMeters = _preparedRoute!.totalDistance;
         _totalSeconds = _totalMeters / 10;
       }
 
@@ -264,4 +302,6 @@ class NavigationNotifier extends Notifier<NavigationData?> {
 }
 
 final navigationProvider =
-    NotifierProvider<NavigationNotifier, NavigationData?>(NavigationNotifier.new);
+    NotifierProvider<NavigationNotifier, NavigationData?>(
+      NavigationNotifier.new,
+    );
