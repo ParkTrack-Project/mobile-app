@@ -6,6 +6,7 @@ import '../../presentation/screens/auth/login_screen.dart';
 import '../../presentation/screens/auth/register_screen.dart';
 import '../../presentation/screens/map/map_screen.dart';
 import '../../presentation/screens/profile/profile_screen.dart';
+import '../../presentation/screens/profile/edit_profile_screen.dart';
 import '../../presentation/screens/search/search_screen.dart';
 import '../../presentation/screens/auth/password_reset_screen.dart';
 
@@ -38,13 +39,15 @@ final routerProvider = Provider<GoRouter>((ref) {
       return null;
     },
     routes: [
-      GoRoute(path: '/', builder: (_, __) => const SplashScreen()),
-      GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
-      GoRoute(path: '/register', builder: (_, __) => const RegisterScreen()),
-      GoRoute(path: '/map', builder: (_, __) => const MapScreen()),
-      GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
-      GoRoute(path: '/search', builder: (_, __) => const SearchScreen()),
-      GoRoute(path: '/password-reset', builder: (_, __) => const PasswordResetScreen()),
+      GoRoute(path: '/', builder: (_, _) => const SplashScreen()),
+      GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
+      GoRoute(path: '/register', builder: (_, _) => const RegisterScreen()),
+      GoRoute(path: '/map', builder: (_, _) => const MapScreen()),
+      GoRoute(path: '/profile', builder: (_, _) => const ProfileScreen(), routes: [
+        GoRoute(path: 'edit', builder: (_, _) => const EditProfileScreen()),
+      ]),
+      GoRoute(path: '/search', builder: (_, _) => const SearchScreen()),
+      GoRoute(path: '/password-reset', builder: (_, _) => const PasswordResetScreen()),
     ],
   );
 });

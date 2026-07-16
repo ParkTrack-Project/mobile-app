@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:yandex_mapkit/yandex_mapkit.dart';
+import '../localization/app_localizations.dart';
 
 const _kEarthRadius = 6371000.0;
 
@@ -115,14 +116,18 @@ TurnDirection _classifyTurn(double diff) {
   return TurnDirection.straight;
 }
 
-String formatNavDistance(double meters) {
-  if (meters < 950) return '${meters.round()} м';
-  return '${(meters / 1000).toStringAsFixed(1)} км';
+String formatNavDistance(num meters, [AppStrings? s]) {
+  final metersSign = s?.metersSign ?? 'm';
+  final kmSign = s?.kmSign ?? 'km';
+  if (meters < 950) return '${meters.round()} $metersSign';
+  return '${(meters / 1000).toStringAsFixed(1)} $kmSign';
 }
 
-String formatNavDuration(int seconds) {
-  if (seconds < 3600) return '${(seconds / 60).round()} мин';
+String formatNavDuration(num seconds, [AppStrings? s]) {
+  final minSign = s?.minutesSign ?? 'min';
+  final hourSign = s?.hourSign ?? 'h';
+  if (seconds < 3600) return '${(seconds / 60).round()} $minSign';
   final h = seconds ~/ 3600;
   final m = (seconds % 3600) ~/ 60;
-  return m == 0 ? '${h}ч' : '${h}ч ${m}мин';
+  return m == 0 ? '$h$hourSign' : '$h$hourSign $m$minSign';
 }

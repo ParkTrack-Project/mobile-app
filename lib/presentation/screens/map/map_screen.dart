@@ -2,10 +2,13 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:yandex_mapkit/yandex_mapkit.dart';
 import '../../providers/zones_provider.dart';
 import '../../../domain/models/zone.dart';
@@ -17,8 +20,10 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/nav_math.dart';
 import '../../../core/utils/navigation_deeplink.dart';
 import '../../../core/utils/error_snackbar.dart';
+import '../../../core/localization/app_localizations.dart';
 import 'widgets/candidates_sheet.dart';
-import 'widgets/navigation_overlay.dart' show NavigationTurnCard, NavigationBottomBar;
+import 'widgets/navigation_overlay.dart'
+    show NavigationTurnCard, NavigationBottomBar;
 import 'widgets/parking_zone_layer.dart';
 import 'widgets/time_selector_widget.dart';
 import 'widgets/parking_card_sheet.dart';
@@ -101,7 +106,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   Future<void> _updateZoneBitmaps(List<Zone> zones) async {
-    final same = zones.length == _zonesById.length &&
+    final same =
+        zones.length == _zonesById.length &&
         zones.every((z) {
           final prev = _zonesById[z.zoneId];
           return prev != null &&
@@ -138,7 +144,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     canvas.drawCircle(center, size / 2 - 1, Paint()..color = Colors.white);
-    canvas.drawCircle(center, size / 2 - 5, Paint()..color = const Color(0xFF007AFF));
+    canvas.drawCircle(
+      center,
+      size / 2 - 5,
+      Paint()..color = const Color(0xFF007AFF),
+    );
     final picture = recorder.endRecording();
     final image = await picture.toImage(size.toInt(), size.toInt());
     final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
@@ -188,7 +198,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     return byteData!.buffer.asUint8List();
   }
 
-  void _onCameraPositionChanged(CameraPosition position, _, __) {
+  void _onCameraPositionChanged(CameraPosition position, _, _) {
     _lastCameraTarget = position.target;
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 400), _fetchZones);
@@ -268,12 +278,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final pos = await _mapController!.getCameraPosition();
     await _mapController!.moveCamera(
       CameraUpdate.newCameraPosition(
-        CameraPosition(
-          target: pos.target,
-          zoom: pos.zoom,
-          azimuth: 0,
-          tilt: 0,
-        ),
+        CameraPosition(target: pos.target, zoom: pos.zoom, azimuth: 0, tilt: 0),
       ),
       animation: const MapAnimation(duration: 0.4),
     );
@@ -312,24 +317,23 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   void _showLocationDeniedDialog() {
+    final s = ref.read(l10nProvider);
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Нет доступа к геолокации'),
-        content: const Text(
-          'Для поиска парковок рядом с вами необходим доступ к местоположению.',
-        ),
+        title: Text(s.locationPermissionDenied),
+        content: Text(s.locationPermissionReason),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Отмена'),
+            child: Text(s.cancel),
           ),
           FilledButton(
             onPressed: () {
               Navigator.pop(context);
               Geolocator.openAppSettings();
             },
-            child: const Text('Настройки'),
+            child: Text(s.settings),
           ),
         ],
       ),
@@ -343,11 +347,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             longitude: _userPosition!.longitude,
           )
         : _lastCameraTarget != null
-            ? SearchBias(
-                latitude: _lastCameraTarget!.latitude,
-                longitude: _lastCameraTarget!.longitude,
-              )
-            : null;
+        ? SearchBias(
+            latitude: _lastCameraTarget!.latitude,
+            longitude: _lastCameraTarget!.longitude,
+          )
+        : null;
     ref.read(searchBiasProvider.notifier).state = bias;
     await context.push('/search');
   }
@@ -355,17 +359,18 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Future<void> _findParking() async {
     final pos = await _getCurrentPosition();
     if (pos == null) return;
-    await ref.read(routingProvider.notifier).searchParking(
-          originLat: pos.latitude,
-          originLon: pos.longitude,
-        );
+    await ref
+        .read(routingProvider.notifier)
+        .searchParking(originLat: pos.latitude, originLon: pos.longitude);
   }
 
   Future<void> _buildRouteForZone(int zoneId) async {
     final pos = await _getCurrentPosition();
     if (pos == null) return;
     setState(() => _isSelectingOnMap = false);
-    await ref.read(routingProvider.notifier).buildRoute(
+    await ref
+        .read(routingProvider.notifier)
+        .buildRoute(
           originLat: pos.latitude,
           originLon: pos.longitude,
           selectedZoneId: zoneId,
@@ -384,11 +389,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       if (pos == null) return;
 
       await _mapController?.moveCamera(
-        CameraUpdate.newCameraPosition(CameraPosition(
-          target: Point(latitude: pos.latitude, longitude: pos.longitude),
-          zoom: 17,
-          tilt: 40,
-        )),
+        CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: Point(latitude: pos.latitude, longitude: pos.longitude),
+            zoom: 17,
+            tilt: 40,
+          ),
+        ),
         animation: const MapAnimation(duration: 0.8),
       );
 
@@ -432,20 +439,29 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         totalSeconds = totalMeters / 10;
       }
 
-      await ref.read(navigationProvider.notifier).startNavigation(
+      await ref
+          .read(navigationProvider.notifier)
+          .startNavigation(
             zoneId: zoneId,
             route: route,
             totalSeconds: totalSeconds,
             totalMeters: totalMeters,
             destLat: toLat,
             destLon: toLon,
+            s: ref.read(l10nProvider),
           );
 
       await _mapController?.toggleUserLayer(visible: false);
       await _mapController?.toggleTrafficLayer(visible: true);
     } catch (e, st) {
       if (mounted) {
-        showErrorSnackBar(context, 'Не удалось построить маршрут', error: e, stackTrace: st);
+        showErrorSnackBar(
+          context,
+          ref.read(l10nProvider).errorCreatingRoute,
+          error: e,
+          stackTrace: st,
+          s: ref.read(l10nProvider),
+        );
       }
     } finally {
       if (mounted) setState(() => _navBuilding = false);
@@ -460,9 +476,61 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     );
   }
 
+  Widget _buildMacOsFallback(BuildContext context, AppStrings s) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(s.appTitle),
+        actions: [
+          IconButton(
+            tooltip: s.settings,
+            onPressed: () => context.push('/profile'),
+            icon: const Icon(Icons.settings_outlined),
+          ),
+        ],
+      ),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.desktop_mac_outlined,
+                  size: 72,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  s.desktopMapUnavailable,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 24),
+                FilledButton.icon(
+                  onPressed: () => launchUrl(
+                    Uri.parse('https://m.parktrack.live'),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                  icon: const Icon(Icons.open_in_browser),
+                  label: Text(s.openWebVersion),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     const bottomInset = 0.0;
+    final s = ref.watch(l10nProvider);
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.macOS) {
+      return _buildMacOsFallback(context, s);
+    }
     final zones = ref.watch(filteredZonesProvider);
     final zonesAsync = ref.watch(rawZonesProvider);
     final routingState = ref.watch(routingProvider);
@@ -474,7 +542,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       orElse: () => false,
     );
 
-    ref.listen(timeSelectorProvider, (_, __) {
+    ref.listen(timeSelectorProvider, (_, _) {
       ref.read(rawZonesProvider.notifier).clearZones();
       _zoneLabelCache.clear();
       _zonesById.clear();
@@ -492,12 +560,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         setState(() => _routePolyline = nav.route);
       }
       _mapController?.moveCamera(
-        CameraUpdate.newCameraPosition(CameraPosition(
-          target: nav.currentPosition,
-          zoom: 17,
-          azimuth: nav.heading,
-          tilt: 40,
-        )),
+        CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: nav.currentPosition,
+            zoom: 17,
+            azimuth: nav.heading,
+            tilt: 40,
+          ),
+        ),
         animation: const MapAnimation(duration: 0.6),
       );
     });
@@ -505,7 +575,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     ref.listen(rawZonesProvider, (_, next) {
       next.whenOrNull(
         error: (e, st) {
-          showErrorSnackBar(context, 'Не удалось загрузить парковки', error: e, stackTrace: st);
+          showErrorSnackBar(
+            context,
+            ref.read(l10nProvider).errorLoadingZones,
+            error: e,
+            stackTrace: st,
+            s: ref.read(l10nProvider),
+          );
         },
       );
     });
@@ -536,7 +612,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         },
         searching: () async {},
         error: (message) async {
-          showErrorSnackBar(context, 'Ошибка при построении маршрута', error: message);
+          showErrorSnackBar(
+            context,
+            ref.read(l10nProvider).errorCreatingRoute,
+            error: message,
+            s: ref.read(l10nProvider),
+          );
         },
         candidates: (candidates) async {
           if (_isCandidatesSheetOpen || candidates.isEmpty) return;
@@ -554,9 +635,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 Navigator.pop(context);
                 setState(() => _isSelectingOnMap = true);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Выберите парковочную зону на карте'),
-                  ),
+                  SnackBar(content: Text(ref.read(l10nProvider).pickZoneOnMap)),
                 );
               },
             ),
@@ -598,10 +677,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               zoneLon: zoneLon,
               onNavigateInApp: (zoneLat != null && zoneLon != null)
                   ? () => _startInAppNavigation(
-                        zoneId: route.selectedZoneId,
-                        toLat: zoneLat!,
-                        toLon: zoneLon!,
-                      )
+                      zoneId: route.selectedZoneId,
+                      toLat: zoneLat!,
+                      toLon: zoneLon!,
+                    )
                   : null,
             ),
           );
@@ -677,16 +756,20 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             final latPad = (latMax - latMin) * 0.6 + 0.003;
             final lonPad = (lonMax - lonMin) * 0.6 + 0.003;
             _mapController?.moveCamera(
-              CameraUpdate.newGeometry(Geometry.fromBoundingBox(BoundingBox(
-                southWest: Point(
-                  latitude: latMin - latPad,
-                  longitude: lonMin - lonPad,
+              CameraUpdate.newGeometry(
+                Geometry.fromBoundingBox(
+                  BoundingBox(
+                    southWest: Point(
+                      latitude: latMin - latPad,
+                      longitude: lonMin - lonPad,
+                    ),
+                    northEast: Point(
+                      latitude: latMax + latPad,
+                      longitude: lonMax + lonPad,
+                    ),
+                  ),
                 ),
-                northEast: Point(
-                  latitude: latMax + latPad,
-                  longitude: lonMax + lonPad,
-                ),
-              ))),
+              ),
               animation: const MapAnimation(duration: 0.5),
             );
           },
@@ -698,20 +781,24 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             latitude: _userPosition!.latitude,
             longitude: _userPosition!.longitude,
           ),
-          icon: PlacemarkIcon.single(PlacemarkIconStyle(
-            image: BitmapDescriptor.fromBytes(_userLocationBytes!),
-            scale: 1.0,
-          )),
+          icon: PlacemarkIcon.single(
+            PlacemarkIconStyle(
+              image: BitmapDescriptor.fromBytes(_userLocationBytes!),
+              scale: 1.0,
+            ),
+          ),
         ),
       if (isNavigating && _navArrowBytes != null)
         PlacemarkMapObject(
           mapId: const MapObjectId('nav_arrow'),
-          point: navState!.currentPosition,
+          point: navState.currentPosition,
           opacity: 1.0,
-          icon: PlacemarkIcon.single(PlacemarkIconStyle(
-            image: BitmapDescriptor.fromBytes(_navArrowBytes!),
-            scale: 1.0,
-          )),
+          icon: PlacemarkIcon.single(
+            PlacemarkIconStyle(
+              image: BitmapDescriptor.fromBytes(_navArrowBytes!),
+              scale: 1.0,
+            ),
+          ),
         ),
       if (destination != null && _destinationPinBytes != null)
         PlacemarkMapObject(
@@ -720,273 +807,302 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             latitude: destination.latitude,
             longitude: destination.longitude,
           ),
-          icon: PlacemarkIcon.single(PlacemarkIconStyle(
-            image: BitmapDescriptor.fromBytes(_destinationPinBytes!),
-            scale: 1.0,
-          )),
+          icon: PlacemarkIcon.single(
+            PlacemarkIconStyle(
+              image: BitmapDescriptor.fromBytes(_destinationPinBytes!),
+              scale: 1.0,
+            ),
+          ),
         ),
     ];
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      body: SafeArea(child: Stack(
-        children: [
-          YandexMap(
-            mapObjects: mapObjects,
-            onMapCreated: (controller) async {
-              _mapController = controller;
-              const fallback = Point(latitude: 61.789114, longitude: 34.359757);
-              _lastCameraTarget = fallback;
-              await controller.moveCamera(
-                CameraUpdate.newCameraPosition(
-                  const CameraPosition(target: fallback, zoom: 14),
-                ),
-              );
-              _fetchZones();
-              final pos = await _getCurrentPosition();
-              if (pos != null && mounted) {
-                final target = Point(latitude: 61.789114, longitude: 34.359757);
-                _lastCameraTarget = target;
+      body: SafeArea(
+        child: Stack(
+          children: [
+            YandexMap(
+              mapObjects: mapObjects,
+              nightModeEnabled: isDark,
+              onMapCreated: (controller) async {
+                _mapController = controller;
+                const fallback = Point(
+                  latitude: 61.789114,
+                  longitude: 34.359757,
+                );
+                _lastCameraTarget = fallback;
                 await controller.moveCamera(
                   CameraUpdate.newCameraPosition(
-                    CameraPosition(target: target, zoom: 15),
+                    const CameraPosition(target: fallback, zoom: 14),
                   ),
-                  animation: const MapAnimation(duration: 0.8),
                 );
                 _fetchZones();
-              }
-            },
-            onCameraPositionChanged: _onCameraPositionChanged,
-          ),
-          // ─── Top bar ───────────────────────────────────────────────
-          if (!isNavigating)
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: _openSearch,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.1),
-                              blurRadius: 8,
+                final pos = await _getCurrentPosition();
+                if (pos != null && mounted) {
+                  final target = Point(
+                    latitude: 61.789114,
+                    longitude: 34.359757,
+                  );
+                  _lastCameraTarget = target;
+                  await controller.moveCamera(
+                    CameraUpdate.newCameraPosition(
+                      CameraPosition(target: target, zoom: 15),
+                    ),
+                    animation: const MapAnimation(duration: 0.8),
+                  );
+                  _fetchZones();
+                }
+              },
+              onCameraPositionChanged: _onCameraPositionChanged,
+            ),
+            // ─── Top bar ───────────────────────────────────────────────
+            if (!isNavigating)
+              SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: _openSearch,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
                             ),
-                          ],
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.surface,
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.1),
+                                  blurRadius: 8,
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.search,
+                                  color: Theme.of(context).hintColor,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    destination?.name ?? s.searchPlaceholder,
+                                    style: TextStyle(
+                                      color: Theme.of(context).hintColor,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      _MapButton(
+                        icon: Icons.tune,
+                        onTap: () => _showFilters(context),
+                      ),
+                      const SizedBox(width: 4),
+                      _MapButton(
+                        icon: Icons.person_outlined,
+                        onTap: () => context.push('/profile'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            Positioned(
+              right: 12,
+              top: 0,
+              bottom: 0,
+              child: Align(
+                alignment: Alignment.center,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _MapButton(
+                      onTap: _resetNorth,
+                      child: Transform.rotate(
+                        angle: -_currentAzimuth * math.pi / 180,
+                        child: Icon(
+                          Icons.explore,
+                          size: 22,
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    _MapButton(icon: Icons.add, onTap: _zoomIn),
+                    const SizedBox(height: 4),
+                    _MapButton(icon: Icons.remove, onTap: _zoomOut),
+                    const SizedBox(height: 4),
+                    _MapButton(icon: Icons.my_location, onTap: _goToMyLocation),
+                  ],
+                ),
+              ),
+            ),
+            // ─── Селектор времени: всегда левый край ──────────────
+            if (destination == null && !isNavigating)
+              Positioned(
+                bottom: bottomInset + 20,
+                left: 16,
+                child: const TimeSelectorWidget(),
+              ),
+            // ─── FAB: всегда правый край ───────────────────────────
+            if (destination == null && !isNavigating)
+              Positioned(
+                bottom: bottomInset + 20,
+                right: 16,
+                child: FloatingActionButton.extended(
+                  heroTag: 'find_parking',
+                  onPressed: isRoutingLoading ? null : _findParking,
+                  backgroundColor: AppColors.primary,
+                  icon: const Icon(Icons.local_parking, color: Colors.white),
+                  label: Text(
+                    isRoutingLoading ? s.searching : s.findParking,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ),
+              ),
+            // ─── Карточка назначения ────────────────────────────────────
+            if (destination != null && !isNavigating)
+              Positioned(
+                bottom: bottomInset + 76,
+                left: 12,
+                right: 12,
+                child: _DestinationCard(
+                  destination: destination,
+                  onFindParking: isRoutingLoading ? null : _findParking,
+                  onNavigate: () => openYandexNavigator(
+                    destination.latitude,
+                    destination.longitude,
+                  ),
+                  onNavigateInApp: () => _startInAppNavigation(
+                    zoneId: 0,
+                    toLat: destination.latitude,
+                    toLon: destination.longitude,
+                  ),
+                  onClear: () {
+                    ref.read(destinationProvider.notifier).state = null;
+                    ref.read(routingProvider.notifier).reset();
+                  },
+                ),
+              ),
+            // ─── Loading indicators ─────────────────────────────────────
+            if (zonesAsync is AsyncLoading)
+              const Positioned(
+                top: 100,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+              ),
+            if (isNavigating)
+              const Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: NavigationTurnCard(),
+              ),
+            if (isNavigating)
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: NavigationBottomBar(
+                  onFinish: () {
+                    ref.read(navigationProvider.notifier).stop();
+                    ref.read(routingProvider.notifier).reset();
+                  },
+                ),
+              ),
+            if (_navBuilding)
+              Positioned.fill(
+                child: ColoredBox(
+                  color: Colors.black.withValues(alpha: 0.3),
+                  child: Center(
+                    child: Card(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 14,
                         ),
                         child: Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.search,
-                                color: AppColors.textSecondary),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                destination?.name ?? 'Найти место назначения',
-                                style: const TextStyle(
-                                    color: AppColors.textSecondary),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
+                            const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
                             ),
+                            const SizedBox(width: 12),
+                            Text(s.searching),
                           ],
                         ),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  _MapButton(
-                      icon: Icons.tune,
-                      onTap: () => _showFilters(context)),
-                  const SizedBox(width: 4),
-                  _MapButton(
-                      icon: Icons.person_outlined,
-                      onTap: () => context.push('/profile')),
-                ],
-              ),
-            ),
-          ),
-Positioned(
-            right: 12,
-            top: 0,
-            bottom: 0,
-            child: Align(
-              alignment: Alignment.center,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _MapButton(
-                    onTap: _resetNorth,
-                    child: Transform.rotate(
-                      angle: -_currentAzimuth * math.pi / 180,
-                      child: const Icon(Icons.explore,
-                          size: 22, color: Color(0xFF424242)),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  _MapButton(icon: Icons.add, onTap: _zoomIn),
-                  const SizedBox(height: 4),
-                  _MapButton(icon: Icons.remove, onTap: _zoomOut),
-                  const SizedBox(height: 4),
-                  _MapButton(icon: Icons.my_location, onTap: _goToMyLocation),
-                ],
-              ),
-            ),
-          ),
-          // ─── Селектор времени: всегда левый край ──────────────
-          if (destination == null && !isNavigating)
-            Positioned(
-              bottom: bottomInset + 20,
-              left: 16,
-              child: const TimeSelectorWidget(),
-            ),
-          // ─── FAB: всегда правый край ───────────────────────────
-          if (destination == null && !isNavigating)
-            Positioned(
-              bottom: bottomInset + 20,
-              right: 16,
-              child: FloatingActionButton.extended(
-                heroTag: 'find_parking',
-                onPressed: isRoutingLoading ? null : _findParking,
-                backgroundColor: AppColors.primary,
-                icon: const Icon(Icons.local_parking, color: Colors.white),
-                label: Text(
-                  isRoutingLoading ? 'Ищем...' : 'Припарковаться',
-                  style: const TextStyle(color: Colors.white),
                 ),
               ),
-            ),
-          // ─── Карточка назначения ────────────────────────────────────
-          if (destination != null && !isNavigating)
-            Positioned(
-              bottom: bottomInset + 76,
-              left: 12,
-              right: 12,
-              child: _DestinationCard(
-                destination: destination,
-                onFindParking: isRoutingLoading ? null : _findParking,
-                onNavigate: () => openYandexNavigator(
-                    destination.latitude, destination.longitude),
-                onNavigateInApp: () => _startInAppNavigation(
-                    zoneId: 0,
-                    toLat: destination.latitude,
-                    toLon: destination.longitude),
-                onClear: () {
-                  ref.read(destinationProvider.notifier).state = null;
-                  ref.read(routingProvider.notifier).reset();
-                },
-              ),
-            ),
-          // ─── Loading indicators ─────────────────────────────────────
-          if (zonesAsync is AsyncLoading)
-            const Positioned(
-              top: 100,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              ),
-            ),
-          if (isNavigating)
-            const Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: NavigationTurnCard(),
-            ),
-          if (isNavigating)
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: NavigationBottomBar(
-                onFinish: () {
-                  ref.read(navigationProvider.notifier).stop();
-                  ref.read(routingProvider.notifier).reset();
-                },
-              ),
-            ),
-          if (_navBuilding)
-            const Positioned.fill(
-              child: ColoredBox(
-                color: Color(0x55000000),
+            if (isRoutingLoading)
+              Positioned(
+                top: 148,
+                left: 0,
+                right: 0,
                 child: Center(
-                  child: Card(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.1),
+                          blurRadius: 8,
+                        ),
+                      ],
+                    ),
                     child: Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          SizedBox(
-                            width: 18,
-                            height: 18,
+                          const SizedBox(
+                            width: 16,
+                            height: 16,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           ),
-                          SizedBox(width: 12),
-                          Text('Строим маршрут...'),
+                          const SizedBox(width: 8),
+                          Text(s.searching),
                         ],
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-          if (isRoutingLoading)
-            Positioned(
-              top: 148,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.1),
-                        blurRadius: 8,
-                      ),
-                    ],
-                  ),
-                  child: const Padding(
-                    padding:
-                        EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                        SizedBox(width: 8),
-                        Text('Поиск маршрута...'),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-        ],
-      )),
+          ],
+        ),
+      ),
     );
   }
 }
 
 // ───────────────────────────────────────────────────────────────────────────
 
-class _DestinationCard extends StatelessWidget {
+class _DestinationCard extends ConsumerWidget {
   const _DestinationCard({
     required this.destination,
     required this.onFindParking,
@@ -1002,11 +1118,12 @@ class _DestinationCard extends StatelessWidget {
   final VoidCallback onClear;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(l10nProvider);
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
@@ -1026,19 +1143,24 @@ class _DestinationCard extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  destination.name ?? 'Выбранное место',
+                  destination.name ?? s.selectedPlace,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w600),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
               GestureDetector(
                 onTap: onClear,
-                child: const Padding(
-                  padding: EdgeInsets.all(8),
-                  child: Icon(Icons.close,
-                      size: 18, color: AppColors.textSecondary),
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Icon(
+                    Icons.close,
+                    size: 18,
+                    color: Theme.of(context).hintColor,
+                  ),
                 ),
               ),
             ],
@@ -1047,7 +1169,7 @@ class _DestinationCard extends StatelessWidget {
           FilledButton.icon(
             onPressed: onFindParking,
             icon: const Icon(Icons.local_parking, size: 16),
-            label: const Text('Искать парковку рядом'),
+            label: Text(s.searchParkingNear),
             style: FilledButton.styleFrom(
               textStyle: const TextStyle(fontSize: 13),
               padding: const EdgeInsets.symmetric(vertical: 10),
@@ -1060,7 +1182,7 @@ class _DestinationCard extends StatelessWidget {
                 child: FilledButton.icon(
                   onPressed: onNavigateInApp,
                   icon: const Icon(Icons.map_outlined, size: 16),
-                  label: const Text('В приложении'),
+                  label: Text(s.inAppRoute),
                   style: FilledButton.styleFrom(
                     textStyle: const TextStyle(fontSize: 13),
                     padding: const EdgeInsets.symmetric(vertical: 10),
@@ -1075,7 +1197,7 @@ class _DestinationCard extends StatelessWidget {
                     textStyle: const TextStyle(fontSize: 13),
                     padding: const EdgeInsets.symmetric(vertical: 10),
                   ),
-                  child: const Text('Яндекс'),
+                  child: Text(s.yandexNavigator),
                 ),
               ),
             ],
@@ -1102,7 +1224,7 @@ class _MapButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
@@ -1111,8 +1233,13 @@ class _MapButton extends StatelessWidget {
             ),
           ],
         ),
-        child: child ??
-            Icon(icon!, size: 22, color: const Color(0xFF424242)),
+        child:
+            child ??
+            Icon(
+              icon!,
+              size: 22,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
       ),
     );
   }
@@ -1125,6 +1252,7 @@ class _FiltersSheet extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(l10nProvider);
     final filters = ref.watch(filtersProvider);
     final notifier = ref.read(filtersProvider.notifier);
     final hasPayLimit = filters.maxPayPerHour != null;
@@ -1135,14 +1263,18 @@ class _FiltersSheet extends ConsumerWidget {
       initialChildSize: 0.75,
       maxChildSize: 0.95,
       builder: (_, controller) => Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFFE8F5E9),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: ListView(
           controller: controller,
           padding: EdgeInsets.fromLTRB(
-              20, 12, 20, MediaQuery.of(context).padding.bottom + 24),
+            20,
+            12,
+            20,
+            MediaQuery.of(context).padding.bottom + 24,
+          ),
           children: [
             Center(
               child: Container(
@@ -1157,48 +1289,48 @@ class _FiltersSheet extends ConsumerWidget {
             const SizedBox(height: 16),
             Row(
               children: [
-                const Expanded(
+                Expanded(
                   child: Text(
-                    'Фильтры',
-                    style:
-                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    s.filters,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
-                TextButton(
-                    onPressed: notifier.reset,
-                    child: const Text('Сбросить')),
+                TextButton(onPressed: notifier.reset, child: Text(s.reset)),
               ],
             ),
             SwitchListTile(
-              title: const Text('Скрыть занятые'),
+              title: Text(s.hideFull),
               value: filters.hideNoFreeSpots,
               onChanged: (_) => notifier.toggleHideNoFreeSpots(),
             ),
             SwitchListTile(
-              title: const Text('Скрыть частные'),
+              title: Text(s.hidePrivate),
               value: filters.hidePrivate,
               onChanged: (_) => notifier.toggleHidePrivate(),
             ),
             SwitchListTile(
-              title: const Text('Скрыть места для инвалидов'),
+              title: Text(s.hideInaccessible),
               value: filters.hideInaccessible,
               onChanged: (_) => notifier.toggleHideInaccessible(),
             ),
             SwitchListTile(
-              title: const Text('Скрыть закрытые'),
+              title: Text(s.hideInactive),
               value: filters.hideInactive,
               onChanged: (_) => notifier.toggleHideInactive(),
             ),
             const Divider(),
-            const Text(
-              'Минимальная уверенность',
-              style: TextStyle(fontWeight: FontWeight.w600),
+            Text(
+              s.minConfidence,
+              style: const TextStyle(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 4),
             Text(
               '${(filters.minConfidence * 100).round()}%',
-              style: const TextStyle(
-                color: AppColors.textSecondary,
+              style: TextStyle(
+                color: Theme.of(context).hintColor,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -1212,7 +1344,7 @@ class _FiltersSheet extends ConsumerWidget {
             ),
             const Divider(),
             SwitchListTile(
-              title: const Text('Ограничить стоимость'),
+              title: Text(s.limitPrice),
               value: hasPayLimit,
               onChanged: (value) {
                 notifier.setMaxPay(value ? 200 : null);
@@ -1223,9 +1355,9 @@ class _FiltersSheet extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '$payValue ₽/ч',
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
+                    '$payValue ₽/${s.hourSign}',
+                    style: TextStyle(
+                      color: Theme.of(context).hintColor,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -1234,22 +1366,21 @@ class _FiltersSheet extends ConsumerWidget {
                     min: 0,
                     max: 500,
                     divisions: 20,
-                    label: '$payValue ₽/ч',
-                    onChanged: (value) =>
-                        notifier.setMaxPay(value.round()),
+                    label: '$payValue ₽/${s.hourSign}',
+                    onChanged: (value) => notifier.setMaxPay(value.round()),
                   ),
                 ],
               ),
             const Divider(),
-            const Text(
-              'Минимум свободных мест',
-              style: TextStyle(fontWeight: FontWeight.w600),
+            Text(
+              s.minFreeSpots,
+              style: const TextStyle(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 4),
             Text(
-              filters.minFreeCount == 0 ? 'Любое' : '${filters.minFreeCount}+',
-              style: const TextStyle(
-                color: AppColors.textSecondary,
+              filters.minFreeCount == 0 ? s.any : '${filters.minFreeCount}+',
+              style: TextStyle(
+                color: Theme.of(context).hintColor,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -1258,34 +1389,34 @@ class _FiltersSheet extends ConsumerWidget {
               min: 0,
               max: 20,
               divisions: 20,
-              label: filters.minFreeCount == 0 ? 'Любое' : '${filters.minFreeCount}+',
+              label: filters.minFreeCount == 0
+                  ? s.any
+                  : '${filters.minFreeCount}+',
               onChanged: (v) => notifier.setMinFreeCount(v.round()),
             ),
             const Divider(),
-            const Text(
-              'Тип парковки',
-              style: TextStyle(fontWeight: FontWeight.w600),
+            Text(
+              s.locationType,
+              style: const TextStyle(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 8),
             for (final entry in {
-              'street': 'Уличная',
-              'yard': 'Дворовая',
-              'open_lot': 'Открытая стоянка',
-              'underground': 'Подземная',
-              'multilevel': 'Многоуровневая',
+              'street': s.street,
+              'yard': s.yard,
+              'open_lot': s.openLot,
+              'underground': s.underground,
+              'multilevel': s.multilevel,
             }.entries)
               CheckboxListTile(
                 title: Text(entry.value),
                 value: !filters.hiddenLocationTypes.contains(entry.key),
-                onChanged: (_) =>
-                    notifier.toggleLocationType(entry.key),
+                onChanged: (_) => notifier.toggleLocationType(entry.key),
                 dense: true,
               ),
             const SizedBox(height: 16),
             FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
               onPressed: () => Navigator.pop(context),
-              child: const Text('Применить', style: TextStyle(color: Colors.white)),
+              child: Text(s.apply),
             ),
           ],
         ),
@@ -1293,4 +1424,3 @@ class _FiltersSheet extends ConsumerWidget {
     );
   }
 }
-

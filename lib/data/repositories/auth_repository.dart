@@ -15,13 +15,14 @@ class AuthRepository {
     try {
       final response = await _api.login(LoginRequestDto(login: login, password: password));
       await _tokenStorage.saveAccessToken(response.accessToken);
+      await _tokenStorage.saveCredentials(login, password);
       return _mapUser(response.user);
     } on DioException catch (e) {
       throw ApiException.fromStatusCode(e.response?.statusCode ?? 0);
     } on ApiException {
       rethrow;
     } catch (e) {
-      throw ApiException('Ошибка: $e');
+      throw ApiException(e.toString());
     }
   }
 
@@ -31,13 +32,14 @@ class AuthRepository {
         RegisterRequestDto(email: email, password: password, fullName: fullName),
       );
       await _tokenStorage.saveAccessToken(response.accessToken);
+      await _tokenStorage.saveCredentials(email, password);
       return _mapUser(response.user);
     } on DioException catch (e) {
       throw ApiException.fromStatusCode(e.response?.statusCode ?? 0);
     } on ApiException {
       rethrow;
     } catch (e) {
-      throw ApiException('Ошибка: $e');
+      throw ApiException(e.toString());
     }
   }
 
@@ -45,7 +47,7 @@ class AuthRepository {
     try {
       await _api.logout();
     } finally {
-      await _tokenStorage.clearTokens();
+      await _tokenStorage.clearAll();
     }
   }
 
@@ -65,7 +67,21 @@ class AuthRepository {
     } on DioException catch (e) {
       throw ApiException.fromStatusCode(e.response?.statusCode ?? 0);
     } catch (e) {
-      throw ApiException('Ошибка: $e');
+      throw ApiException(e.toString());
+    }
+  }
+
+  Future<User> updateProfile({String? fullName}) async {
+    try {
+      final data = <String, dynamic>{};
+      if (fullName != null) data['full_name'] = fullName;
+      
+      final dto = await _api.updateProfile(data);
+      return _mapUser(dto);
+    } on DioException catch (e) {
+      throw ApiException.fromStatusCode(e.response?.statusCode ?? 0);
+    } catch (e) {
+      throw ApiException(e.toString());
     }
   }
 
