@@ -4,11 +4,14 @@ import '../storage/session_expired_notifier.dart';
 import '../constants.dart';
 
 class AuthInterceptor extends Interceptor {
-  final TokenStorage _tokenStorage;
-  bool _isRefreshing = false;
-  final List<ErrorInterceptorHandler> _deferredHandlers = [];
+  static const _retryKey = 'auth_retry';
 
-  AuthInterceptor(this._tokenStorage);
+  final TokenStorage _tokenStorage;
+  final Dio _dio;
+  Future<String>? _refreshFuture;
+  bool _sessionExpired = false;
+
+  AuthInterceptor(this._tokenStorage, this._dio);
 
   @override
   Future<void> onRequest(
@@ -23,73 +26,93 @@ class AuthInterceptor extends Interceptor {
   }
 
   @override
-  Future<void> onError(DioException err, ErrorInterceptorHandler handler) async {
-    if (err.response?.statusCode == 401) {
-      final login = await _tokenStorage.getLogin();
-      final password = await _tokenStorage.getPassword();
-
-      if (login != null && password != null) {
-        if (_isRefreshing) {
-          _deferredHandlers.add(handler);
-          return;
-        }
-
-        _isRefreshing = true;
-
-        try {
-          // Use a fresh Dio instance to avoid interceptor recursion
-          final refreshDio = _createRefreshDio();
-          final response = await refreshDio.post('/auth/login', data: {
-            'login': login,
-            'password': password,
-          });
-
-          final newToken = response.data['access_token'] as String;
-          await _tokenStorage.saveAccessToken(newToken);
-
-          // Retry the original request
-          final retryResponse = await _retry(err.requestOptions, newToken);
-          handler.resolve(retryResponse);
-
-          // For simplicity, we let deferred handlers fail, 
-          // but a robust implementation would retry them as well.
-          for (final h in _deferredHandlers) {
-            h.next(err);
-          }
-          _deferredHandlers.clear();
-          return;
-        } catch (e) {
-          await _tokenStorage.clearAll();
-          sessionExpiredNotifier.value = true;
-          for (final h in _deferredHandlers) {
-            h.next(err);
-          }
-          _deferredHandlers.clear();
-        } finally {
-          _isRefreshing = false;
-        }
-      } else {
-        await _tokenStorage.clearAll();
-        sessionExpiredNotifier.value = true;
-      }
+  Future<void> onError(
+    DioException err,
+    ErrorInterceptorHandler handler,
+  ) async {
+    if (err.response?.statusCode != 401 ||
+        err.requestOptions.extra[_retryKey] == true) {
+      handler.next(err);
+      return;
     }
-    handler.next(err);
+
+    try {
+      final latestToken = await _tokenStorage.getAccessToken();
+      final failedToken = _bearerToken(err.requestOptions);
+      final token = latestToken != null && latestToken != failedToken
+          ? latestToken
+          : await _refreshAccessToken();
+      final response = await _retry(err.requestOptions, token);
+      handler.resolve(response);
+    } catch (_) {
+      await _expireSession();
+      handler.next(err);
+    }
   }
 
-  Dio _createRefreshDio() {
-    return Dio(BaseOptions(baseUrl: kBaseUrl));
+  String? _bearerToken(RequestOptions options) {
+    final value = options.headers['Authorization']?.toString();
+    return value?.startsWith('Bearer ') == true ? value!.substring(7) : null;
   }
 
-  Future<Response<dynamic>> _retry(RequestOptions requestOptions, String token) {
-    final options = Options(
-      method: requestOptions.method,
-      headers: Map.from(requestOptions.headers)..['Authorization'] = 'Bearer $token',
+  Future<String> _refreshAccessToken() {
+    final activeRefresh = _refreshFuture;
+    if (activeRefresh != null) return activeRefresh;
+
+    final refresh = _loginAgain();
+    _refreshFuture = refresh;
+    return refresh.whenComplete(() {
+      if (identical(_refreshFuture, refresh)) _refreshFuture = null;
+    });
+  }
+
+  Future<String> _loginAgain() async {
+    final login = await _tokenStorage.getLogin();
+    final password = await _tokenStorage.getPassword();
+    if (login == null || password == null) {
+      throw StateError('No credentials available for token refresh');
+    }
+
+    final refreshDio = Dio(
+      BaseOptions(
+        baseUrl: kBaseUrl,
+        connectTimeout: _dio.options.connectTimeout,
+        receiveTimeout: _dio.options.receiveTimeout,
+        sendTimeout: _dio.options.sendTimeout,
+        headers: {'Content-Type': 'application/json'},
+      ),
     );
-    return _createRefreshDio().request<dynamic>(
-      requestOptions.path,
-      data: requestOptions.data,
-      queryParameters: requestOptions.queryParameters,
-      options: options,
+    final response = await refreshDio.post<Map<String, dynamic>>(
+      '/auth/login',
+      data: {'login': login, 'password': password},
     );
+    final token = response.data?['access_token'] as String?;
+    if (token == null || token.isEmpty) {
+      throw const FormatException('Login response does not contain a token');
+    }
+    await _tokenStorage.saveAccessToken(token);
+    _sessionExpired = false;
+    return token;
+  }
+
+  Future<Response<dynamic>> _retry(
+    RequestOptions requestOptions,
+    String token,
+  ) {
+    return _dio.fetch<dynamic>(
+      requestOptions.copyWith(
+        headers: Map<String, dynamic>.from(requestOptions.headers)
+          ..['Authorization'] = 'Bearer $token',
+        extra: Map<String, dynamic>.from(requestOptions.extra)
+          ..[_retryKey] = true,
+      ),
+    );
+  }
+
+  Future<void> _expireSession() async {
+    if (_sessionExpired) return;
+    _sessionExpired = true;
+    await _tokenStorage.clearAll();
+    sessionExpiredNotifier.value = true;
   }
 }

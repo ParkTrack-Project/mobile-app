@@ -7,6 +7,26 @@ import '../../../../domain/models/zone.dart';
 import '../../../../core/constants.dart';
 import '../../../../core/theme/app_colors.dart';
 
+final Map<({int? totalFree, int clusterSize, int color}), Future<Uint8List>>
+_clusterBitmapCache = {};
+
+Future<Uint8List> _cachedClusterBitmap(
+  int? totalFree,
+  int clusterSize,
+  Color color,
+) {
+  final key = (
+    totalFree: totalFree,
+    clusterSize: clusterSize,
+    color: color.toARGB32(),
+  );
+  if (_clusterBitmapCache.length > 128) _clusterBitmapCache.clear();
+  return _clusterBitmapCache.putIfAbsent(
+    key,
+    () => buildClusterBitmap(totalFree, clusterSize, color),
+  );
+}
+
 List<MapObject> buildZoneMapObjects({
   required List<Zone> zones,
   required void Function(Zone) onTap,
@@ -18,7 +38,9 @@ List<MapObject> buildZoneMapObjects({
     final color = zoneColor(zone);
     final highlighted = highlightedIds.contains(zone.zoneId);
     if (zone.zoneType == ZoneType.parallel) {
-      result.add(_buildParallelLine(zone, color, onTap, highlighted: highlighted));
+      result.add(
+        _buildParallelLine(zone, color, onTap, highlighted: highlighted),
+      );
     } else {
       result.add(_buildPolygon(zone, color, onTap, highlighted: highlighted));
     }
@@ -27,7 +49,9 @@ List<MapObject> buildZoneMapObjects({
 }
 
 List<MapObject> buildHighlightZone(List<Zone> zones, int zoneId) {
-  final matches = zones.where((z) => z.zoneId == zoneId && !_isDegenerate(z.geometry));
+  final matches = zones.where(
+    (z) => z.zoneId == zoneId && !_isDegenerate(z.geometry),
+  );
   if (matches.isEmpty) return [];
   final zone = matches.first;
   final color = zoneColor(zone);
@@ -62,7 +86,10 @@ List<MapObject> buildHighlightZone(List<Zone> zones, int zoneId) {
     return [
       PolygonMapObject(
         mapId: MapObjectId('zone_highlight_${zone.zoneId}'),
-        polygon: Polygon(outerRing: LinearRing(points: zone.geometry), innerRings: []),
+        polygon: Polygon(
+          outerRing: LinearRing(points: zone.geometry),
+          innerRings: [],
+        ),
         fillColor: color.withValues(alpha: 0.6),
         strokeColor: Colors.white,
         strokeWidth: 4,
@@ -79,17 +106,23 @@ MapObject buildZoneLabels({
   void Function(Zone)? onZoneTap,
 }) {
   final placemarks = zones
-      .where((z) => !_isDegenerate(z.geometry) && bitmapCache.containsKey(z.zoneId))
-      .map((zone) => PlacemarkMapObject(
-            mapId: MapObjectId('zone_label_${zone.zoneId}'),
-            point: centroid(zone.geometry),
-            opacity: 1.0,
-            icon: PlacemarkIcon.single(PlacemarkIconStyle(
+      .where(
+        (z) => !_isDegenerate(z.geometry) && bitmapCache.containsKey(z.zoneId),
+      )
+      .map(
+        (zone) => PlacemarkMapObject(
+          mapId: MapObjectId('zone_label_${zone.zoneId}'),
+          point: centroid(zone.geometry),
+          opacity: 1.0,
+          icon: PlacemarkIcon.single(
+            PlacemarkIconStyle(
               image: BitmapDescriptor.fromBytes(bitmapCache[zone.zoneId]!),
               scale: 1.0,
-            )),
-            onTap: onZoneTap != null ? (_, _) => onZoneTap(zone) : null,
-          ))
+            ),
+          ),
+          onTap: onZoneTap != null ? (_, _) => onZoneTap(zone) : null,
+        ),
+      )
       .toList();
 
   return ClusterizedPlacemarkCollection(
@@ -100,15 +133,19 @@ MapObject buildZoneLabels({
     onClusterTap: onClusterTap,
     onClusterAdded: (collection, cluster) async {
       final zoneIds = cluster.placemarks
-          .map((p) => int.tryParse(p.mapId.value.replaceFirst('zone_label_', '')))
+          .map(
+            (p) => int.tryParse(p.mapId.value.replaceFirst('zone_label_', '')),
+          )
           .whereType<int>()
           .toList();
-      final hasForecast = zoneIds.any((id) => zonesById[id]?.hasForecast == true);
+      final hasForecast = zoneIds.any(
+        (id) => zonesById[id]?.hasForecast == true,
+      );
       final int? totalFree = hasForecast
           ? zoneIds
-              .where((id) => zonesById[id]?.hasForecast == true)
-              .map((id) => zonesById[id]?.freeCount ?? 0)
-              .fold<int>(0, (a, b) => a + b)
+                .where((id) => zonesById[id]?.hasForecast == true)
+                .map((id) => zonesById[id]?.freeCount ?? 0)
+                .fold<int>(0, (a, b) => a + b)
           : null;
       final Color clusterColor;
       if (totalFree == null) {
@@ -118,14 +155,20 @@ MapObject buildZoneLabels({
       } else {
         clusterColor = AppColors.primary;
       }
-      final bytes = await buildClusterBitmap(totalFree, cluster.placemarks.length, clusterColor);
+      final bytes = await _cachedClusterBitmap(
+        totalFree,
+        cluster.placemarks.length,
+        clusterColor,
+      );
       return cluster.copyWith(
         appearance: cluster.appearance.copyWith(
           opacity: 1.0,
-          icon: PlacemarkIcon.single(PlacemarkIconStyle(
-            image: BitmapDescriptor.fromBytes(bytes),
-            scale: 1.0,
-          )),
+          icon: PlacemarkIcon.single(
+            PlacemarkIconStyle(
+              image: BitmapDescriptor.fromBytes(bytes),
+              scale: 1.0,
+            ),
+          ),
         ),
       );
     },
@@ -162,7 +205,11 @@ Future<Uint8List> buildCountBitmap(int? count, Color color) async {
   return data!.buffer.asUint8List();
 }
 
-Future<Uint8List> buildClusterBitmap(int? totalFree, int clusterSize, Color color) async {
+Future<Uint8List> buildClusterBitmap(
+  int? totalFree,
+  int clusterSize,
+  Color color,
+) async {
   const size = 84.0;
   final center = Offset(size / 2, size / 2);
   final recorder = ui.PictureRecorder();
@@ -216,8 +263,12 @@ Color zoneColor(Zone zone) {
   return AppColors.parkingFewLow;
 }
 
-MapObject _buildPolygon(Zone zone, Color color, void Function(Zone) onTap,
-    {bool highlighted = false}) {
+MapObject _buildPolygon(
+  Zone zone,
+  Color color,
+  void Function(Zone) onTap, {
+  bool highlighted = false,
+}) {
   return PolygonMapObject(
     mapId: MapObjectId('zone_polygon_${zone.zoneId}'),
     polygon: Polygon(
@@ -231,8 +282,12 @@ MapObject _buildPolygon(Zone zone, Color color, void Function(Zone) onTap,
   );
 }
 
-MapObject _buildParallelLine(Zone zone, Color color, void Function(Zone) onTap,
-    {bool highlighted = false}) {
+MapObject _buildParallelLine(
+  Zone zone,
+  Color color,
+  void Function(Zone) onTap, {
+  bool highlighted = false,
+}) {
   final points = zone.geometry;
   if (points.length < 4) return _buildPolygon(zone, color, onTap);
 
@@ -266,12 +321,13 @@ double _distance(Point a, Point b) {
 }
 
 Point _midpoint(Point a, Point b) => Point(
-      latitude: (a.latitude + b.latitude) / 2,
-      longitude: (a.longitude + b.longitude) / 2,
-    );
+  latitude: (a.latitude + b.latitude) / 2,
+  longitude: (a.longitude + b.longitude) / 2,
+);
 
 Point centroid(List<Point> points) {
-  final pts = points.length > 1 &&
+  final pts =
+      points.length > 1 &&
           points.first.latitude == points.last.latitude &&
           points.first.longitude == points.last.longitude
       ? points.sublist(0, points.length - 1)
