@@ -15,17 +15,22 @@ class ZonesApi {
     int? maxPay,
     bool? includePrivate,
     String? hideLocationTypes,
+    CancelToken? cancelToken,
   }) async {
-    final response = await _dio.get('/zones', queryParameters: {
-      'bbox': bbox,
-      'view': view,
-      'is_active': ?isActive,
-      'min_free_count': ?minFreeCount,
-      'min_confidence': ?minConfidence,
-      'max_pay': ?maxPay,
-      'include_private': ?includePrivate,
-      'hide_location_types': ?hideLocationTypes,
-    });
+    final response = await _dio.get(
+      '/zones',
+      queryParameters: {
+        'bbox': bbox,
+        'view': view,
+        'is_active': ?isActive,
+        'min_free_count': ?minFreeCount,
+        'min_confidence': ?minConfidence,
+        'max_pay': ?maxPay,
+        'include_private': ?includePrivate,
+        'hide_location_types': ?hideLocationTypes,
+      },
+      cancelToken: cancelToken,
+    );
     return (response.data as List)
         .map((e) => ZoneMapItemDto.fromJson(e as Map<String, dynamic>))
         .toList();

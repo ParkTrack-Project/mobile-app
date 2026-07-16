@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart'
-    show TargetPlatform, defaultTargetPlatform, kIsWeb;
+    show TargetPlatform, defaultTargetPlatform, kIsWeb, setEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
@@ -17,7 +17,6 @@ import '../../providers/routing_provider.dart';
 import '../../providers/navigation_provider.dart';
 import '../../providers/time_selector_provider.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../../core/utils/nav_math.dart';
 import '../../../core/utils/navigation_deeplink.dart';
 import '../../../core/utils/error_snackbar.dart';
 import '../../../core/localization/app_localizations.dart';
@@ -54,11 +53,21 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   Map<int, Uint8List> _zoneLabelCache = {};
   Map<int, Zone> _zonesById = {};
+  final Map<({int? count, int color}), Uint8List> _zoneBitmapCache = {};
+  Map<int, ({int? count, int color})> _zoneStylesById = {};
   int _bitmapGeneration = 0;
   List<Point>? _routePolyline;
+  double _routeDurationSeconds = 0;
   int? _activeRouteZoneId;
   DrivingSession? _drivingSession;
   bool _navBuilding = false;
+
+  List<Zone>? _cachedMapZones;
+  Set<int> _cachedCandidateIds = const {};
+  List<MapObject> _cachedZoneObjects = const [];
+  Map<int, Uint8List>? _cachedLabelBitmaps;
+  MapObject? _cachedZoneLabels;
+  Set<int> _candidateIds = const {};
 
   @override
   void initState() {
@@ -106,27 +115,36 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   Future<void> _updateZoneBitmaps(List<Zone> zones) async {
+    final styles = <int, ({int? count, int color})>{};
+    for (final zone in zones) {
+      final color = zoneColor(zone);
+      styles[zone.zoneId] = (
+        count: color == AppColors.parkingUnknown ? null : zone.freeCount,
+        color: color.toARGB32(),
+      );
+    }
     final same =
-        zones.length == _zonesById.length &&
-        zones.every((z) {
-          final prev = _zonesById[z.zoneId];
-          return prev != null &&
-              prev.freeCount == z.freeCount &&
-              prev.hasForecast == z.hasForecast &&
-              prev.isActive == z.isActive;
-        });
+        styles.length == _zoneStylesById.length &&
+        styles.entries.every(
+          (entry) => _zoneStylesById[entry.key] == entry.value,
+        );
     if (same) return;
     final generation = ++_bitmapGeneration;
     final newCache = <int, Uint8List>{};
     final newById = <int, Zone>{};
+    final usedStyles = <({int? count, int color})>{};
     for (final zone in zones) {
       if (_bitmapGeneration != generation) return;
       if (zone.geometry.length < 3) continue;
-      final color = zoneColor(zone);
-      newCache[zone.zoneId] = await buildCountBitmap(
-        color == AppColors.parkingUnknown ? null : zone.freeCount,
-        color,
-      );
+      final style = styles[zone.zoneId]!;
+      usedStyles.add(style);
+      var bitmap = _zoneBitmapCache[style];
+      if (bitmap == null) {
+        bitmap = await buildCountBitmap(style.count, Color(style.color));
+        if (_bitmapGeneration != generation) return;
+        _zoneBitmapCache[style] = bitmap;
+      }
+      newCache[zone.zoneId] = bitmap;
       newById[zone.zoneId] = zone;
     }
     if (_bitmapGeneration != generation) return;
@@ -134,6 +152,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       setState(() {
         _zoneLabelCache = newCache;
         _zonesById = newById;
+        _zoneStylesById = styles;
+        _zoneBitmapCache.removeWhere((key, _) => !usedStyles.contains(key));
       });
     }
   }
@@ -202,9 +222,86 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     _lastCameraTarget = position.target;
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 400), _fetchZones);
-    if ((position.azimuth - _currentAzimuth).abs() > 0.5) {
+    if ((position.azimuth - _currentAzimuth).abs() > 2) {
       setState(() => _currentAzimuth = position.azimuth);
     }
+  }
+
+  void _onZoneTap(Zone zone) {
+    if (_isSelectingOnMap && _candidateIds.contains(zone.zoneId)) {
+      _buildRouteForZone(zone.zoneId);
+      return;
+    }
+    if (_isParkingCardOpen) return;
+    setState(() => _isParkingCardOpen = true);
+    showParkingCard(
+      context,
+      zone,
+      onBuildRoute: () => _buildRouteForZone(zone.zoneId),
+    ).then((_) {
+      if (mounted) setState(() => _isParkingCardOpen = false);
+    });
+  }
+
+  void _onClusterTap(_, Cluster cluster) {
+    if (cluster.placemarks.isEmpty) return;
+    final lats = cluster.placemarks.map((p) => p.point.latitude);
+    final lons = cluster.placemarks.map((p) => p.point.longitude);
+    final latMin = lats.reduce(math.min);
+    final latMax = lats.reduce(math.max);
+    final lonMin = lons.reduce(math.min);
+    final lonMax = lons.reduce(math.max);
+    final latPad = (latMax - latMin) * 0.6 + 0.003;
+    final lonPad = (lonMax - lonMin) * 0.6 + 0.003;
+    _mapController?.moveCamera(
+      CameraUpdate.newGeometry(
+        Geometry.fromBoundingBox(
+          BoundingBox(
+            southWest: Point(
+              latitude: latMin - latPad,
+              longitude: lonMin - lonPad,
+            ),
+            northEast: Point(
+              latitude: latMax + latPad,
+              longitude: lonMax + lonPad,
+            ),
+          ),
+        ),
+      ),
+      animation: const MapAnimation(duration: 0.5),
+    );
+  }
+
+  List<MapObject> _zoneObjectsFor(List<Zone> zones, Set<int> candidateIds) {
+    if (!identical(_cachedMapZones, zones) ||
+        !setEquals(_cachedCandidateIds, candidateIds)) {
+      _cachedMapZones = zones;
+      _cachedCandidateIds = Set.unmodifiable(candidateIds);
+      _cachedZoneObjects = buildZoneMapObjects(
+        zones: zones,
+        highlightedIds: candidateIds,
+        onTap: _onZoneTap,
+      );
+      _cachedZoneLabels = null;
+    }
+    return _cachedZoneObjects;
+  }
+
+  MapObject? _zoneLabelsFor(List<Zone> zones) {
+    if (_zoneLabelCache.isEmpty) return null;
+    if (_cachedZoneLabels == null ||
+        !identical(_cachedMapZones, zones) ||
+        !identical(_cachedLabelBitmaps, _zoneLabelCache)) {
+      _cachedLabelBitmaps = _zoneLabelCache;
+      _cachedZoneLabels = buildZoneLabels(
+        zones: zones,
+        bitmapCache: _zoneLabelCache,
+        zonesById: _zonesById,
+        onZoneTap: _onZoneTap,
+        onClusterTap: _onClusterTap,
+      );
+    }
+    return _cachedZoneLabels;
   }
 
   Future<void> _fetchZones({bool clearCache = false}) async {
@@ -400,7 +497,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       );
 
       List<Point> route;
-      double totalSeconds = 0;
+      double totalSeconds = _routeDurationSeconds;
       double totalMeters = 0;
 
       if (_routePolyline != null && _routePolyline!.length >= 2) {
@@ -430,13 +527,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         totalSeconds = dr.metadata.weight.timeWithTraffic.value ?? 0;
         totalMeters = dr.metadata.weight.distance.value ?? 0;
         setState(() => _routePolyline = route);
-      }
-
-      if (totalMeters == 0 && route.length >= 2) {
-        for (int i = 0; i < route.length - 1; i++) {
-          totalMeters += navDistanceM(route[i], route[i + 1]);
-        }
-        totalSeconds = totalMeters / 10;
       }
 
       await ref
@@ -568,7 +658,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             tilt: 40,
           ),
         ),
-        animation: const MapAnimation(duration: 0.6),
       );
     });
 
@@ -607,6 +696,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           await _mapController?.toggleTrafficLayer(visible: false);
           setState(() {
             _routePolyline = null;
+            _routeDurationSeconds = 0;
             _activeRouteZoneId = null;
           });
         },
@@ -664,10 +754,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           }
 
           setState(() {
-            _routePolyline = route.candidates.firstOrNull?.routePolyline;
+            final candidate = route.candidates.firstOrNull;
+            _routePolyline = candidate?.routePolyline;
+            _routeDurationSeconds =
+                candidate?.durationFromOriginSeconds?.toDouble() ?? 0;
             _activeRouteZoneId = route.selectedZoneId;
           });
 
+          if (!context.mounted) return;
           await showModalBottomSheet(
             context: context,
             isScrollControlled: true,
@@ -693,26 +787,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       candidates: (c) => c.map((e) => e.zoneId).toSet(),
       orElse: () => <int>{},
     );
+    _candidateIds = candidateIds;
 
-    final zoneObjects = buildZoneMapObjects(
-      zones: zones,
-      highlightedIds: candidateIds,
-      onTap: (zone) {
-        if (_isSelectingOnMap && candidateIds.contains(zone.zoneId)) {
-          _buildRouteForZone(zone.zoneId);
-          return;
-        }
-        if (_isParkingCardOpen) return;
-        setState(() => _isParkingCardOpen = true);
-        showParkingCard(
-          context,
-          zone,
-          onBuildRoute: () => _buildRouteForZone(zone.zoneId),
-        ).then((_) {
-          if (mounted) setState(() => _isParkingCardOpen = false);
-        });
-      },
-    );
+    final zoneObjects = _zoneObjectsFor(zones, candidateIds);
+    final zoneLabels = _zoneLabelsFor(zones);
 
     final mapObjects = <MapObject>[
       ...zoneObjects,
@@ -725,55 +803,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         ),
       if (_activeRouteZoneId != null)
         ...buildHighlightZone(zones, _activeRouteZoneId!),
-      if (_zoneLabelCache.isNotEmpty)
-        buildZoneLabels(
-          zones: zones,
-          bitmapCache: _zoneLabelCache,
-          zonesById: _zonesById,
-          onZoneTap: (zone) {
-            if (_isSelectingOnMap && candidateIds.contains(zone.zoneId)) {
-              _buildRouteForZone(zone.zoneId);
-              return;
-            }
-            if (_isParkingCardOpen) return;
-            setState(() => _isParkingCardOpen = true);
-            showParkingCard(
-              context,
-              zone,
-              onBuildRoute: () => _buildRouteForZone(zone.zoneId),
-            ).then((_) {
-              if (mounted) setState(() => _isParkingCardOpen = false);
-            });
-          },
-          onClusterTap: (_, cluster) {
-            if (cluster.placemarks.isEmpty) return;
-            final lats = cluster.placemarks.map((p) => p.point.latitude);
-            final lons = cluster.placemarks.map((p) => p.point.longitude);
-            final latMin = lats.reduce(math.min);
-            final latMax = lats.reduce(math.max);
-            final lonMin = lons.reduce(math.min);
-            final lonMax = lons.reduce(math.max);
-            final latPad = (latMax - latMin) * 0.6 + 0.003;
-            final lonPad = (lonMax - lonMin) * 0.6 + 0.003;
-            _mapController?.moveCamera(
-              CameraUpdate.newGeometry(
-                Geometry.fromBoundingBox(
-                  BoundingBox(
-                    southWest: Point(
-                      latitude: latMin - latPad,
-                      longitude: lonMin - lonPad,
-                    ),
-                    northEast: Point(
-                      latitude: latMax + latPad,
-                      longitude: lonMax + lonPad,
-                    ),
-                  ),
-                ),
-              ),
-              animation: const MapAnimation(duration: 0.5),
-            );
-          },
-        ),
+      ?zoneLabels,
       if (_userPosition != null && _userLocationBytes != null && !isNavigating)
         PlacemarkMapObject(
           mapId: const MapObjectId('user_location'),
