@@ -1,0 +1,200 @@
+name: Publish Android to Google Play
+
+on:
+  release:
+    types:
+      - published
+
+permissions:
+  contents: read
+
+concurrency:
+  group: google-play-publish
+  cancel-in-progress: false
+
+env:
+  PACKAGE_NAME: com.parktrack.mobile
+
+jobs:
+  publish:
+    name: Build and publish AAB
+    runs-on: ubuntu-latest
+
+    environment:
+      name: google-play-release
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.0
+
+      - name: Set up Java
+        uses: actions/setup-java@v5.5.0
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2.23.0
+        with:
+          channel: stable
+          cache: true
+
+      - name: Show versions
+        run: |
+          flutter --version
+          java --version
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Validate release version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+
+          TAG_VERSION="${RELEASE_TAG#v}"
+          APP_VERSION="$(awk '/^version:/ {print $2; exit}' pubspec.yaml)"
+          VERSION_NAME="${APP_VERSION%%+*}"
+          VERSION_CODE="${APP_VERSION#*+}"
+
+          if [ -z "$APP_VERSION" ]; then
+            echo "Version is missing in pubspec.yaml"
+            exit 1
+          fi
+
+          if [ "$TAG_VERSION" != "$VERSION_NAME" ]; then
+            echo "GitHub tag version: $TAG_VERSION"
+            echo "pubspec.yaml version: $VERSION_NAME"
+            echo "Release tag must match pubspec.yaml version"
+            exit 1
+          fi
+
+          if ! [[ "$VERSION_CODE" =~ ^[0-9]+$ ]]; then
+            echo "Invalid Android version code: $VERSION_CODE"
+            exit 1
+          fi
+
+          echo "Release version: $VERSION_NAME"
+          echo "Android version code: $VERSION_CODE"
+
+      - name: Restore Android signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+
+          : "${KEYSTORE_BASE64:?ANDROID_KEYSTORE_BASE64 is missing}"
+          : "${STORE_PASSWORD:?ANDROID_KEYSTORE_PASSWORD is missing}"
+          : "${KEY_PASSWORD:?ANDROID_KEY_PASSWORD is missing}"
+          : "${KEY_ALIAS:?ANDROID_KEY_ALIAS is missing}"
+
+          mkdir -p android/app
+
+          printf '%s' "$KEYSTORE_BASE64" \
+            | base64 --decode \
+            > android/app/upload-keystore.jks
+
+          printf '%s\n' \
+            "storePassword=$STORE_PASSWORD" \
+            "keyPassword=$KEY_PASSWORD" \
+            "keyAlias=$KEY_ALIAS" \
+            "storeFile=upload-keystore.jks" \
+            > android/key.properties
+
+      - name: Verify signing key
+        env:
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          keytool -list \
+            -keystore android/app/upload-keystore.jks \
+            -storepass "$STORE_PASSWORD" \
+            -alias "$KEY_ALIAS" \
+            > /dev/null
+
+          echo "Signing key is valid"
+
+      - name: Analyze project
+        run: flutter analyze
+
+      - name: Run tests
+        run: |
+          if [ -d test ]; then
+            flutter test
+          else
+            echo "No test directory, skipping tests"
+          fi
+
+      - name: Build signed Android App Bundle
+        run: flutter build appbundle --release
+
+      - name: Check generated bundle
+        run: |
+          ls -lh build/app/outputs/bundle/release/
+          test -f build/app/outputs/bundle/release/app-release.aab
+
+      - name: Prepare Google Play release notes
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+      
+          VERSION="${RELEASE_TAG#v}"
+          SOURCE_DIR="distribution/releases/$VERSION"
+          TARGET_DIR="build/google-play/whatsnew"
+      
+          echo "Preparing release notes for version: $VERSION"
+      
+          test -f "$SOURCE_DIR/whatsnew-ru-RU"
+          test -f "$SOURCE_DIR/whatsnew-en-US"
+      
+          mkdir -p "$TARGET_DIR"
+      
+          cp "$SOURCE_DIR/whatsnew-ru-RU" \
+            "$TARGET_DIR/whatsnew-ru-RU"
+      
+          cp "$SOURCE_DIR/whatsnew-en-US" \
+            "$TARGET_DIR/whatsnew-en-US"
+
+      - name: Validate Google Play release notes
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+      
+          directory = Path("build/google-play/whatsnew")
+          required_locales = ("ru-RU", "en-US")
+      
+          for locale in required_locales:
+              path = directory / f"whatsnew-{locale}"
+      
+              if not path.exists():
+                  raise SystemExit(f"Missing release notes: {path}")
+      
+              text = path.read_text(encoding="utf-8").strip()
+      
+              if not text:
+                  raise SystemExit(f"Release notes are empty: {path}")
+      
+              if len(text) > 500:
+                  raise SystemExit(
+                      f"{path} contains {len(text)} characters; maximum is 500"
+                  )
+      
+              print(f"{locale}: {len(text)} characters")
+          PY
+
+      - name: Upload to Google Play
+        uses: r0adkll/upload-google-play@v1.1.5
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: ${{ env.PACKAGE_NAME }}
+          releaseFiles: build/app/outputs/bundle/release/app-release.aab
+          tracks: alpha
+          status: completed
+          releaseName: ${{ github.event.release.tag_name }}
+          whatsNewDirectory: build/google-play/what
