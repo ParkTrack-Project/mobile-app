@@ -73,6 +73,7 @@ class AppStrings {
   final String alreadyHaveAccount;
   final String registration;
   final String resetPassword;
+  final String passwordResetInstructions;
   final String sendInstructions;
   final String hideFull;
   final String hidePrivate;
@@ -166,6 +167,7 @@ class AppStrings {
     required this.filters,
     required this.apply,
     required this.reset,
+    required this.passwordResetInstructions,
     required this.logout,
     required this.settings,
     required this.appearance,
@@ -311,6 +313,7 @@ class AppStrings {
     filters: 'Фильтры',
     apply: 'Применить',
     reset: 'Сбросить',
+    passwordResetInstructions: 'Введите свой email чтобы получить инструкции по сбросу пароля.',
     logout: 'Выйти',
     settings: 'Настройки',
     appearance: 'Внешний вид',
@@ -326,7 +329,7 @@ class AppStrings {
     langEnglish: 'English',
     langSystem: 'Системный',
     account: 'Аккаунт',
-    notAuthenticated: 'Не авторизован',
+    notAuthenticated: 'Неверные данные для входа',
     logoutConfirm: 'Вы уверены, что хотите выйти из аккаунта?',
     cancel: 'Отмена',
     inAppRoute: 'В приложении',
@@ -473,6 +476,7 @@ class AppStrings {
     filters: 'Filters',
     apply: 'Apply',
     reset: 'Reset',
+    passwordResetInstructions: 'Enter your email to receive password reset instructions.',
     logout: 'Logout',
     settings: 'Settings',
     appearance: 'Appearance',
@@ -488,7 +492,7 @@ class AppStrings {
     langEnglish: 'English',
     langSystem: 'System',
     account: 'Account',
-    notAuthenticated: 'Not authenticated',
+    notAuthenticated: 'Invalid login credentials',
     logoutConfirm: 'Are you sure you want to sign out?',
     cancel: 'Cancel',
     inAppRoute: 'In-app',

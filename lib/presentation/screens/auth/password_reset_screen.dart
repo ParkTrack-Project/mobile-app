@@ -64,7 +64,7 @@ class _PasswordResetScreenState extends ConsumerState<PasswordResetScreen> {
                   const Icon(Icons.lock_reset_outlined, size: 64, color: Color(0xFF2E7D32)),
                   const SizedBox(height: 16),
                   Text(
-                    'Enter your email to receive password reset instructions.',
+                    s.passwordResetInstructions,
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
