@@ -6,7 +6,7 @@ on:
       - published
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: google-play-publish
@@ -136,10 +136,109 @@ jobs:
       - name: Build signed Android App Bundle
         run: flutter build appbundle --release
 
-      - name: Check generated bundle
+      - name: Build signed Android APK
+        run: flutter build apk --release
+
+      - name: Check generated Android artifacts
         run: |
           ls -lh build/app/outputs/bundle/release/
+          ls -lh build/app/outputs/flutter-apk/
           test -f build/app/outputs/bundle/release/app-release.aab
+          test -f build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Prepare and sign GitHub release APK
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          KEYSTORE_PATH: android/app/upload-keystore.jks
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+
+          RELEASE_DIR="build/github-release"
+          APK_PATH="$RELEASE_DIR/ParkTrack-${RELEASE_TAG}.apk"
+          SIGNATURE_PATH="$APK_PATH.sig"
+
+          mkdir -p "$RELEASE_DIR"
+          cp build/app/outputs/flutter-apk/app-release.apk "$APK_PATH"
+
+          cat > /tmp/SignReleaseArtifact.java <<'JAVA'
+          import java.io.File;
+          import java.io.InputStream;
+          import java.nio.file.Files;
+          import java.nio.file.Path;
+          import java.security.KeyStore;
+          import java.security.PrivateKey;
+          import java.security.Signature;
+          import java.security.cert.Certificate;
+          import java.util.Base64;
+
+          public final class SignReleaseArtifact {
+            private static void update(Signature signature, Path path) throws Exception {
+              try (InputStream input = Files.newInputStream(path)) {
+                byte[] buffer = new byte[64 * 1024];
+                int read;
+                while ((read = input.read(buffer)) != -1) {
+                  signature.update(buffer, 0, read);
+                }
+              }
+            }
+
+            public static void main(String[] args) throws Exception {
+              Path artifact = Path.of(args[0]);
+              Path output = Path.of(args[1]);
+              char[] storePassword = System.getenv("STORE_PASSWORD").toCharArray();
+              char[] keyPassword = System.getenv("KEY_PASSWORD").toCharArray();
+              String alias = System.getenv("KEY_ALIAS");
+
+              KeyStore keyStore = KeyStore.getInstance(
+                  new File(System.getenv("KEYSTORE_PATH")),
+                  storePassword
+              );
+              PrivateKey privateKey = (PrivateKey) keyStore.getKey(alias, keyPassword);
+              Certificate certificate = keyStore.getCertificate(alias);
+
+              String algorithm = switch (privateKey.getAlgorithm()) {
+                case "RSA" -> "SHA256withRSA";
+                case "EC" -> "SHA256withECDSA";
+                case "DSA" -> "SHA256withDSA";
+                default -> throw new IllegalArgumentException(
+                    "Unsupported signing key algorithm: " + privateKey.getAlgorithm()
+                );
+              };
+
+              Signature signer = Signature.getInstance(algorithm);
+              signer.initSign(privateKey);
+              update(signer, artifact);
+              byte[] signatureBytes = signer.sign();
+              Files.write(output, Base64.getEncoder().encode(signatureBytes));
+
+              Signature verifier = Signature.getInstance(algorithm);
+              verifier.initVerify(certificate);
+              update(verifier, artifact);
+              if (!verifier.verify(Base64.getDecoder().decode(Files.readAllBytes(output)))) {
+                throw new IllegalStateException("Generated APK signature is invalid");
+              }
+
+              System.out.println("Created and verified " + algorithm + " signature");
+            }
+          }
+          JAVA
+
+          java /tmp/SignReleaseArtifact.java "$APK_PATH" "$SIGNATURE_PATH"
+
+      - name: Attach APK and signature to GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+
+          gh release upload "$RELEASE_TAG" \
+            "build/github-release/ParkTrack-${RELEASE_TAG}.apk" \
+            "build/github-release/ParkTrack-${RELEASE_TAG}.apk.sig" \
+            --clobber
 
       - name: Prepare Google Play release notes
         env:
