@@ -78,10 +78,16 @@ class TimeSelectorWidget extends ConsumerWidget {
     final h = dt.hour.toString().padLeft(2, '0');
     final m = dt.minute.toString().padLeft(2, '0');
     final time = '$h:$m';
-    if (dtDay == DateTime(now.year, now.month, now.day)) return '${s.today} $time';
-    if (dtDay == DateTime(tomorrow.year, tomorrow.month, tomorrow.day)) return '${s.tomorrow} $time';
-    if (dtDay == DateTime(yesterday.year, yesterday.month, yesterday.day)) return '${s.yesterday} $time';
-    
+    if (dtDay == DateTime(now.year, now.month, now.day)) {
+      return '${s.today} $time';
+    }
+    if (dtDay == DateTime(tomorrow.year, tomorrow.month, tomorrow.day)) {
+      return '${s.tomorrow} $time';
+    }
+    if (dtDay == DateTime(yesterday.year, yesterday.month, yesterday.day)) {
+      return '${s.yesterday} $time';
+    }
+
     return '${dt.day} ${s.monthNames[dt.month]} $time';
   }
 }
@@ -119,7 +125,13 @@ class _TimePickerSheetState extends ConsumerState<_TimePickerSheet> {
   static DateTime _snapTo30(DateTime dt) {
     final snapped = ((dt.minute / _step).round() * _step) % 60;
     final hourAdd = ((dt.minute / _step).round() * _step) ~/ 60;
-    return DateTime(dt.year, dt.month, dt.day, (dt.hour + hourAdd) % 24, snapped);
+    return DateTime(
+      dt.year,
+      dt.month,
+      dt.day,
+      (dt.hour + hourAdd) % 24,
+      snapped,
+    );
   }
 
   DateTime get _result {
@@ -130,11 +142,7 @@ class _TimePickerSheetState extends ConsumerState<_TimePickerSheet> {
   @override
   Widget build(BuildContext context) {
     final s = ref.watch(l10nProvider);
-    final days = [
-      (-1, s.yesterday),
-      (0, s.today),
-      (1, s.tomorrow),
-    ];
+    final days = [(-1, s.yesterday), (0, s.today), (1, s.tomorrow)];
 
     return Container(
       decoration: BoxDecoration(
@@ -142,13 +150,17 @@ class _TimePickerSheetState extends ConsumerState<_TimePickerSheet> {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       ),
       padding: EdgeInsets.fromLTRB(
-        20, 16, 20, MediaQuery.of(context).padding.bottom + 20,
+        20,
+        16,
+        20,
+        MediaQuery.of(context).padding.bottom + 20,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 40, height: 4,
+            width: 40,
+            height: 4,
             decoration: BoxDecoration(
               color: Colors.grey[300],
               borderRadius: BorderRadius.circular(2),
@@ -173,7 +185,11 @@ class _TimePickerSheetState extends ConsumerState<_TimePickerSheet> {
                     margin: const EdgeInsets.symmetric(horizontal: 4),
                     padding: const EdgeInsets.symmetric(vertical: 10),
                     decoration: BoxDecoration(
-                      color: sel ? AppColors.primary : Theme.of(context).colorScheme.surfaceVariant,
+                      color: sel
+                          ? AppColors.primary
+                          : Theme.of(
+                              context,
+                            ).colorScheme.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Center(
@@ -182,7 +198,9 @@ class _TimePickerSheetState extends ConsumerState<_TimePickerSheet> {
                         style: TextStyle(
                           fontWeight: FontWeight.w600,
                           fontSize: 14,
-                          color: sel ? Colors.white : Theme.of(context).colorScheme.onSurface,
+                          color: sel
+                              ? Colors.white
+                              : Theme.of(context).colorScheme.onSurface,
                         ),
                       ),
                     ),
@@ -205,10 +223,15 @@ class _TimePickerSheetState extends ConsumerState<_TimePickerSheet> {
                 minuteInterval: _step,
                 initialDateTime: _time,
                 onDateTimeChanged: (dt) {
-                  setState(() => _time = DateTime(
-                        _time.year, _time.month, _time.day,
-                        dt.hour, dt.minute,
-                      ));
+                  setState(
+                    () => _time = DateTime(
+                      _time.year,
+                      _time.month,
+                      _time.day,
+                      dt.hour,
+                      dt.minute,
+                    ),
+                  );
                 },
               ),
             ),
@@ -261,8 +284,12 @@ class _Chip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final borderColor = active ? AppColors.primary : Theme.of(context).dividerColor;
-    final textColor = active ? AppColors.primary : Theme.of(context).colorScheme.onSurface;
+    final borderColor = active
+        ? AppColors.primary
+        : Theme.of(context).dividerColor;
+    final textColor = active
+        ? AppColors.primary
+        : Theme.of(context).colorScheme.onSurface;
     final iconColor = active ? AppColors.primary : Theme.of(context).hintColor;
 
     return GestureDetector(

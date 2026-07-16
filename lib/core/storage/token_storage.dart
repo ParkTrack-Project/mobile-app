@@ -8,27 +8,59 @@ class TokenStorage {
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
 
-  Future<void> saveAccessToken(String token) =>
-      _storage.write(key: _keyAccess, value: token);
+  String? _cachedAccessToken;
+  bool _accessTokenLoaded = false;
+  Future<String?>? _accessTokenLoad;
+  int _accessTokenRevision = 0;
 
-  Future<String?> getAccessToken() => _storage.read(key: _keyAccess);
+  Future<void> saveAccessToken(String token) async {
+    _accessTokenRevision++;
+    _cachedAccessToken = token;
+    _accessTokenLoaded = true;
+    await _storage.write(key: _keyAccess, value: token);
+  }
+
+  Future<String?> getAccessToken() {
+    if (_accessTokenLoaded) return Future.value(_cachedAccessToken);
+    return _accessTokenLoad ??= _loadAccessToken(_accessTokenRevision);
+  }
+
+  Future<String?> _loadAccessToken(int revision) async {
+    try {
+      final storedToken = await _storage.read(key: _keyAccess);
+      if (revision == _accessTokenRevision) {
+        _cachedAccessToken = storedToken;
+        _accessTokenLoaded = true;
+      }
+      return _cachedAccessToken;
+    } finally {
+      _accessTokenLoad = null;
+    }
+  }
 
   Future<void> saveCredentials(String login, String password) async {
     await _storage.write(key: _keyLogin, value: login);
     await _storage.write(key: _keyPassword, value: password);
-    print("Credentials saved.");
   }
 
   Future<String?> getLogin() => _storage.read(key: _keyLogin);
   Future<String?> getPassword() => _storage.read(key: _keyPassword);
 
   Future<void> clearAll() async {
+    _accessTokenRevision++;
+    _cachedAccessToken = null;
+    _accessTokenLoaded = true;
     await _storage.delete(key: _keyAccess);
     await _storage.delete(key: _keyLogin);
     await _storage.delete(key: _keyPassword);
   }
 
-  Future<void> clearTokens() => _storage.delete(key: _keyAccess);
+  Future<void> clearTokens() async {
+    _accessTokenRevision++;
+    _cachedAccessToken = null;
+    _accessTokenLoaded = true;
+    await _storage.delete(key: _keyAccess);
+  }
 
   Future<bool> hasToken() async => (await getAccessToken()) != null;
 }

@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:yandex_mapkit/yandex_mapkit.dart';
 import '../api/zones_api.dart';
 import '../api/occupancy_api.dart';
@@ -12,17 +13,39 @@ class ZonesRepository {
 
   ZonesRepository(this._zonesApi, this._occupancyApi, this._forecastsApi);
 
-  Future<List<Zone>> getZonesNow(String bbox) async {
-    final dtos = await _zonesApi.getZones(bbox: bbox, view: 'map');
+  Future<List<Zone>> getZonesNow(
+    String bbox, {
+    CancelToken? cancelToken,
+  }) async {
+    final dtos = await _zonesApi.getZones(
+      bbox: bbox,
+      view: 'map',
+      cancelToken: cancelToken,
+    );
     return dtos.map(_mapZone).toList();
   }
 
-  Future<List<Zone>> getZonesPast(String bbox, DateTime at) async {
+  Future<List<Zone>> getZonesPast(
+    String bbox,
+    DateTime at, {
+    CancelToken? cancelToken,
+  }) async {
     final atStr = at.toUtc().toIso8601String();
-    final zonesFuture = _zonesApi.getZones(bbox: bbox, view: 'map');
+    final zonesFuture = _zonesApi.getZones(
+      bbox: bbox,
+      view: 'map',
+      cancelToken: cancelToken,
+    );
     List<Map<String, dynamic>> items;
     try {
-      items = await _occupancyApi.getOccupancyMap(bbox: bbox, at: atStr);
+      items = await _occupancyApi.getOccupancyMap(
+        bbox: bbox,
+        at: atStr,
+        cancelToken: cancelToken,
+      );
+    } on DioException catch (error) {
+      if (CancelToken.isCancel(error)) rethrow;
+      items = [];
     } catch (_) {
       items = [];
     }
@@ -44,11 +67,14 @@ class ZonesRepository {
         capacity: occ['capacity'] as int? ?? dto.capacity,
         freeCount: occ['free_count'] as int? ?? dto.freeCount,
         confidence: (occ['confidence'] as num?)?.toDouble() ?? dto.confidence,
-        confidenceLevel: occ['confidence_level'] as String? ?? dto.confidenceLevel,
+        confidenceLevel:
+            occ['confidence_level'] as String? ?? dto.confidenceLevel,
         pay: dto.pay,
         geometry: _parseGeometry(dto.geometry),
         isActive: occ['is_active'] as bool? ?? dto.isActive,
-        locationType: _parseLocationType(occ['location_type'] as String? ?? dto.locationType),
+        locationType: _parseLocationType(
+          occ['location_type'] as String? ?? dto.locationType,
+        ),
         isPrivate: dto.isPrivate,
         isAccessible: occ['is_accessible'] as bool? ?? dto.isAccessible,
         occupancyUpdatedAt: occ['observed_at'] != null
@@ -58,15 +84,30 @@ class ZonesRepository {
     }).toList();
   }
 
-  Future<List<Zone>> getZonesFuture(String bbox, DateTime at) async {
+  Future<List<Zone>> getZonesFuture(
+    String bbox,
+    DateTime at, {
+    CancelToken? cancelToken,
+  }) async {
     final atStr = at.toUtc().toIso8601String();
-    final zonesFuture = _zonesApi.getZones(bbox: bbox, view: 'map');
-    final forecastsFuture = _forecastsApi.getForecastsMap(bbox: bbox, at: atStr);
+    final zonesFuture = _zonesApi.getZones(
+      bbox: bbox,
+      view: 'map',
+      cancelToken: cancelToken,
+    );
+    final forecastsFuture = _forecastsApi.getForecastsMap(
+      bbox: bbox,
+      at: atStr,
+      cancelToken: cancelToken,
+    );
 
     final zoneDtos = await zonesFuture;
     List<Map<String, dynamic>> forecasts;
     try {
       forecasts = await forecastsFuture;
+    } on DioException catch (error) {
+      if (CancelToken.isCancel(error)) rethrow;
+      forecasts = [];
     } catch (_) {
       forecasts = [];
     }
@@ -92,78 +133,85 @@ class ZonesRepository {
   }
 
   Zone _mapZone(ZoneMapItemDto dto) => Zone(
-        zoneId: dto.zoneId,
-        zoneType: _parseZoneType(dto.zoneType),
-        capacity: dto.capacity,
-        freeCount: dto.freeCount,
-        confidence: dto.confidence,
-        pay: dto.pay,
-        geometry: _parseGeometry(dto.geometry),
-        isActive: dto.isActive,
-        locationType: _parseLocationType(dto.locationType),
-        isPrivate: dto.isPrivate,
-        isAccessible: dto.isAccessible,
-        confidenceLevel: dto.confidenceLevel,
-        occupancyUpdatedAt: dto.occupancyUpdatedAt != null
-            ? DateTime.tryParse(dto.occupancyUpdatedAt!)
-            : null,
-      );
+    zoneId: dto.zoneId,
+    zoneType: _parseZoneType(dto.zoneType),
+    capacity: dto.capacity,
+    freeCount: dto.freeCount,
+    confidence: dto.confidence,
+    pay: dto.pay,
+    geometry: _parseGeometry(dto.geometry),
+    isActive: dto.isActive,
+    locationType: _parseLocationType(dto.locationType),
+    isPrivate: dto.isPrivate,
+    isAccessible: dto.isAccessible,
+    confidenceLevel: dto.confidenceLevel,
+    occupancyUpdatedAt: dto.occupancyUpdatedAt != null
+        ? DateTime.tryParse(dto.occupancyUpdatedAt!)
+        : null,
+  );
 
   Zone _mapFromFull(ZoneDto dto) => Zone(
-        zoneId: dto.zoneId,
-        zoneType: _parseZoneType(dto.zoneType),
-        capacity: dto.capacity,
-        freeCount: dto.freeCount,
-        confidence: dto.confidence,
-        pay: dto.pay,
-        geometry: _parseGeometry(dto.geometry),
-        isActive: dto.isActive,
-        locationType: _parseLocationType(dto.locationType),
-        isPrivate: dto.isPrivate,
-        isAccessible: dto.isAccessible,
-        confidenceLevel: dto.confidenceLevel,
-        occupancyUpdatedAt: dto.occupancyUpdatedAt != null
-            ? DateTime.tryParse(dto.occupancyUpdatedAt!)
-            : null,
-      );
+    zoneId: dto.zoneId,
+    zoneType: _parseZoneType(dto.zoneType),
+    capacity: dto.capacity,
+    freeCount: dto.freeCount,
+    confidence: dto.confidence,
+    pay: dto.pay,
+    geometry: _parseGeometry(dto.geometry),
+    isActive: dto.isActive,
+    locationType: _parseLocationType(dto.locationType),
+    isPrivate: dto.isPrivate,
+    isAccessible: dto.isAccessible,
+    confidenceLevel: dto.confidenceLevel,
+    occupancyUpdatedAt: dto.occupancyUpdatedAt != null
+        ? DateTime.tryParse(dto.occupancyUpdatedAt!)
+        : null,
+  );
 
-  Zone _mapZoneWithForecast(ZoneMapItemDto dto, Map<String, dynamic> forecast) => Zone(
-        zoneId: dto.zoneId,
-        zoneType: _parseZoneType(dto.zoneType),
-        capacity: (forecast['capacity'] as num?)?.toInt() ?? dto.capacity,
-        freeCount: (forecast['predicted_free_count'] as num?)?.toInt() ?? dto.freeCount,
-        confidence: (forecast['confidence'] as num?)?.toDouble() ?? dto.confidence,
-        pay: (forecast['pay'] as num?)?.toInt() ?? dto.pay,
-        geometry: forecast['geometry'] != null
-            ? _parseGeometry(forecast['geometry'] as Map<String, dynamic>)
-            : _parseGeometry(dto.geometry),
-        isActive: forecast['is_active'] as bool? ?? dto.isActive,
-        locationType: _parseLocationType(forecast['location_type'] as String? ?? dto.locationType),
-        isPrivate: dto.isPrivate,
-        isAccessible: forecast['is_accessible'] as bool? ?? dto.isAccessible,
-        confidenceLevel: forecast['confidence_level'] as String? ?? dto.confidenceLevel,
-        occupancyUpdatedAt: dto.occupancyUpdatedAt != null
-            ? DateTime.tryParse(dto.occupancyUpdatedAt!)
-            : null,
-        forecastFor: forecast['predicted_for'] != null
-            ? DateTime.tryParse(forecast['predicted_for'] as String)
-            : null,
-        forecastGeneratedAt: forecast['generated_at'] != null
-            ? DateTime.tryParse(forecast['generated_at'] as String)
-            : null,
-      );
+  Zone _mapZoneWithForecast(
+    ZoneMapItemDto dto,
+    Map<String, dynamic> forecast,
+  ) => Zone(
+    zoneId: dto.zoneId,
+    zoneType: _parseZoneType(dto.zoneType),
+    capacity: (forecast['capacity'] as num?)?.toInt() ?? dto.capacity,
+    freeCount:
+        (forecast['predicted_free_count'] as num?)?.toInt() ?? dto.freeCount,
+    confidence: (forecast['confidence'] as num?)?.toDouble() ?? dto.confidence,
+    pay: (forecast['pay'] as num?)?.toInt() ?? dto.pay,
+    geometry: forecast['geometry'] != null
+        ? _parseGeometry(forecast['geometry'] as Map<String, dynamic>)
+        : _parseGeometry(dto.geometry),
+    isActive: forecast['is_active'] as bool? ?? dto.isActive,
+    locationType: _parseLocationType(
+      forecast['location_type'] as String? ?? dto.locationType,
+    ),
+    isPrivate: dto.isPrivate,
+    isAccessible: forecast['is_accessible'] as bool? ?? dto.isAccessible,
+    confidenceLevel:
+        forecast['confidence_level'] as String? ?? dto.confidenceLevel,
+    occupancyUpdatedAt: dto.occupancyUpdatedAt != null
+        ? DateTime.tryParse(dto.occupancyUpdatedAt!)
+        : null,
+    forecastFor: forecast['predicted_for'] != null
+        ? DateTime.tryParse(forecast['predicted_for'] as String)
+        : null,
+    forecastGeneratedAt: forecast['generated_at'] != null
+        ? DateTime.tryParse(forecast['generated_at'] as String)
+        : null,
+  );
 
   ZoneType _parseZoneType(String type) =>
       type == 'parallel' ? ZoneType.parallel : ZoneType.standard;
 
   LocationType? _parseLocationType(String? type) => switch (type) {
-        'street' => LocationType.street,
-        'yard' => LocationType.yard,
-        'open_lot' => LocationType.openLot,
-        'underground' => LocationType.underground,
-        'multilevel' => LocationType.multilevel,
-        _ => null,
-      };
+    'street' => LocationType.street,
+    'yard' => LocationType.yard,
+    'open_lot' => LocationType.openLot,
+    'underground' => LocationType.underground,
+    'multilevel' => LocationType.multilevel,
+    _ => null,
+  };
 
   List<Point> _parseGeometry(Map<String, dynamic> geometry) {
     final coordinates = geometry['coordinates'];
@@ -172,7 +220,10 @@ class ZonesRepository {
     return ring.map((c) {
       final coord = c as List;
       // GeoJSON: [longitude, latitude] → Yandex: Point(latitude, longitude)
-      return Point(latitude: (coord[1] as num).toDouble(), longitude: (coord[0] as num).toDouble());
+      return Point(
+        latitude: (coord[1] as num).toDouble(),
+        longitude: (coord[0] as num).toDouble(),
+      );
     }).toList();
   }
 }

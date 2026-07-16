@@ -7,21 +7,34 @@ class RoutingApi {
   RoutingApi(this._dio);
 
   Future<RoutingSearchResponseDto> searchParking(
-    RoutingSearchRequestDto request,
-  ) async {
+    RoutingSearchRequestDto request, {
+    CancelToken? cancelToken,
+  }) async {
     final data = request.toJson()..removeWhere((_, v) => v == null);
-    final response = await _dio.post('/routing/search', data: data);
+    final response = await _dio.post(
+      '/routing/search',
+      data: data,
+      cancelToken: cancelToken,
+    );
     return RoutingSearchResponseDto.fromJson(
-        response.data as Map<String, dynamic>);
+      response.data as Map<String, dynamic>,
+    );
   }
 
-  Future<RouteDto> createRoute(RoutingSearchRequestDto request,
-      {int? selectedZoneId}) async {
+  Future<RouteDto> createRoute(
+    RoutingSearchRequestDto request, {
+    int? selectedZoneId,
+    CancelToken? cancelToken,
+  }) async {
     final data = {
       ...request.toJson()..removeWhere((_, v) => v == null),
       'selected_zone_id': ?selectedZoneId,
     };
-    final response = await _dio.post('/routing/new', data: data);
+    final response = await _dio.post(
+      '/routing/new',
+      data: data,
+      cancelToken: cancelToken,
+    );
     return RouteDto.fromJson(response.data as Map<String, dynamic>);
   }
 
@@ -35,10 +48,10 @@ class RoutingApi {
     String? status,
     int? selectedZoneId,
   }) async {
-    final response = await _dio.put('/routing/$routeId', data: {
-      'status': ?status,
-      'selected_zone_id': ?selectedZoneId,
-    });
+    final response = await _dio.put(
+      '/routing/$routeId',
+      data: {'status': ?status, 'selected_zone_id': ?selectedZoneId},
+    );
     return RouteDto.fromJson(response.data as Map<String, dynamic>);
   }
 }
