@@ -1,11 +1,13 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:math' show max;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:yandex_mapkit/yandex_mapkit.dart';
 import '../../core/utils/nav_math.dart';
 import '../../core/localization/app_localizations.dart';
+import '../../core/services/yandex_web_route.dart';
 
 class NavigationData {
   final int zoneId;
@@ -94,9 +96,20 @@ class NavigationNotifier extends Notifier<NavigationData?> {
     _smoothHeading = null;
     _offRouteSamples = 0;
 
+    final initialPosition = route.first;
+    state = NavigationData(
+      zoneId: zoneId,
+      route: route,
+      remainingMeters: _totalMeters,
+      remainingSeconds: _totalSeconds.round(),
+      speedKmh: 0,
+      currentPosition: initialPosition,
+      heading: 0,
+    );
+
     _sub = Geolocator.getPositionStream(
       locationSettings: _buildLocationSettings(s),
-    ).listen(_onPosition);
+    ).listen(_onPosition, onError: (_) {});
   }
 
   void stop() {
@@ -115,7 +128,7 @@ class NavigationNotifier extends Notifier<NavigationData?> {
   }
 
   LocationSettings _buildLocationSettings(AppStrings s) {
-    if (Platform.isAndroid) {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       return AndroidSettings(
         accuracy: LocationAccuracy.high,
         distanceFilter: 5,
@@ -235,35 +248,56 @@ class NavigationNotifier extends Notifier<NavigationData?> {
     );
 
     try {
-      await _drivingSession?.close();
-      final rws = YandexDriving.requestRoutes(
-        points: [
-          RequestPoint(
-            point: from,
-            requestPointType: RequestPointType.wayPoint,
-          ),
-          RequestPoint(
-            point: Point(latitude: _destLat, longitude: _destLon),
-            requestPointType: RequestPointType.wayPoint,
-          ),
-        ],
-        drivingOptions: const DrivingOptions(routesCount: 1),
-      );
-      _drivingSession = rws.session;
-      final result = await rws.result;
-      await rws.session.close();
-      _drivingSession = null;
+      if (kIsWeb) {
+        final webRoute = await requestYandexWebRoute(
+          fromLatitude: from.latitude,
+          fromLongitude: from.longitude,
+          toLatitude: _destLat,
+          toLongitude: _destLon,
+        );
+        if (webRoute == null) {
+          throw StateError('Yandex Maps did not return a route');
+        }
+        if (state == null || generation != _navigationGeneration) {
+          return;
+        }
+        _route = webRoute.points;
+        _totalSeconds = webRoute.durationSeconds;
+        _totalMeters = webRoute.distanceMeters;
+      } else {
+        await _drivingSession?.close();
+        final rws = YandexDriving.requestRoutes(
+          points: [
+            RequestPoint(
+              point: from,
+              requestPointType: RequestPointType.wayPoint,
+            ),
+            RequestPoint(
+              point: Point(latitude: _destLat, longitude: _destLon),
+              requestPointType: RequestPointType.wayPoint,
+            ),
+          ],
+          drivingOptions: const DrivingOptions(routesCount: 1),
+        );
+        _drivingSession = rws.session;
+        final result = await rws.result;
+        await rws.session.close();
+        _drivingSession = null;
 
-      final dr = result.routes?.firstOrNull;
-      if (dr == null || state == null || generation != _navigationGeneration) {
-        return;
+        final dr = result.routes?.firstOrNull;
+        if (dr == null) {
+          throw StateError('Yandex MapKit did not return a route');
+        }
+        if (state == null || generation != _navigationGeneration) {
+          return;
+        }
+        _route = dr.geometry;
+        _totalSeconds =
+            dr.metadata.weight.timeWithTraffic.value ?? _totalSeconds;
+        _totalMeters = dr.metadata.weight.distance.value ?? _totalMeters;
       }
-
-      _route = dr.geometry;
       _preparedRoute = PreparedRoute(_route);
       _segmentIndex = 0;
-      _totalSeconds = dr.metadata.weight.timeWithTraffic.value ?? _totalSeconds;
-      _totalMeters = dr.metadata.weight.distance.value ?? _totalMeters;
 
       if (_totalMeters == 0 && _preparedRoute!.isValid) {
         _totalMeters = _preparedRoute!.totalDistance;

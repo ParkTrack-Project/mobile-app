@@ -4,7 +4,7 @@
     "start_url": ".",
     "display": "standalone",
     "background_color": "#121212FF",
-    "theme_color": "#2E7D32FF",
+    "theme_color": "#121212FF",
     "description": "Available parking map.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,

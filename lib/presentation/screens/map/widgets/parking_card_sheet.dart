@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pointer_interceptor/pointer_interceptor.dart';
 import '../../../../domain/models/zone.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../presentation/providers/time_selector_provider.dart';
@@ -14,7 +16,10 @@ Future<void> showParkingCard(
   return showModalBottomSheet(
     context: context,
     isScrollControlled: true,
-    builder: (_) => _ParkingCardSheet(zone: zone, onBuildRoute: onBuildRoute),
+    builder: (_) => PointerInterceptor(
+      intercepting: kIsWeb,
+      child: _ParkingCardSheet(zone: zone, onBuildRoute: onBuildRoute),
+    ),
   );
 }
 
@@ -28,21 +33,29 @@ class _ParkingCardSheet extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(l10nProvider);
     final timeMode = ref.watch(timeSelectorProvider);
-    final isFuture = timeMode.maybeWhen(future: (_) => true, orElse: () => false);
+    final isFuture = timeMode.maybeWhen(
+      future: (_) => true,
+      orElse: () => false,
+    );
     final isPast = timeMode.maybeWhen(past: (_) => true, orElse: () => false);
-    final userSelectedAt = timeMode.maybeWhen(future: (at) => at, orElse: () => null);
+    final userSelectedAt = timeMode.maybeWhen(
+      future: (at) => at,
+      orElse: () => null,
+    );
 
     final zonesAsync = ref.watch(rawZonesProvider);
     final isLoading = zonesAsync is AsyncLoading;
-    final currentZone = zonesAsync.valueOrNull
+    final currentZone =
+        zonesAsync.valueOrNull
             ?.where((z) => z.zoneId == zone.zoneId)
             .firstOrNull ??
         zone;
 
     return Padding(
       padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom +
-                MediaQuery.of(context).padding.bottom,
+        bottom:
+            MediaQuery.of(context).viewInsets.bottom +
+            MediaQuery.of(context).padding.bottom,
       ),
       child: SingleChildScrollView(
         child: Container(
@@ -100,8 +113,9 @@ class _ParkingCardSheet extends ConsumerWidget {
                   value: currentZone.hasForecast
                       ? '${currentZone.freeCount} / ${currentZone.capacity} ${s.free.toLowerCase()}'
                       : s.noForecast,
-                  valueColor:
-                      currentZone.hasForecast ? null : AppColors.textSecondary,
+                  valueColor: currentZone.hasForecast
+                      ? null
+                      : AppColors.textSecondary,
                 ),
                 if (isFuture &&
                     currentZone.hasForecast &&
@@ -125,8 +139,7 @@ class _ParkingCardSheet extends ConsumerWidget {
                   value: currentZone.pay == 0
                       ? s.free
                       : '${currentZone.pay} ₽/${s.hourSign}',
-                  valueColor:
-                      currentZone.pay == 0 ? AppColors.primary : null,
+                  valueColor: currentZone.pay == 0 ? AppColors.primary : null,
                 ),
                 if (!isPast)
                   _InfoRow(
@@ -190,12 +203,12 @@ class _ParkingCardSheet extends ConsumerWidget {
   String _confidenceLabel(Zone z) => '${(z.confidence * 100).round()}%';
 
   String _locationTypeLabel(LocationType type, AppStrings s) => switch (type) {
-        LocationType.street => s.street,
-        LocationType.yard => s.yard,
-        LocationType.openLot => s.openLot,
-        LocationType.underground => s.underground,
-        LocationType.multilevel => s.multilevel,
-      };
+    LocationType.street => s.street,
+    LocationType.yard => s.yard,
+    LocationType.openLot => s.openLot,
+    LocationType.underground => s.underground,
+    LocationType.multilevel => s.multilevel,
+  };
 
   static String _formatTime(DateTime dt) {
     final l = dt.toLocal();
@@ -285,9 +298,10 @@ class _InfoRow extends StatelessWidget {
         children: [
           Icon(icon, size: 20, color: Theme.of(context).hintColor),
           const SizedBox(width: 12),
-          Text(label,
-              style:
-                  TextStyle(color: Theme.of(context).hintColor, fontSize: 14)),
+          Text(
+            label,
+            style: TextStyle(color: Theme.of(context).hintColor, fontSize: 14),
+          ),
           const Spacer(),
           Text(
             value,
@@ -319,9 +333,14 @@ class _Badge extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: color.withValues(alpha: 0.5)),
       ),
-      child: Text(text,
-          style: TextStyle(
-              color: color, fontSize: 12, fontWeight: FontWeight.w600)),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: color,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
     );
   }
 }

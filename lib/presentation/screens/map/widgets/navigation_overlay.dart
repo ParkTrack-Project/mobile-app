@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pointer_interceptor/pointer_interceptor.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/nav_math.dart';
 import '../../../../core/localization/app_localizations.dart';
@@ -36,7 +38,11 @@ class NavigationBottomBar extends ConsumerWidget {
 // ─── Turn instruction card ─────────────────────────────────────────────────
 
 class _TurnCard extends ConsumerWidget {
-  const _TurnCard({required this.turn, required this.isOffRoute, required this.hasArrived});
+  const _TurnCard({
+    required this.turn,
+    required this.isOffRoute,
+    required this.hasArrived,
+  });
 
   final NavTurn? turn;
   final bool isOffRoute;
@@ -128,24 +134,24 @@ class _TurnCard extends ConsumerWidget {
   }
 
   IconData _turnIcon(TurnDirection d) => switch (d) {
-        TurnDirection.left => Icons.turn_left_rounded,
-        TurnDirection.slightLeft => Icons.turn_slight_left_rounded,
-        TurnDirection.right => Icons.turn_right_rounded,
-        TurnDirection.slightRight => Icons.turn_slight_right_rounded,
-        TurnDirection.uTurn => Icons.u_turn_left_rounded,
-        TurnDirection.arrive => Icons.local_parking,
-        TurnDirection.straight => Icons.arrow_upward_rounded,
-      };
+    TurnDirection.left => Icons.turn_left_rounded,
+    TurnDirection.slightLeft => Icons.turn_slight_left_rounded,
+    TurnDirection.right => Icons.turn_right_rounded,
+    TurnDirection.slightRight => Icons.turn_slight_right_rounded,
+    TurnDirection.uTurn => Icons.u_turn_left_rounded,
+    TurnDirection.arrive => Icons.local_parking,
+    TurnDirection.straight => Icons.arrow_upward_rounded,
+  };
 
   String _turnLabel(TurnDirection d, AppStrings s) => switch (d) {
-        TurnDirection.left => s.turnLeft,
-        TurnDirection.slightLeft => s.keepLeft,
-        TurnDirection.right => s.turnRight,
-        TurnDirection.slightRight => s.keepRight,
-        TurnDirection.uTurn => s.uTurn,
-        TurnDirection.arrive => s.arrival,
-        TurnDirection.straight => s.straightAhead,
-      };
+    TurnDirection.left => s.turnLeft,
+    TurnDirection.slightLeft => s.keepLeft,
+    TurnDirection.right => s.turnRight,
+    TurnDirection.slightRight => s.keepRight,
+    TurnDirection.uTurn => s.uTurn,
+    TurnDirection.arrive => s.arrival,
+    TurnDirection.straight => s.straightAhead,
+  };
 }
 
 // ─── Bottom stats bar ──────────────────────────────────────────────────────
@@ -159,22 +165,25 @@ class _NavBottomBar extends ConsumerWidget {
   void _confirmFinish(BuildContext context, AppStrings s) {
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: Text(s.finishConfirmTitle),
-        content: Text(s.finishConfirmContent),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(s.cancel),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(context);
-              onFinish();
-            },
-            child: Text(s.finish),
-          ),
-        ],
+      builder: (_) => PointerInterceptor(
+        intercepting: kIsWeb,
+        child: AlertDialog(
+          title: Text(s.finishConfirmTitle),
+          content: Text(s.finishConfirmContent),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(s.cancel),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(context);
+                onFinish();
+              },
+              child: Text(s.finish),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -182,11 +191,16 @@ class _NavBottomBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(l10nProvider);
-    final speedColor = nav.speedKmh > 90 ? Colors.red.shade600 : Theme.of(context).colorScheme.onSurface;
+    final speedColor = nav.speedKmh > 90
+        ? Colors.red.shade600
+        : Theme.of(context).colorScheme.onSurface;
     return Container(
       color: Theme.of(context).colorScheme.surface,
       padding: EdgeInsets.fromLTRB(
-        12, 10, 4, MediaQuery.of(context).padding.bottom + 10,
+        12,
+        10,
+        4,
+        MediaQuery.of(context).padding.bottom + 10,
       ),
       child: Row(
         children: [
