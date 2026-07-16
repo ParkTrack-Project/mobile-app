@@ -1,6 +1,10 @@
+import 'dart:ui' show PointerDeviceKind;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pointer_interceptor/pointer_interceptor.dart';
 import '../../../../presentation/providers/time_selector_provider.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/localization/app_localizations.dart';
@@ -24,9 +28,12 @@ class TimeSelectorWidget extends ConsumerWidget {
         context: context,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
-        builder: (_) => _TimePickerSheet(
-          initial: selectedDt,
-          onApply: (dt) => _apply(ref, dt),
+        builder: (_) => PointerInterceptor(
+          intercepting: kIsWeb,
+          child: _TimePickerSheet(
+            initial: selectedDt,
+            onApply: (dt) => _apply(ref, dt),
+          ),
         ),
       );
     }
@@ -213,26 +220,34 @@ class _TimePickerSheetState extends ConsumerState<_TimePickerSheet> {
           // Time picker
           SizedBox(
             height: 150,
-            child: CupertinoTheme(
-              data: CupertinoThemeData(
-                brightness: Theme.of(context).brightness,
-              ),
-              child: CupertinoDatePicker(
-                mode: CupertinoDatePickerMode.time,
-                use24hFormat: true,
-                minuteInterval: _step,
-                initialDateTime: _time,
-                onDateTimeChanged: (dt) {
-                  setState(
-                    () => _time = DateTime(
-                      _time.year,
-                      _time.month,
-                      _time.day,
-                      dt.hour,
-                      dt.minute,
-                    ),
-                  );
+            child: ScrollConfiguration(
+              behavior: ScrollConfiguration.of(context).copyWith(
+                dragDevices: {
+                  ...ScrollConfiguration.of(context).dragDevices,
+                  PointerDeviceKind.mouse,
                 },
+              ),
+              child: CupertinoTheme(
+                data: CupertinoThemeData(
+                  brightness: Theme.of(context).brightness,
+                ),
+                child: CupertinoDatePicker(
+                  mode: CupertinoDatePickerMode.time,
+                  use24hFormat: true,
+                  minuteInterval: _step,
+                  initialDateTime: _time,
+                  onDateTimeChanged: (dt) {
+                    setState(
+                      () => _time = DateTime(
+                        _time.year,
+                        _time.month,
+                        _time.day,
+                        dt.hour,
+                        dt.minute,
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
           ),
