@@ -6,7 +6,6 @@ class TokenStorage {
   static const _keyPassword = 'user_password';
   static const _storage = FlutterSecureStorage(
     aOptions: AndroidOptions(encryptedSharedPreferences: true),
-    mOptions: MacOsOptions(useDataProtectionKeyChain: false),
   );
 
   String? _cachedAccessToken;

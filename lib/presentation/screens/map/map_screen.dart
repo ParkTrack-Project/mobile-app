@@ -2,13 +2,11 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
-import 'package:flutter/foundation.dart'
-    show TargetPlatform, defaultTargetPlatform, kIsWeb, setEquals;
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:yandex_mapkit/yandex_mapkit.dart';
 import '../../providers/zones_provider.dart';
 import '../../../domain/models/zone.dart';
@@ -566,61 +564,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     );
   }
 
-  Widget _buildMacOsFallback(BuildContext context, AppStrings s) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(s.appTitle),
-        actions: [
-          IconButton(
-            tooltip: s.settings,
-            onPressed: () => context.push('/profile'),
-            icon: const Icon(Icons.settings_outlined),
-          ),
-        ],
-      ),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 520),
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.desktop_mac_outlined,
-                  size: 72,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  s.desktopMapUnavailable,
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 24),
-                FilledButton.icon(
-                  onPressed: () => launchUrl(
-                    Uri.parse('https://m.parktrack.live'),
-                    mode: LaunchMode.externalApplication,
-                  ),
-                  icon: const Icon(Icons.open_in_browser),
-                  label: Text(s.openWebVersion),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     const bottomInset = 0.0;
     final s = ref.watch(l10nProvider);
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.macOS) {
-      return _buildMacOsFallback(context, s);
-    }
     final zones = ref.watch(filteredZonesProvider);
     final zonesAsync = ref.watch(rawZonesProvider);
     final routingState = ref.watch(routingProvider);
