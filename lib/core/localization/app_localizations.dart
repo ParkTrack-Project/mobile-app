@@ -145,8 +145,6 @@ class AppStrings {
   final String editProfile;
   final String save;
   final String profileUpdated;
-  final String desktopMapUnavailable;
-  final String openWebVersion;
 
   AppStrings({
     required this.appTitle,
@@ -291,8 +289,6 @@ class AppStrings {
     required this.editProfile,
     required this.save,
     required this.profileUpdated,
-    required this.desktopMapUnavailable,
-    required this.openWebVersion,
   });
 
   static AppStrings ru = AppStrings(
@@ -455,9 +451,6 @@ class AppStrings {
     editProfile: 'Редактировать профиль',
     save: 'Сохранить',
     profileUpdated: 'Профиль обновлен',
-    desktopMapUnavailable:
-        'Яндекс Карты пока не поддерживают нативные приложения Flutter для macOS.',
-    openWebVersion: 'Открыть веб-версию',
   );
 
   static AppStrings en = AppStrings(
@@ -619,9 +612,6 @@ class AppStrings {
     editProfile: 'Edit Profile',
     save: 'Save',
     profileUpdated: 'Profile updated',
-    desktopMapUnavailable:
-        'Yandex Maps does not currently support native Flutter apps for macOS.',
-    openWebVersion: 'Open web version',
   );
 }
 
