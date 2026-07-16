@@ -4,6 +4,12 @@ on:
   release:
     types:
       - published
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing GitHub release tag to build and publish
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -14,6 +20,8 @@ concurrency:
 
 env:
   PACKAGE_NAME: com.parktrack.mobile
+  NDK_VERSION: 30.0.14904198
+  RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
 
 jobs:
   publish:
@@ -40,10 +48,19 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Accept Android SDK licenses and install NDK
+        run: |
+          set -euo pipefail
+
+          SDKMANAGER="$(command -v sdkmanager)"
+          "$SDKMANAGER" --licenses < <(yes)
+          "$SDKMANAGER" "ndk;${NDK_VERSION}"
+
       - name: Show versions
         run: |
           flutter --version
           java --version
+          test -d "${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}"
 
       - name: Install dependencies
         run: flutter pub get
@@ -52,8 +69,6 @@ jobs:
         run: dart run build_runner build --delete-conflicting-outputs
 
       - name: Validate release version
-        env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
 
@@ -148,7 +163,6 @@ jobs:
 
       - name: Prepare and sign GitHub release APK
         env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
           KEYSTORE_PATH: android/app/upload-keystore.jks
           STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
@@ -231,7 +245,6 @@ jobs:
       - name: Attach APK and signature to GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
 
@@ -241,8 +254,6 @@ jobs:
             --clobber
 
       - name: Prepare Google Play release notes
-        env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
       
@@ -298,5 +309,5 @@ jobs:
           releaseFiles: build/app/outputs/bundle/release/app-release.aab
           tracks: alpha
           status: completed
-          releaseName: ${{ github.event.release.tag_name }}
+          releaseName: ${{ env.RELEASE_TAG }}
           whatsNewDirectory: build/google-play/whatsnew
