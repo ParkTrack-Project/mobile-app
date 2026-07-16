@@ -1,0 +1,7 @@
+New time selector designed with forecast generation in mind
+Fixed bugs with loading data on zone congestion
+Improved display of download status
+Fixed ETA display on route selection and navigation screens
+Fixed display of the parking card (optimal height adjusted)
+Name made a required field on the registration screen
+Confidence classes replaced with numeric values
