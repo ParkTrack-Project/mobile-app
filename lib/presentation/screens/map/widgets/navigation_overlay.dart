@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/nav_math.dart';
+import '../../../../core/localization/app_localizations.dart';
 import '../../../providers/navigation_provider.dart';
 
 class NavigationTurnCard extends ConsumerWidget {
@@ -34,7 +35,7 @@ class NavigationBottomBar extends ConsumerWidget {
 
 // ─── Turn instruction card ─────────────────────────────────────────────────
 
-class _TurnCard extends StatelessWidget {
+class _TurnCard extends ConsumerWidget {
   const _TurnCard({required this.turn, required this.isOffRoute, required this.hasArrived});
 
   final NavTurn? turn;
@@ -42,7 +43,8 @@ class _TurnCard extends StatelessWidget {
   final bool hasArrived;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(l10nProvider);
     final Color bg;
     final IconData icon;
     final String primary;
@@ -51,23 +53,23 @@ class _TurnCard extends StatelessWidget {
     if (hasArrived) {
       bg = AppColors.primary;
       icon = Icons.local_parking;
-      primary = 'Вы прибыли';
+      primary = s.arrival;
       secondary = null;
     } else if (isOffRoute) {
       bg = Colors.orange.shade800;
       icon = Icons.warning_rounded;
-      primary = 'Пересчёт маршрута...';
+      primary = s.recalculating;
       secondary = null;
     } else if (turn != null) {
       final t = turn!;
       bg = AppColors.primary;
       icon = _turnIcon(t.direction);
-      primary = _turnLabel(t.direction);
-      secondary = 'через ${formatNavDistance(t.distanceMeters)}';
+      primary = _turnLabel(t.direction, s);
+      secondary = '${s.inWord} ${formatNavDistance(t.distanceMeters, s)}';
     } else {
       bg = AppColors.primary;
       icon = Icons.arrow_upward_rounded;
-      primary = 'Движение прямо';
+      primary = s.straightAhead;
       secondary = null;
     }
 
@@ -135,42 +137,42 @@ class _TurnCard extends StatelessWidget {
         TurnDirection.straight => Icons.arrow_upward_rounded,
       };
 
-  String _turnLabel(TurnDirection d) => switch (d) {
-        TurnDirection.left => 'Поверните налево',
-        TurnDirection.slightLeft => 'Держитесь левее',
-        TurnDirection.right => 'Поверните направо',
-        TurnDirection.slightRight => 'Держитесь правее',
-        TurnDirection.uTurn => 'Выполните разворот',
-        TurnDirection.arrive => 'Вы прибыли',
-        TurnDirection.straight => 'Движение прямо',
+  String _turnLabel(TurnDirection d, AppStrings s) => switch (d) {
+        TurnDirection.left => s.turnLeft,
+        TurnDirection.slightLeft => s.keepLeft,
+        TurnDirection.right => s.turnRight,
+        TurnDirection.slightRight => s.keepRight,
+        TurnDirection.uTurn => s.uTurn,
+        TurnDirection.arrive => s.arrival,
+        TurnDirection.straight => s.straightAhead,
       };
 }
 
 // ─── Bottom stats bar ──────────────────────────────────────────────────────
 
-class _NavBottomBar extends StatelessWidget {
+class _NavBottomBar extends ConsumerWidget {
   const _NavBottomBar({required this.nav, required this.onFinish});
 
   final NavigationData nav;
   final VoidCallback onFinish;
 
-  void _confirmFinish(BuildContext context) {
+  void _confirmFinish(BuildContext context, AppStrings s) {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Завершить маршрут?'),
-        content: const Text('Навигация будет остановлена.'),
+        title: Text(s.finishConfirmTitle),
+        content: Text(s.finishConfirmContent),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Нет'),
+            child: Text(s.cancel),
           ),
           FilledButton(
             onPressed: () {
               Navigator.pop(context);
               onFinish();
             },
-            child: const Text('Завершить'),
+            child: Text(s.finish),
           ),
         ],
       ),
@@ -178,10 +180,11 @@ class _NavBottomBar extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final speedColor = nav.speedKmh > 90 ? Colors.red.shade600 : AppColors.onSurface;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(l10nProvider);
+    final speedColor = nav.speedKmh > 90 ? Colors.red.shade600 : Theme.of(context).colorScheme.onSurface;
     return Container(
-      color: Colors.white,
+      color: Theme.of(context).colorScheme.surface,
       padding: EdgeInsets.fromLTRB(
         12, 10, 4, MediaQuery.of(context).padding.bottom + 10,
       ),
@@ -189,31 +192,31 @@ class _NavBottomBar extends StatelessWidget {
         children: [
           Expanded(
             child: _StatCell(
-              value: formatNavDuration(nav.remainingSeconds),
-              label: 'времени',
+              value: formatNavDuration(nav.remainingSeconds, s),
+              label: s.timeLabel,
             ),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: _StatCell(
-              value: formatNavDistance(nav.remainingMeters),
-              label: 'до цели',
+              value: formatNavDistance(nav.remainingMeters, s),
+              label: s.distanceLabel,
             ),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: _StatCell(
               value: '${nav.speedKmh.round()}',
-              label: 'км/ч',
+              label: s.speedLabel,
               valueColor: speedColor,
             ),
           ),
           IconButton(
-            onPressed: () => _confirmFinish(context),
+            onPressed: () => _confirmFinish(context, s),
             icon: const Icon(Icons.stop_circle_outlined),
-            color: AppColors.textSecondary,
+            color: Theme.of(context).hintColor,
             iconSize: 28,
-            tooltip: 'Завершить',
+            tooltip: s.finish,
           ),
         ],
       ),
@@ -242,15 +245,15 @@ class _StatCell extends StatelessWidget {
           style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.bold,
-            color: valueColor ?? AppColors.onSurface,
+            color: valueColor ?? Theme.of(context).colorScheme.onSurface,
             height: 1,
           ),
         ),
         Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 12,
-            color: AppColors.textSecondary,
+            color: Theme.of(context).hintColor,
             height: 1.2,
           ),
         ),

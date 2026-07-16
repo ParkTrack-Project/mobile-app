@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../localization/app_localizations.dart';
 
 void showErrorSnackBar(
   BuildContext context,
   String message, {
   Object? error,
   StackTrace? stackTrace,
+  AppStrings? s,
 }) {
   final details = _buildDetails(error, stackTrace);
+  
+  final label = s?.moreInfo ?? 'Details';
+
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
     ..showSnackBar(
@@ -21,8 +26,8 @@ void showErrorSnackBar(
         ),
         action: details != null
             ? SnackBarAction(
-                label: 'Подробнее',
-                onPressed: () => _showDetailsDialog(context, message, details),
+                label: label,
+                onPressed: () => _showDetailsDialog(context, message, details, s),
               )
             : null,
         behavior: SnackBarBehavior.floating,
@@ -42,11 +47,11 @@ String? _buildDetails(Object? error, StackTrace? stackTrace) {
   return buffer.toString();
 }
 
-void _showDetailsDialog(BuildContext context, String message, String details) {
+void _showDetailsDialog(BuildContext context, String message, String details, AppStrings? s) {
   showDialog(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: const Text('Детали ошибки'),
+      title: Text(s?.errorDetails ?? 'Error Details'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -56,7 +61,9 @@ void _showDetailsDialog(BuildContext context, String message, String details) {
           Container(
             constraints: const BoxConstraints(maxHeight: 320),
             decoration: BoxDecoration(
-              color: Colors.grey.shade100,
+              color: Theme.of(context).brightness == Brightness.dark 
+                  ? Colors.grey.shade800 
+                  : Colors.grey.shade100,
               borderRadius: BorderRadius.circular(8),
             ),
             child: SingleChildScrollView(
@@ -72,14 +79,14 @@ void _showDetailsDialog(BuildContext context, String message, String details) {
       actions: [
         TextButton.icon(
           icon: const Icon(Icons.copy, size: 16),
-          label: const Text('Копировать'),
+          label: Text(s?.copy ?? 'Copy'),
           onPressed: () {
             Clipboard.setData(ClipboardData(text: details));
             Navigator.pop(ctx);
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Скопировано в буфер'),
-                duration: Duration(seconds: 2),
+              SnackBar(
+                content: Text(s?.copiedToClipboard ?? 'Copied to clipboard'),
+                duration: const Duration(seconds: 2),
                 behavior: SnackBarBehavior.floating,
               ),
             );
@@ -87,7 +94,7 @@ void _showDetailsDialog(BuildContext context, String message, String details) {
         ),
         FilledButton(
           onPressed: () => Navigator.pop(ctx),
-          child: const Text('Закрыть'),
+          child: Text(s?.close ?? 'Close'),
         ),
       ],
     ),

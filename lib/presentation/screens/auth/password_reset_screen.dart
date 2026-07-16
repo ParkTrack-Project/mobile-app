@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/auth_provider.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/localization/app_localizations.dart';
 
 class PasswordResetScreen extends ConsumerStatefulWidget {
   const PasswordResetScreen({super.key});
@@ -30,14 +31,15 @@ class _PasswordResetScreenState extends ConsumerState<PasswordResetScreen> {
       await ref.read(authStateProvider.notifier).requestPasswordReset(email);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ссылка для сброса отправлена на $email')),
+          SnackBar(content: Text('Instructions sent to $email')),
         );
         context.pop();
       }
     } on ApiException catch (e) {
       if (mounted) {
+        final s = ref.read(l10nProvider);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+          SnackBar(content: Text(e.getLocalizedMessage(s)), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -47,8 +49,9 @@ class _PasswordResetScreenState extends ConsumerState<PasswordResetScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final s = ref.watch(l10nProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Сброс пароля')),
+      appBar: AppBar(title: Text(s.resetPassword)),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -61,21 +64,21 @@ class _PasswordResetScreenState extends ConsumerState<PasswordResetScreen> {
                   const Icon(Icons.lock_reset_outlined, size: 64, color: Color(0xFF2E7D32)),
                   const SizedBox(height: 16),
                   Text(
-                    'Введите email, указанный при регистрации. Мы отправим ссылку для сброса пароля.',
+                    'Enter your email to receive password reset instructions.',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
                   const SizedBox(height: 32),
                   TextFormField(
                     controller: _emailCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Email',
-                      prefixIcon: Icon(Icons.email_outlined),
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: s.login,
+                      prefixIcon: const Icon(Icons.email_outlined),
+                      border: const OutlineInputBorder(),
                     ),
                     keyboardType: TextInputType.emailAddress,
                     validator: (v) =>
-                        v == null || v.isEmpty ? 'Введите email' : null,
+                        v == null || v.isEmpty ? s.emailRequired : null,
                   ),
                   const SizedBox(height: 24),
                   FilledButton(
@@ -92,7 +95,7 @@ class _PasswordResetScreenState extends ConsumerState<PasswordResetScreen> {
                               color: Colors.white,
                             ),
                           )
-                        : const Text('Отправить'),
+                        : Text(s.sendInstructions),
                   ),
                 ],
               ),

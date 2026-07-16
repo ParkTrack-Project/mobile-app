@@ -7,8 +7,8 @@ import 'mock_interceptor.dart';
 Dio createDio(TokenStorage tokenStorage) {
   final dio = Dio(BaseOptions(
     baseUrl: kBaseUrl,
-    connectTimeout: const Duration(seconds: 10),
-    receiveTimeout: const Duration(seconds: 15),
+    connectTimeout: const Duration(seconds: 15),
+    receiveTimeout: const Duration(seconds: 20),
     headers: {'Content-Type': 'application/json'},
   ));
 

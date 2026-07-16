@@ -79,6 +79,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   Future<void> requestPasswordReset(String email) =>
       _ref.read(authRepositoryProvider).requestPasswordReset(email);
+
+  Future<void> updateProfile({String? fullName}) async {
+    final user = await _ref.read(authRepositoryProvider).updateProfile(fullName: fullName);
+    state = AuthState.authenticated(user);
+  }
 }
 
 final authStateProvider = StateNotifierProvider<AuthNotifier, AuthState>(

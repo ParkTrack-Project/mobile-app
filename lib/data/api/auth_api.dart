@@ -25,4 +25,9 @@ class AuthApi {
 
   Future<void> requestPasswordReset(String email) =>
       _dio.post('/auth/password-reset/request', data: {'email': email});
+
+  Future<UserDto> updateProfile(Map<String, dynamic> data) async {
+    final response = await _dio.put('/users/me', data: data);
+    return UserDto.fromJson(response.data as Map<String, dynamic>);
+  }
 }

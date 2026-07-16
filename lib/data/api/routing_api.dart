@@ -19,7 +19,7 @@ class RoutingApi {
       {int? selectedZoneId}) async {
     final data = {
       ...request.toJson()..removeWhere((_, v) => v == null),
-      if (selectedZoneId != null) 'selected_zone_id': selectedZoneId,
+      'selected_zone_id': ?selectedZoneId,
     };
     final response = await _dio.post('/routing/new', data: data);
     return RouteDto.fromJson(response.data as Map<String, dynamic>);
@@ -36,8 +36,8 @@ class RoutingApi {
     int? selectedZoneId,
   }) async {
     final response = await _dio.put('/routing/$routeId', data: {
-      if (status != null) 'status': status,
-      if (selectedZoneId != null) 'selected_zone_id': selectedZoneId,
+      'status': ?status,
+      'selected_zone_id': ?selectedZoneId,
     });
     return RouteDto.fromJson(response.data as Map<String, dynamic>);
   }

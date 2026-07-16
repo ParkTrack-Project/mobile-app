@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/auth_provider.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/localization/app_localizations.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -34,8 +35,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           .login(_loginCtrl.text.trim(), _passwordCtrl.text);
     } on ApiException catch (e) {
       if (mounted) {
+        final s = ref.read(l10nProvider);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+          SnackBar(content: Text(e.getLocalizedMessage(s)), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -45,6 +47,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final s = ref.watch(l10nProvider);
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -58,7 +61,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   const Icon(Icons.local_parking, size: 64, color: Color(0xFF2E7D32)),
                   const SizedBox(height: 8),
                   Text(
-                    'ParkTrack',
+                    s.appTitle,
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                           fontWeight: FontWeight.bold,
@@ -67,20 +70,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   const SizedBox(height: 40),
                   TextFormField(
                     controller: _loginCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Email',
-                      prefixIcon: Icon(Icons.email_outlined),
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: s.login,
+                      prefixIcon: const Icon(Icons.email_outlined),
+                      border: const OutlineInputBorder(),
                     ),
                     keyboardType: TextInputType.emailAddress,
                     validator: (v) =>
-                        v == null || v.isEmpty ? 'Введите email' : null,
+                        v == null || v.isEmpty ? s.emailRequired : null,
                   ),
                   const SizedBox(height: 16),
                   TextFormField(
                     controller: _passwordCtrl,
                     decoration: InputDecoration(
-                      labelText: 'Пароль',
+                      labelText: s.password,
                       prefixIcon: const Icon(Icons.lock_outlined),
                       border: const OutlineInputBorder(),
                       suffixIcon: IconButton(
@@ -92,7 +95,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                     obscureText: _obscure,
                     validator: (v) =>
-                        v == null || v.length < 6 ? 'Минимум 6 символов' : null,
+                        v == null || v.length < 6 ? s.passwordTooShort : null,
                   ),
                   const SizedBox(height: 24),
                   FilledButton(
@@ -109,16 +112,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               color: Colors.white,
                             ),
                           )
-                        : const Text('Войти'),
+                        : Text(s.signIn),
                   ),
                   const SizedBox(height: 16),
                   TextButton(
                     onPressed: () => context.push('/register'),
-                    child: const Text('Нет аккаунта? Зарегистрироваться'),
+                    child: Text(s.noAccount),
                   ),
                   TextButton(
                     onPressed: () => context.push('/password-reset'),
-                    child: const Text('Забыли пароль?'),
+                    child: Text(s.forgotPassword),
                   ),
                 ],
               ),
