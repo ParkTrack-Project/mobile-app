@@ -31,6 +31,15 @@
 
   <title>ParkTrack</title>
   <link rel="manifest" href="manifest.json">
+  <style>
+    /* suppressMapOpenBlock is the primary switch; this covers delayed promo DOM. */
+    [class*="-gotoymaps"],
+    [class*="-gototech"] {
+      display: none !important;
+    }
+  </style>
+  <script src="https://api-maps.yandex.ru/2.1/?apikey=8177fb59-0ad8-4b24-8045-22878697dfbd&lang=ru_RU"></script>
+  <script src="yandex_maps.js"></script>
 </head>
 <body>
   <!--

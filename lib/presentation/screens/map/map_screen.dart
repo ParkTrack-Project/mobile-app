@@ -2,11 +2,12 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
-import 'package:flutter/foundation.dart' show setEquals;
+import 'package:flutter/foundation.dart' show kIsWeb, setEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
+import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:yandex_mapkit/yandex_mapkit.dart';
 import '../../providers/zones_provider.dart';
 import '../../../domain/models/zone.dart';
@@ -18,11 +19,14 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/navigation_deeplink.dart';
 import '../../../core/utils/error_snackbar.dart';
 import '../../../core/localization/app_localizations.dart';
+import '../../../core/services/yandex_web_route.dart';
 import 'widgets/candidates_sheet.dart';
 import 'widgets/navigation_overlay.dart'
     show NavigationTurnCard, NavigationBottomBar;
 import 'widgets/parking_zone_layer.dart';
 import 'widgets/time_selector_widget.dart';
+import 'widgets/web_map_view.dart';
+import 'widgets/web_map_types.dart';
 import 'widgets/parking_card_sheet.dart';
 import 'widgets/route_preview_sheet.dart';
 
@@ -35,6 +39,8 @@ class MapScreen extends ConsumerStatefulWidget {
 
 class _MapScreenState extends ConsumerState<MapScreen> {
   YandexMapController? _mapController;
+  final WebMapController _webMapController = WebMapController();
+  bool _webMapReady = false;
   Timer? _debounce;
   Timer? _timeDebounce;
   Position? _userPosition;
@@ -303,11 +309,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   Future<void> _fetchZones({bool clearCache = false}) async {
-    if (_mapController == null) return;
     if (clearCache) {
       _zoneLabelCache.clear();
       _zonesById.clear();
     }
+    if (kIsWeb) {
+      final camera = _webMapController.camera;
+      if (!_webMapReady || camera == null) return;
+      await _fetchWebZones(camera);
+      return;
+    }
+    if (_mapController == null) return;
     try {
       final visibleRegion = await _mapController!.getVisibleRegion();
       final bottomLeft = visibleRegion.bottomLeft;
@@ -323,21 +335,54 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
   }
 
-  Future<Position?> _getCurrentPosition() async {
-    var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
+  Future<void> _fetchWebZones(WebMapCamera camera) async {
+    if ((camera.east - camera.west).abs() < 0.000001 ||
+        (camera.north - camera.south).abs() < 0.000001) {
+      return;
     }
-    if (permission == LocationPermission.deniedForever ||
-        permission == LocationPermission.denied) {
-      _showLocationDeniedDialog();
-      return null;
-    }
+    final dLon = (camera.east - camera.west) * 0.5;
+    final dLat = (camera.north - camera.south) * 0.5;
+    final bbox =
+        '${camera.west - dLon},${camera.south - dLat},'
+        '${camera.east + dLon},${camera.north + dLat}';
     try {
-      final cached = await Geolocator.getLastKnownPosition();
-      if (cached != null) {
-        _userPosition = cached;
-        return cached;
+      await ref.read(rawZonesProvider.notifier).fetchZones(bbox);
+    } catch (e, st) {
+      ref.read(rawZonesProvider.notifier).setErrorState(e, st);
+    }
+  }
+
+  void _onWebCameraChanged(WebMapCamera camera) {
+    _lastCameraTarget = Point(
+      latitude: camera.latitude,
+      longitude: camera.longitude,
+    );
+    _debounce?.cancel();
+    _debounce = Timer(
+      const Duration(milliseconds: 400),
+      () => _fetchWebZones(camera),
+    );
+  }
+
+  Future<Position?> _getCurrentPosition({bool showDeniedDialog = true}) async {
+    try {
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.deniedForever ||
+          permission == LocationPermission.denied) {
+        if (showDeniedDialog) _showLocationDeniedDialog();
+        return null;
+      }
+      try {
+        final cached = await Geolocator.getLastKnownPosition();
+        if (cached != null) {
+          _userPosition = cached;
+          return cached;
+        }
+      } catch (_) {
+        // Browsers may not implement last-known position; request a fresh fix.
       }
       final pos = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
@@ -353,10 +398,24 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
   }
 
+  Future<Point?> _routingOrigin() async {
+    final position = await _getCurrentPosition(showDeniedDialog: !kIsWeb);
+    if (position != null) {
+      return Point(latitude: position.latitude, longitude: position.longitude);
+    }
+    if (!kIsWeb) return null;
+    return _lastCameraTarget ??
+        const Point(latitude: 61.789114, longitude: 34.359757);
+  }
+
   Future<void> _goToMyLocation() async {
     final pos = await _getCurrentPosition();
     if (pos == null) return;
     if (mounted) setState(() {});
+    if (kIsWeb) {
+      _webMapController.move(pos.latitude, pos.longitude, 16);
+      return;
+    }
     await _mapController?.moveCamera(
       CameraUpdate.newCameraPosition(
         CameraPosition(
@@ -369,6 +428,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   Future<void> _resetNorth() async {
+    if (kIsWeb) return;
     if (_mapController == null) return;
     final pos = await _mapController!.getCameraPosition();
     await _mapController!.moveCamera(
@@ -380,6 +440,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   Future<void> _zoomIn() async {
+    if (kIsWeb) {
+      _webMapController.zoomBy(1);
+      return;
+    }
     if (_mapController == null) return;
     final pos = await _mapController!.getCameraPosition();
     await _mapController!.moveCamera(
@@ -396,6 +460,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   Future<void> _zoomOut() async {
+    if (kIsWeb) {
+      _webMapController.zoomBy(-1);
+      return;
+    }
     if (_mapController == null) return;
     final pos = await _mapController!.getCameraPosition();
     await _mapController!.moveCamera(
@@ -415,22 +483,26 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final s = ref.read(l10nProvider);
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: Text(s.locationPermissionDenied),
-        content: Text(s.locationPermissionReason),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(s.cancel),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(context);
-              Geolocator.openAppSettings();
-            },
-            child: Text(s.settings),
-          ),
-        ],
+      builder: (_) => PointerInterceptor(
+        intercepting: kIsWeb,
+        child: AlertDialog(
+          title: Text(s.locationPermissionDenied),
+          content: Text(s.locationPermissionReason),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(s.cancel),
+            ),
+            if (!kIsWeb)
+              FilledButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  Geolocator.openAppSettings();
+                },
+                child: Text(s.settings),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -452,22 +524,22 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   Future<void> _findParking() async {
-    final pos = await _getCurrentPosition();
-    if (pos == null) return;
+    final origin = await _routingOrigin();
+    if (origin == null) return;
     await ref
         .read(routingProvider.notifier)
-        .searchParking(originLat: pos.latitude, originLon: pos.longitude);
+        .searchParking(originLat: origin.latitude, originLon: origin.longitude);
   }
 
   Future<void> _buildRouteForZone(int zoneId) async {
-    final pos = await _getCurrentPosition();
-    if (pos == null) return;
+    final origin = await _routingOrigin();
+    if (origin == null) return;
     setState(() => _isSelectingOnMap = false);
     await ref
         .read(routingProvider.notifier)
         .buildRoute(
-          originLat: pos.latitude,
-          originLon: pos.longitude,
+          originLat: origin.latitude,
+          originLon: origin.longitude,
           selectedZoneId: zoneId,
         );
   }
@@ -480,19 +552,19 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     if (!mounted) return;
     setState(() => _navBuilding = true);
     try {
-      final pos = await _getCurrentPosition();
-      if (pos == null) return;
+      final origin = await _routingOrigin();
+      if (origin == null) return;
 
-      await _mapController?.moveCamera(
-        CameraUpdate.newCameraPosition(
-          CameraPosition(
-            target: Point(latitude: pos.latitude, longitude: pos.longitude),
-            zoom: 17,
-            tilt: 40,
+      if (kIsWeb) {
+        _webMapController.move(origin.latitude, origin.longitude, 17);
+      } else {
+        await _mapController?.moveCamera(
+          CameraUpdate.newCameraPosition(
+            CameraPosition(target: origin, zoom: 17, tilt: 40),
           ),
-        ),
-        animation: const MapAnimation(duration: 0.8),
-      );
+          animation: const MapAnimation(duration: 0.8),
+        );
+      }
 
       List<Point> route;
       double totalSeconds = _routeDurationSeconds;
@@ -501,29 +573,48 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       if (_routePolyline != null && _routePolyline!.length >= 2) {
         route = _routePolyline!;
       } else {
-        await _drivingSession?.close();
-        final rws = YandexDriving.requestRoutes(
-          points: [
-            RequestPoint(
-              point: Point(latitude: pos.latitude, longitude: pos.longitude),
-              requestPointType: RequestPointType.wayPoint,
-            ),
-            RequestPoint(
-              point: Point(latitude: toLat, longitude: toLon),
-              requestPointType: RequestPointType.wayPoint,
-            ),
-          ],
-          drivingOptions: const DrivingOptions(routesCount: 1),
-        );
-        _drivingSession = rws.session;
-        final result = await rws.result;
-        await rws.session.close();
-        _drivingSession = null;
-        final dr = result.routes?.firstOrNull;
-        if (dr == null || !mounted) return;
-        route = dr.geometry;
-        totalSeconds = dr.metadata.weight.timeWithTraffic.value ?? 0;
-        totalMeters = dr.metadata.weight.distance.value ?? 0;
+        if (kIsWeb) {
+          final webRoute = await requestYandexWebRoute(
+            fromLatitude: origin.latitude,
+            fromLongitude: origin.longitude,
+            toLatitude: toLat,
+            toLongitude: toLon,
+          );
+          if (webRoute == null) {
+            throw StateError('Yandex Maps did not return a route');
+          }
+          if (!mounted) return;
+          route = webRoute.points;
+          totalSeconds = webRoute.durationSeconds;
+          totalMeters = webRoute.distanceMeters;
+        } else {
+          await _drivingSession?.close();
+          final rws = YandexDriving.requestRoutes(
+            points: [
+              RequestPoint(
+                point: origin,
+                requestPointType: RequestPointType.wayPoint,
+              ),
+              RequestPoint(
+                point: Point(latitude: toLat, longitude: toLon),
+                requestPointType: RequestPointType.wayPoint,
+              ),
+            ],
+            drivingOptions: const DrivingOptions(routesCount: 1),
+          );
+          _drivingSession = rws.session;
+          final result = await rws.result;
+          await rws.session.close();
+          _drivingSession = null;
+          final dr = result.routes?.firstOrNull;
+          if (dr == null) {
+            throw StateError('Yandex MapKit did not return a route');
+          }
+          if (!mounted) return;
+          route = dr.geometry;
+          totalSeconds = dr.metadata.weight.timeWithTraffic.value ?? 0;
+          totalMeters = dr.metadata.weight.distance.value ?? 0;
+        }
         setState(() => _routePolyline = route);
       }
 
@@ -560,7 +651,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (_) => const _FiltersSheet(),
+      builder: (_) => PointerInterceptor(
+        intercepting: kIsWeb,
+        child: const _FiltersSheet(),
+      ),
     );
   }
 
@@ -596,6 +690,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       if (prev?.route != nav.route) {
         setState(() => _routePolyline = nav.route);
       }
+      if (kIsWeb) {
+        _webMapController.move(
+          nav.currentPosition.latitude,
+          nav.currentPosition.longitude,
+          17,
+        );
+        return;
+      }
       _mapController?.moveCamera(
         CameraUpdate.newCameraPosition(
           CameraPosition(
@@ -624,6 +726,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
     ref.listen(destinationProvider, (_, dest) {
       if (dest == null) return;
+      if (kIsWeb) {
+        _webMapController.move(dest.latitude, dest.longitude, 15);
+        return;
+      }
       _mapController?.moveCamera(
         CameraUpdate.newCameraPosition(
           CameraPosition(
@@ -662,19 +768,24 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           await showModalBottomSheet(
             context: context,
             isScrollControlled: true,
-            builder: (_) => CandidatesSheet(
-              candidates: candidates,
-              onSelectByList: (zoneId) {
-                Navigator.pop(context);
-                _buildRouteForZone(zoneId);
-              },
-              onSelectOnMap: () {
-                Navigator.pop(context);
-                setState(() => _isSelectingOnMap = true);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(ref.read(l10nProvider).pickZoneOnMap)),
-                );
-              },
+            builder: (_) => PointerInterceptor(
+              intercepting: kIsWeb,
+              child: CandidatesSheet(
+                candidates: candidates,
+                onSelectByList: (zoneId) {
+                  Navigator.pop(context);
+                  _buildRouteForZone(zoneId);
+                },
+                onSelectOnMap: () {
+                  Navigator.pop(context);
+                  setState(() => _isSelectingOnMap = true);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(ref.read(l10nProvider).pickZoneOnMap),
+                    ),
+                  );
+                },
+              ),
             ),
           );
           _isCandidatesSheetOpen = false;
@@ -691,18 +802,26 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               final c = centroid(zone.geometry);
               zoneLat = c.latitude;
               zoneLon = c.longitude;
-              await _mapController?.moveCamera(
-                CameraUpdate.newCameraPosition(
-                  CameraPosition(target: c, zoom: 17),
-                ),
-                animation: const MapAnimation(duration: 0.8),
-              );
+              if (kIsWeb) {
+                _webMapController.move(c.latitude, c.longitude, 17);
+              } else {
+                await _mapController?.moveCamera(
+                  CameraUpdate.newCameraPosition(
+                    CameraPosition(target: c, zoom: 17),
+                  ),
+                  animation: const MapAnimation(duration: 0.8),
+                );
+              }
             }
           }
 
           setState(() {
-            final candidate = route.candidates.firstOrNull;
-            _routePolyline = candidate?.routePolyline;
+            final selectedCandidates = route.candidates.where(
+              (candidate) => candidate.zoneId == route.selectedZoneId,
+            );
+            final candidate =
+                selectedCandidates.firstOrNull ?? route.candidates.firstOrNull;
+            _routePolyline = route.routePolyline ?? candidate?.routePolyline;
             _routeDurationSeconds =
                 candidate?.durationFromOriginSeconds?.toDouble() ?? 0;
             _activeRouteZoneId = route.selectedZoneId;
@@ -712,17 +831,20 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           await showModalBottomSheet(
             context: context,
             isScrollControlled: true,
-            builder: (_) => RoutePreviewSheet(
-              route: route,
-              zoneLat: zoneLat,
-              zoneLon: zoneLon,
-              onNavigateInApp: (zoneLat != null && zoneLon != null)
-                  ? () => _startInAppNavigation(
-                      zoneId: route.selectedZoneId,
-                      toLat: zoneLat!,
-                      toLon: zoneLon!,
-                    )
-                  : null,
+            builder: (_) => PointerInterceptor(
+              intercepting: kIsWeb,
+              child: RoutePreviewSheet(
+                route: route,
+                zoneLat: zoneLat,
+                zoneLon: zoneLon,
+                onNavigateInApp: (zoneLat != null && zoneLon != null)
+                    ? () => _startInAppNavigation(
+                        zoneId: route.selectedZoneId,
+                        toLat: zoneLat!,
+                        toLon: zoneLon!,
+                      )
+                    : null,
+              ),
             ),
           );
           _isRouteSheetOpen = false;
@@ -799,98 +921,134 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       body: SafeArea(
         child: Stack(
           children: [
-            YandexMap(
-              mapObjects: mapObjects,
-              nightModeEnabled: isDark,
-              onMapCreated: (controller) async {
-                _mapController = controller;
-                const fallback = Point(
-                  latitude: 61.789114,
-                  longitude: 34.359757,
-                );
-                _lastCameraTarget = fallback;
-                await controller.moveCamera(
-                  CameraUpdate.newCameraPosition(
-                    const CameraPosition(target: fallback, zoom: 14),
-                  ),
-                );
-                _fetchZones();
-                final pos = await _getCurrentPosition();
-                if (pos != null && mounted) {
-                  final target = Point(
+            if (kIsWeb)
+              WebMapView(
+                controller: _webMapController,
+                zones: zones,
+                candidateIds: candidateIds,
+                onZoneTap: _onZoneTap,
+                route: _routePolyline,
+                activeRouteZoneId: _activeRouteZoneId,
+                userLatitude: isNavigating ? null : _userPosition?.latitude,
+                userLongitude: isNavigating ? null : _userPosition?.longitude,
+                navigationLatitude: isNavigating
+                    ? navState.currentPosition.latitude
+                    : null,
+                navigationLongitude: isNavigating
+                    ? navState.currentPosition.longitude
+                    : null,
+                navigationHeading: isNavigating ? navState.heading : null,
+                destinationLatitude: destination?.latitude,
+                destinationLongitude: destination?.longitude,
+                onCameraChanged: _onWebCameraChanged,
+                onMapReady: () {
+                  _webMapReady = true;
+                  final camera = _webMapController.camera;
+                  if (camera != null) {
+                    _lastCameraTarget = Point(
+                      latitude: camera.latitude,
+                      longitude: camera.longitude,
+                    );
+                    _fetchWebZones(camera);
+                  }
+                },
+              )
+            else
+              YandexMap(
+                mapObjects: mapObjects,
+                nightModeEnabled: isDark,
+                onMapCreated: (controller) async {
+                  _mapController = controller;
+                  const fallback = Point(
                     latitude: 61.789114,
                     longitude: 34.359757,
                   );
-                  _lastCameraTarget = target;
+                  _lastCameraTarget = fallback;
                   await controller.moveCamera(
                     CameraUpdate.newCameraPosition(
-                      CameraPosition(target: target, zoom: 15),
+                      const CameraPosition(target: fallback, zoom: 14),
                     ),
-                    animation: const MapAnimation(duration: 0.8),
                   );
                   _fetchZones();
-                }
-              },
-              onCameraPositionChanged: _onCameraPositionChanged,
-            ),
+                  final pos = await _getCurrentPosition();
+                  if (pos != null && mounted) {
+                    final target = Point(
+                      latitude: 61.789114,
+                      longitude: 34.359757,
+                    );
+                    _lastCameraTarget = target;
+                    await controller.moveCamera(
+                      CameraUpdate.newCameraPosition(
+                        CameraPosition(target: target, zoom: 15),
+                      ),
+                      animation: const MapAnimation(duration: 0.8),
+                    );
+                    _fetchZones();
+                  }
+                },
+                onCameraPositionChanged: _onCameraPositionChanged,
+              ),
             // ─── Top bar ───────────────────────────────────────────────
             if (!isNavigating)
-              SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: _openSearch,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.surface,
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.1),
-                                  blurRadius: 8,
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.search,
-                                  color: Theme.of(context).hintColor,
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    destination?.name ?? s.searchPlaceholder,
-                                    style: TextStyle(
-                                      color: Theme.of(context).hintColor,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+              PointerInterceptor(
+                intercepting: kIsWeb,
+                child: SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: _openSearch,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.surface,
+                                borderRadius: BorderRadius.circular(12),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.1),
+                                    blurRadius: 8,
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.search,
+                                    color: Theme.of(context).hintColor,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      destination?.name ?? s.searchPlaceholder,
+                                      style: TextStyle(
+                                        color: Theme.of(context).hintColor,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      _MapButton(
-                        icon: Icons.tune,
-                        onTap: () => _showFilters(context),
-                      ),
-                      const SizedBox(width: 4),
-                      _MapButton(
-                        icon: Icons.person_outlined,
-                        onTap: () => context.push('/profile'),
-                      ),
-                    ],
+                        const SizedBox(width: 8),
+                        _MapButton(
+                          icon: Icons.tune,
+                          onTap: () => _showFilters(context),
+                        ),
+                        const SizedBox(width: 4),
+                        _MapButton(
+                          icon: Icons.person_outlined,
+                          onTap: () => context.push('/profile'),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -900,27 +1058,33 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               bottom: 0,
               child: Align(
                 alignment: Alignment.center,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _MapButton(
-                      onTap: _resetNorth,
-                      child: Transform.rotate(
-                        angle: -_currentAzimuth * math.pi / 180,
-                        child: Icon(
-                          Icons.explore,
-                          size: 22,
-                          color: Theme.of(context).colorScheme.onSurface,
+                child: PointerInterceptor(
+                  intercepting: kIsWeb,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _MapButton(
+                        onTap: _resetNorth,
+                        child: Transform.rotate(
+                          angle: -_currentAzimuth * math.pi / 180,
+                          child: Icon(
+                            Icons.explore,
+                            size: 22,
+                            color: Theme.of(context).colorScheme.onSurface,
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    _MapButton(icon: Icons.add, onTap: _zoomIn),
-                    const SizedBox(height: 4),
-                    _MapButton(icon: Icons.remove, onTap: _zoomOut),
-                    const SizedBox(height: 4),
-                    _MapButton(icon: Icons.my_location, onTap: _goToMyLocation),
-                  ],
+                      const SizedBox(height: 4),
+                      _MapButton(icon: Icons.add, onTap: _zoomIn),
+                      const SizedBox(height: 4),
+                      _MapButton(icon: Icons.remove, onTap: _zoomOut),
+                      const SizedBox(height: 4),
+                      _MapButton(
+                        icon: Icons.my_location,
+                        onTap: _goToMyLocation,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -929,21 +1093,27 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               Positioned(
                 bottom: bottomInset + 20,
                 left: 16,
-                child: const TimeSelectorWidget(),
+                child: PointerInterceptor(
+                  intercepting: kIsWeb,
+                  child: const TimeSelectorWidget(),
+                ),
               ),
             // ─── FAB: всегда правый край ───────────────────────────
             if (destination == null && !isNavigating)
               Positioned(
                 bottom: bottomInset + 20,
                 right: 16,
-                child: FloatingActionButton.extended(
-                  heroTag: 'find_parking',
-                  onPressed: isRoutingLoading ? null : _findParking,
-                  backgroundColor: AppColors.primary,
-                  icon: const Icon(Icons.local_parking, color: Colors.white),
-                  label: Text(
-                    isRoutingLoading ? s.searching : s.findParking,
-                    style: const TextStyle(color: Colors.white),
+                child: PointerInterceptor(
+                  intercepting: kIsWeb,
+                  child: FloatingActionButton.extended(
+                    heroTag: 'find_parking',
+                    onPressed: isRoutingLoading ? null : _findParking,
+                    backgroundColor: AppColors.primary,
+                    icon: const Icon(Icons.local_parking, color: Colors.white),
+                    label: Text(
+                      isRoutingLoading ? s.searching : s.findParking,
+                      style: const TextStyle(color: Colors.white),
+                    ),
                   ),
                 ),
               ),
@@ -953,22 +1123,25 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 bottom: bottomInset + 76,
                 left: 12,
                 right: 12,
-                child: _DestinationCard(
-                  destination: destination,
-                  onFindParking: isRoutingLoading ? null : _findParking,
-                  onNavigate: () => openYandexNavigator(
-                    destination.latitude,
-                    destination.longitude,
+                child: PointerInterceptor(
+                  intercepting: kIsWeb,
+                  child: _DestinationCard(
+                    destination: destination,
+                    onFindParking: isRoutingLoading ? null : _findParking,
+                    onNavigate: () => openYandexNavigator(
+                      destination.latitude,
+                      destination.longitude,
+                    ),
+                    onNavigateInApp: () => _startInAppNavigation(
+                      zoneId: 0,
+                      toLat: destination.latitude,
+                      toLon: destination.longitude,
+                    ),
+                    onClear: () {
+                      ref.read(destinationProvider.notifier).state = null;
+                      ref.read(routingProvider.notifier).reset();
+                    },
                   ),
-                  onNavigateInApp: () => _startInAppNavigation(
-                    zoneId: 0,
-                    toLat: destination.latitude,
-                    toLon: destination.longitude,
-                  ),
-                  onClear: () {
-                    ref.read(destinationProvider.notifier).state = null;
-                    ref.read(routingProvider.notifier).reset();
-                  },
                 ),
               ),
             // ─── Loading indicators ─────────────────────────────────────
@@ -986,46 +1159,57 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 ),
               ),
             if (isNavigating)
-              const Positioned(
+              Positioned(
                 top: 0,
                 left: 0,
                 right: 0,
-                child: NavigationTurnCard(),
+                child: PointerInterceptor(
+                  intercepting: kIsWeb,
+                  child: const NavigationTurnCard(),
+                ),
               ),
             if (isNavigating)
               Positioned(
                 bottom: 0,
                 left: 0,
                 right: 0,
-                child: NavigationBottomBar(
-                  onFinish: () {
-                    ref.read(navigationProvider.notifier).stop();
-                    ref.read(routingProvider.notifier).reset();
-                  },
+                child: PointerInterceptor(
+                  intercepting: kIsWeb,
+                  child: NavigationBottomBar(
+                    onFinish: () {
+                      ref.read(navigationProvider.notifier).stop();
+                      ref.read(routingProvider.notifier).reset();
+                    },
+                  ),
                 ),
               ),
             if (_navBuilding)
               Positioned.fill(
-                child: ColoredBox(
-                  color: Colors.black.withValues(alpha: 0.3),
-                  child: Center(
-                    child: Card(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 14,
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                            const SizedBox(width: 12),
-                            Text(s.searching),
-                          ],
+                child: PointerInterceptor(
+                  intercepting: kIsWeb,
+                  child: ColoredBox(
+                    color: Colors.black.withValues(alpha: 0.3),
+                    child: Center(
+                      child: Card(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 14,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Text(s.searching),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -1038,33 +1222,36 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 left: 0,
                 right: 0,
                 child: Center(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surface,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.1),
-                          blurRadius: 8,
-                        ),
-                      ],
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 8,
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
+                  child: PointerInterceptor(
+                    intercepting: kIsWeb,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surface,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.1),
+                            blurRadius: 8,
                           ),
-                          const SizedBox(width: 8),
-                          Text(s.searching),
                         ],
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 8,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(s.searching),
+                          ],
+                        ),
                       ),
                     ),
                   ),
