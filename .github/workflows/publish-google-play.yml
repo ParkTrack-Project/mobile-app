@@ -200,4 +200,4 @@ jobs:
           tracks: alpha
           status: completed
           releaseName: ${{ github.event.release.tag_name }}
-          whatsNewDirectory: build/google-play/what
+          whatsNewDirectory: build/google-play/whatsnew
