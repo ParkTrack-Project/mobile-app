@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:yandex_mapkit/yandex_mapkit.dart';
 import '../../providers/routing_provider.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/localization/app_localizations.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
   const SearchScreen({super.key});
@@ -14,11 +15,11 @@ class SearchScreen extends ConsumerStatefulWidget {
 }
 
 class _SearchScreenState extends ConsumerState<SearchScreen> {
-  // Широкая bbox вокруг точки биаса (покрывает ~1000 км в каждую сторону).
-  // Центр bbox = текущая позиция камеры, что правильно биасирует Yandex Suggest.
+  // Wide bbox around bias point (covers ~1000 km in each direction).
+  // bbox center = current camera position, which correctly biases Yandex Suggest.
   static const double _biasLatDelta = 10.0;
   static const double _biasLonDelta = 15.0;
-  // Запасной вариант если геолокация/позиция камеры неизвестны — центр России.
+  // Fallback if location/camera position unknown — center of Russia.
   static const BoundingBox _russiaBoundingBox = BoundingBox(
     southWest: Point(latitude: 41.0, longitude: 19.0),
     northEast: Point(latitude: 82.0, longitude: 169.0),
@@ -124,6 +125,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     if (!mounted) return;
     final seq = ++_suggestSeq;
     setState(() => _loading = true);
+    final s = ref.read(l10nProvider);
     try {
       final searchBias = ref.read(searchBiasProvider);
       final bbox = searchBias == null
@@ -139,13 +141,13 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       if (!mounted || seq != _suggestSeq) return;
       setState(() => _loading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Поиск занял слишком много времени')),
+        SnackBar(content: Text(s.searchTimeout)),
       );
     } catch (_) {
       if (!mounted || seq != _suggestSeq) return;
       setState(() => _loading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Не удалось выполнить поиск')),
+        SnackBar(content: Text(s.searchError)),
       );
     }
   }
@@ -170,6 +172,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       _loading = true;
       _suggestions = [];
     });
+    final s = ref.read(l10nProvider);
     try {
       final searchBias = ref.read(searchBiasProvider);
       final bbox = searchBias == null
@@ -180,7 +183,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       if (point == null) {
         setState(() => _loading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Не удалось определить координаты места')),
+          SnackBar(content: Text(s.pointLookupError)),
         );
         return;
       }
@@ -193,23 +196,24 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       if (!mounted) return;
       setState(() => _loading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Определение точки заняло слишком много времени')),
+        SnackBar(content: Text(s.pointLookupTimeout)),
       );
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Не удалось определить координаты места')),
+        SnackBar(content: Text(s.searchError)),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final s = ref.watch(l10nProvider);
+    final theme = Theme.of(context);
     return Scaffold(
-      backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: theme.colorScheme.surface,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
@@ -224,9 +228,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             if (text.trim().isNotEmpty) _suggest(text.trim());
           },
           textInputAction: TextInputAction.search,
-          decoration: const InputDecoration(
-            hintText: 'Введите адрес или место',
-            hintStyle: TextStyle(color: AppColors.textSecondary),
+          decoration: InputDecoration(
+            hintText: s.searchHint,
+            hintStyle: TextStyle(color: theme.hintColor),
             border: InputBorder.none,
           ),
         ),
@@ -241,9 +245,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               },
             ),
         ],
-        bottom: const PreferredSize(
-          preferredSize: Size.fromHeight(1),
-          child: Divider(height: 1),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Divider(height: 1, color: theme.dividerColor),
         ),
       ),
       body: _loading
@@ -255,16 +259,16 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                   itemBuilder: (_, i) {
                     final item = _suggestions[i];
                     return ListTile(
-                      leading: const Icon(
+                      leading: Icon(
                         Icons.place_outlined,
-                        color: AppColors.textSecondary,
+                        color: theme.hintColor,
                       ),
                       title: Text(item.title),
                       subtitle: item.subtitle != null
                           ? Text(
                               item.subtitle!,
-                              style: const TextStyle(
-                                color: AppColors.textSecondary,
+                              style: TextStyle(
+                                color: theme.hintColor,
                                 fontSize: 13,
                               ),
                             )
@@ -277,13 +281,14 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   }
 }
 
-class _EmptyState extends StatelessWidget {
+class _EmptyState extends ConsumerWidget {
   const _EmptyState({required this.hasQuery});
 
   final bool hasQuery;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(l10nProvider);
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -291,13 +296,13 @@ class _EmptyState extends StatelessWidget {
           Icon(
             hasQuery ? Icons.search_off : Icons.search,
             size: 56,
-            color: Colors.grey[300],
+            color: Theme.of(context).dividerColor,
           ),
           const SizedBox(height: 16),
           Text(
-            hasQuery ? 'Ничего не найдено' : 'Введите адрес или место',
-            style: const TextStyle(
-              color: AppColors.textSecondary,
+            hasQuery ? s.searchNoResults : s.searchHint,
+            style: TextStyle(
+              color: Theme.of(context).hintColor,
               fontSize: 15,
             ),
           ),

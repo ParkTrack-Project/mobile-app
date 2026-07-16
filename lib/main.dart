@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
+import 'presentation/providers/settings_provider.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -16,12 +17,16 @@ class ParkTrackApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
+    final settings = ref.watch(settingsProvider);
+
     return MaterialApp.router(
       title: 'ParkTrack',
       theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      themeMode: settings.themeMode,
       routerConfig: router,
       debugShowCheckedModeBanner: false,
-      locale: const Locale('ru', 'RU'),
+      locale: settings.locale,
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,

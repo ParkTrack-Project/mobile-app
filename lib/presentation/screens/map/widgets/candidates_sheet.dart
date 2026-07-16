@@ -1,36 +1,35 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../domain/models/route_result.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/localization/app_localizations.dart';
+import '../../../../core/utils/nav_math.dart';
 
-String _formatDuration(int seconds) {
-  final mins = (seconds / 60).round();
-  if (mins < 60) return '~$mins мин';
-  final h = mins ~/ 60;
-  final m = mins % 60;
-  return m == 0 ? '~${h}ч' : '~${h}ч ${m}мин';
-}
-
-class _CandidateSubtitle extends StatelessWidget {
+class _CandidateSubtitle extends ConsumerWidget {
   final RouteCandidate candidate;
   const _CandidateSubtitle({required this.candidate});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(l10nProvider);
     final parts = <String>[
-      'Свободно: ${candidate.freeCount}',
-      candidate.pay == 0 ? 'бесплатно' : '${candidate.pay} ₽/ч',
+      '${s.free}: ${candidate.freeCount}',
+      candidate.pay == 0 ? s.free.toLowerCase() : '${candidate.pay} ₽/${s.hourSign}',
     ];
-    if (candidate.distanceToDestinationMeters != null)
-      parts.add('${(candidate.distanceToDestinationMeters! / 1000).toStringAsFixed(1)} км');
-    if (candidate.durationFromOriginSeconds != null)
-      parts.add(_formatDuration(candidate.durationFromOriginSeconds!));
-    if (candidate.predictedFreeCount != null)
-      parts.add('прогноз: ${candidate.predictedFreeCount}');
+    if (candidate.distanceToDestinationMeters != null) {
+      parts.add(formatNavDistance(candidate.distanceToDestinationMeters!, s));
+    }
+    if (candidate.durationFromOriginSeconds != null) {
+      parts.add(formatNavDuration(candidate.durationFromOriginSeconds!, s));
+    }
+    if (candidate.predictedFreeCount != null) {
+      parts.add('${s.forecast.toLowerCase()}: ${candidate.predictedFreeCount}');
+    }
     return Text(parts.join(' • '), overflow: TextOverflow.ellipsis, maxLines: 2);
   }
 }
 
-class CandidatesSheet extends StatefulWidget {
+class CandidatesSheet extends ConsumerStatefulWidget {
   const CandidatesSheet({
     super.key,
     required this.candidates,
@@ -43,23 +42,24 @@ class CandidatesSheet extends StatefulWidget {
   final VoidCallback onSelectOnMap;
 
   @override
-  State<CandidatesSheet> createState() => _CandidatesSheetState();
+  ConsumerState<CandidatesSheet> createState() => _CandidatesSheetState();
 }
 
-class _CandidatesSheetState extends State<CandidatesSheet> {
+class _CandidatesSheetState extends ConsumerState<CandidatesSheet> {
   bool _listMode = true;
 
   @override
   Widget build(BuildContext context) {
+    final s = ref.watch(l10nProvider);
     return DraggableScrollableSheet(
       expand: false,
       initialChildSize: 0.55,
       minChildSize: 0.4,
       maxChildSize: 0.85,
       builder: (_, controller) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: ListView(
           controller: controller,
@@ -76,15 +76,15 @@ class _CandidatesSheetState extends State<CandidatesSheet> {
               ),
             ),
             const SizedBox(height: 16),
-            const Text(
-              'Выберите парковку',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            Text(
+              s.selectParking,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 10),
             SegmentedButton<bool>(
-              segments: const [
-                ButtonSegment<bool>(value: true, label: Text('Список')),
-                ButtonSegment<bool>(value: false, label: Text('Карта')),
+              segments: [
+                ButtonSegment<bool>(value: true, label: Text(s.list)),
+                ButtonSegment<bool>(value: false, label: Text(s.map)),
               ],
               selected: {_listMode},
               onSelectionChanged: (value) {
@@ -97,22 +97,22 @@ class _CandidatesSheetState extends State<CandidatesSheet> {
                 Card(
                   margin: const EdgeInsets.symmetric(vertical: 6),
                   child: ListTile(
-                    title: Text('Зона #${candidate.zoneId}'),
+                    title: Text('${s.parkingZone} #${candidate.zoneId}'),
                     subtitle: _CandidateSubtitle(candidate: candidate),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => widget.onSelectByList(candidate.zoneId),
                   ),
                 ),
             ] else ...[
-              const Text(
-                'Нажмите «Выбирать на карте», затем тапните подходящую зону на карте.',
-                style: TextStyle(color: AppColors.textSecondary),
+              Text(
+                s.pickOnMapInstruction,
+                style: const TextStyle(color: AppColors.textSecondary),
               ),
               const SizedBox(height: 12),
               FilledButton.icon(
                 onPressed: widget.onSelectOnMap,
                 icon: const Icon(Icons.map_outlined),
-                label: const Text('Выбирать на карте'),
+                label: Text(s.pickOnMapAction),
               ),
             ],
           ],

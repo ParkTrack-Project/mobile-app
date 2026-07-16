@@ -19,12 +19,12 @@ class ZonesApi {
     final response = await _dio.get('/zones', queryParameters: {
       'bbox': bbox,
       'view': view,
-      if (isActive != null) 'is_active': isActive,
-      if (minFreeCount != null) 'min_free_count': minFreeCount,
-      if (minConfidence != null) 'min_confidence': minConfidence,
-      if (maxPay != null) 'max_pay': maxPay,
-      if (includePrivate != null) 'include_private': includePrivate,
-      if (hideLocationTypes != null) 'hide_location_types': hideLocationTypes,
+      'is_active': ?isActive,
+      'min_free_count': ?minFreeCount,
+      'min_confidence': ?minConfidence,
+      'max_pay': ?maxPay,
+      'include_private': ?includePrivate,
+      'hide_location_types': ?hideLocationTypes,
     });
     return (response.data as List)
         .map((e) => ZoneMapItemDto.fromJson(e as Map<String, dynamic>))
