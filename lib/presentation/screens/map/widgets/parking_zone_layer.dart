@@ -88,7 +88,7 @@ MapObject buildZoneLabels({
               image: BitmapDescriptor.fromBytes(bitmapCache[zone.zoneId]!),
               scale: 1.0,
             )),
-            onTap: onZoneTap != null ? (_, __) => onZoneTap(zone) : null,
+            onTap: onZoneTap != null ? (_, _) => onZoneTap(zone) : null,
           ))
       .toList();
 
@@ -227,7 +227,7 @@ MapObject _buildPolygon(Zone zone, Color color, void Function(Zone) onTap,
     fillColor: color.withValues(alpha: 0.5),
     strokeColor: highlighted ? Colors.white : color,
     strokeWidth: highlighted ? 4 : 2,
-    onTap: (_, __) => onTap(zone),
+    onTap: (_, _) => onTap(zone),
   );
 }
 
@@ -255,7 +255,7 @@ MapObject _buildParallelLine(Zone zone, Color color, void Function(Zone) onTap,
     polyline: Polyline(points: [mid1, mid2]),
     strokeColor: highlighted ? Colors.white : color,
     strokeWidth: highlighted ? 9 : 6,
-    onTap: (_, __) => onTap(zone),
+    onTap: (_, _) => onTap(zone),
   );
 }
 

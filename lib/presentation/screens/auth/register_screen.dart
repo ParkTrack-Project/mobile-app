@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/auth_provider.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/localization/app_localizations.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
@@ -38,8 +39,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           );
     } on ApiException catch (e) {
       if (mounted) {
+        final s = ref.read(l10nProvider);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+          SnackBar(content: Text(e.getLocalizedMessage(s)), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -49,8 +51,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final s = ref.watch(l10nProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Регистрация')),
+      appBar: AppBar(title: Text(s.registration)),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -61,29 +64,29 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               children: [
                 TextFormField(
                   controller: _nameCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Имя',
-                    prefixIcon: Icon(Icons.person_outlined),
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: s.name,
+                    prefixIcon: const Icon(Icons.person_outlined),
+                    border: const OutlineInputBorder(),
                   ),
-                  validator: (v) => v == null || v.trim().isEmpty ? 'Введите имя' : null,
+                  validator: (v) => v == null || v.trim().isEmpty ? s.nameRequired : null,
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _emailCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Email',
-                    prefixIcon: Icon(Icons.email_outlined),
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: s.login,
+                    prefixIcon: const Icon(Icons.email_outlined),
+                    border: const OutlineInputBorder(),
                   ),
                   keyboardType: TextInputType.emailAddress,
-                  validator: (v) => v == null || !v.contains('@') ? 'Неверный email' : null,
+                  validator: (v) => v == null || !v.contains('@') ? s.invalidEmail : null,
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _passwordCtrl,
                   decoration: InputDecoration(
-                    labelText: 'Пароль',
+                    labelText: s.password,
                     prefixIcon: const Icon(Icons.lock_outlined),
                     border: const OutlineInputBorder(),
                     suffixIcon: IconButton(
@@ -95,7 +98,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   ),
                   obscureText: _obscure,
                   validator: (v) =>
-                      v == null || v.length < 6 ? 'Минимум 6 символов' : null,
+                      v == null || v.length < 6 ? s.passwordTooShort : null,
                 ),
                 const SizedBox(height: 24),
                 FilledButton(
@@ -110,12 +113,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                           child: CircularProgressIndicator(
                               strokeWidth: 2, color: Colors.white),
                         )
-                      : const Text('Создать аккаунт'),
+                      : Text(s.createAccount),
                 ),
                 const SizedBox(height: 16),
                 TextButton(
                   onPressed: () => context.pop(),
-                  child: const Text('Уже есть аккаунт? Войти'),
+                  child: Text(s.alreadyHaveAccount),
                 ),
               ],
             ),

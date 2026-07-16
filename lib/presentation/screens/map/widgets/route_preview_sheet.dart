@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/navigation_deeplink.dart';
 import '../../../../domain/models/route_result.dart';
+import '../../../../core/localization/app_localizations.dart';
+import '../../../../core/utils/nav_math.dart';
 import '../../../providers/routing_provider.dart';
 
 class RoutePreviewSheet extends ConsumerStatefulWidget {
@@ -26,22 +28,14 @@ class RoutePreviewSheet extends ConsumerStatefulWidget {
 class _RoutePreviewSheetState extends ConsumerState<RoutePreviewSheet> {
   bool _launching = false;
 
-  String _formatArrival(String iso) {
+  String _formatArrival(String iso, AppStrings s) {
     final dt = DateTime.tryParse(iso)?.toLocal();
     if (dt == null) return iso;
     final mins = dt.difference(DateTime.now()).inMinutes;
-    if (mins > 0 && mins <= 90) return 'через $mins мин';
+    if (mins > 0 && mins <= 90) return '${s.inWord} $mins ${s.minutesSign}';
     final hh = dt.hour.toString().padLeft(2, '0');
     final mm = dt.minute.toString().padLeft(2, '0');
     return '$hh:$mm';
-  }
-
-  String _formatDuration(int seconds) {
-    final mins = (seconds / 60).round();
-    if (mins < 60) return '~$mins мин';
-    final h = mins ~/ 60;
-    final m = mins % 60;
-    return m == 0 ? '~${h}ч' : '~${h}ч ${m}мин';
   }
 
   Future<void> _launchNavigator() async {
@@ -56,8 +50,9 @@ class _RoutePreviewSheetState extends ConsumerState<RoutePreviewSheet> {
         await openYandexNavigator(lat, lon);
       } else {
         if (mounted) {
+          final s = ref.read(l10nProvider);
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Нет данных для навигации')),
+            SnackBar(content: Text(s.pointLookupError)),
           );
         }
         return;
@@ -70,6 +65,7 @@ class _RoutePreviewSheetState extends ConsumerState<RoutePreviewSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final s = ref.watch(l10nProvider);
     final candidate = widget.route.candidates.firstOrNull;
     return DraggableScrollableSheet(
       expand: false,
@@ -77,9 +73,9 @@ class _RoutePreviewSheetState extends ConsumerState<RoutePreviewSheet> {
       minChildSize: 0.3,
       maxChildSize: 0.7,
       builder: (_, controller) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: ListView(
           controller: controller,
@@ -96,24 +92,26 @@ class _RoutePreviewSheetState extends ConsumerState<RoutePreviewSheet> {
               ),
             ),
             const SizedBox(height: 16),
-            const Text(
-              'Маршрут готов',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            Text(
+              s.routeReady,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 10),
-            Text('Зона: #${widget.route.selectedZoneId}'),
+            Text('${s.parkingZone}: #${widget.route.selectedZoneId}'),
             if (widget.route.arrivalTime != null)
-              Text('Прибытие: ${_formatArrival(widget.route.arrivalTime!)}'),
+              Text('${s.arrival}: ${_formatArrival(widget.route.arrivalTime!, s)}'),
             if (candidate != null) ...[
               Builder(builder: (_) {
                 final parts = <String>[];
-                if (candidate.distanceToDestinationMeters != null)
-                  parts.add('${(candidate.distanceToDestinationMeters! / 1000).toStringAsFixed(1)} км');
-                if (candidate.durationFromOriginSeconds != null)
-                  parts.add(_formatDuration(candidate.durationFromOriginSeconds!));
+                if (candidate.distanceToDestinationMeters != null) {
+                  parts.add(formatNavDistance(candidate.distanceToDestinationMeters!, s));
+                }
+                if (candidate.durationFromOriginSeconds != null) {
+                  parts.add(formatNavDuration(candidate.durationFromOriginSeconds!, s));
+                }
                 if (parts.isEmpty) return const SizedBox.shrink();
                 return Text(parts.join(' • '),
-                    style: const TextStyle(color: Color(0xFF666666)));
+                    style: TextStyle(color: Theme.of(context).hintColor));
               }),
             ],
             const SizedBox(height: 18),
@@ -124,13 +122,13 @@ class _RoutePreviewSheetState extends ConsumerState<RoutePreviewSheet> {
                   widget.onNavigateInApp!();
                 },
                 icon: const Icon(Icons.map_outlined),
-                label: const Text('Маршрут в приложении'),
+                label: Text(s.inAppRoute),
               ),
             const SizedBox(height: 8),
             FilledButton.icon(
               style: FilledButton.styleFrom(
                 backgroundColor: widget.onNavigateInApp != null
-                    ? Colors.white
+                    ? Theme.of(context).colorScheme.surface
                     : null,
                 foregroundColor: widget.onNavigateInApp != null
                     ? AppColors.primary
@@ -141,7 +139,7 @@ class _RoutePreviewSheetState extends ConsumerState<RoutePreviewSheet> {
               ),
               onPressed: _launching ? null : _launchNavigator,
               icon: const Icon(Icons.navigation_outlined),
-              label: Text(_launching ? 'Открываем...' : 'Яндекс Навигатор'),
+              label: Text(_launching ? s.searching : s.yandexNavigator),
             ),
             const SizedBox(height: 8),
             TextButton(
@@ -149,9 +147,9 @@ class _RoutePreviewSheetState extends ConsumerState<RoutePreviewSheet> {
                 ref.read(routingProvider.notifier).reset();
                 Navigator.pop(context);
               },
-              child: const Text(
-                'Сбросить',
-                style: TextStyle(color: AppColors.textSecondary),
+              child: Text(
+                s.reset,
+                style: TextStyle(color: Theme.of(context).hintColor),
               ),
             ),
           ],

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:yandex_mapkit/yandex_mapkit.dart';
 import '../../core/utils/nav_math.dart';
+import '../../core/localization/app_localizations.dart';
 
 class NavigationData {
   final int zoneId;
@@ -61,6 +62,7 @@ class NavigationNotifier extends Notifier<NavigationData?> {
     required double totalMeters,
     required double destLat,
     required double destLon,
+    required AppStrings s,
   }) async {
     _cleanupTimers();
     await _sub?.cancel();
@@ -77,7 +79,7 @@ class NavigationNotifier extends Notifier<NavigationData?> {
     _smoothHeading = null;
 
     _sub = Geolocator.getPositionStream(
-      locationSettings: _buildLocationSettings(),
+      locationSettings: _buildLocationSettings(s),
     ).listen(_onPosition);
   }
 
@@ -90,14 +92,14 @@ class NavigationNotifier extends Notifier<NavigationData?> {
     state = null;
   }
 
-  LocationSettings _buildLocationSettings() {
+  LocationSettings _buildLocationSettings(AppStrings s) {
     if (Platform.isAndroid) {
       return AndroidSettings(
         accuracy: LocationAccuracy.high,
         distanceFilter: 5,
-        foregroundNotificationConfig: const ForegroundNotificationConfig(
-          notificationTitle: 'ParkTrack',
-          notificationText: 'Навигация активна',
+        foregroundNotificationConfig: ForegroundNotificationConfig(
+          notificationTitle: s.appTitle,
+          notificationText: s.navigationActive,
           enableWakeLock: true,
         ),
       );

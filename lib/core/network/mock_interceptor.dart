@@ -9,7 +9,7 @@ class MockInterceptor extends Interceptor {
     final path = options.path;
 
     if (method == 'POST' && path == '/auth/register') {
-      return handler.resolve(_response(options, _authPayload('registered@mock.dev', 'Новый пользователь')));
+      return handler.resolve(_response(options, _authPayload('registered@mock.dev', 'New User')));
     }
     if (method == 'POST' && path == '/auth/login') {
       return handler.resolve(_response(options, _authPayload('user@mock.dev', 'Mock User')));
@@ -140,7 +140,7 @@ class MockInterceptor extends Interceptor {
   }
 
   Map<String, dynamic> _authPayload(String email, String name) => {
-        'access_token': 'mock-token-123',
+        'access_token': 'mock-token-${DateTime.now().millisecondsSinceEpoch}',
         'expires_in': 86400,
         'user': _userPayload(email, name),
       };
