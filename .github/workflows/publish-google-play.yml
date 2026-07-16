@@ -52,15 +52,34 @@ jobs:
         run: |
           set -euo pipefail
 
-          SDKMANAGER="$(command -v sdkmanager)"
+          ANDROID_SDK_DIR="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$ANDROID_SDK_DIR/cmdline-tools/latest/bin/sdkmanager"
+
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(
+              find "$ANDROID_SDK_DIR/cmdline-tools" \
+                -type f \
+                -name sdkmanager \
+                -print \
+                -quit \
+                2>/dev/null || true
+            )"
+          fi
+
+          if [ -z "$SDKMANAGER" ] || [ ! -x "$SDKMANAGER" ]; then
+            echo "sdkmanager was not found in $ANDROID_SDK_DIR"
+            exit 1
+          fi
+
+          echo "Using sdkmanager: $SDKMANAGER"
           "$SDKMANAGER" --licenses < <(yes)
           "$SDKMANAGER" "ndk;${NDK_VERSION}"
+          test -d "$ANDROID_SDK_DIR/ndk/${NDK_VERSION}"
 
       - name: Show versions
         run: |
           flutter --version
           java --version
-          test -d "${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}"
 
       - name: Install dependencies
         run: flutter pub get
