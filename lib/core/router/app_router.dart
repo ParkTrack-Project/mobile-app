@@ -24,17 +24,25 @@ final routerProvider = Provider<GoRouter>((ref) {
         return state.matchedLocation == '/' ? null : '/';
       }
 
-      final isLoginRoute = state.matchedLocation == '/login';
-      final isRegisterRoute = state.matchedLocation == '/register';
-      final isPasswordResetRoute = state.matchedLocation == '/password-reset';
-      final isSplashRoute = state.matchedLocation == '/';
+      final location = state.uri.path;
+      final isLoginRoute = location == '/login';
+      final isRegisterRoute = location == '/register';
+      final isPasswordResetRoute = location == '/password-reset';
+      final isSplashRoute = location == '/';
 
       if (isUnauth) {
         if (isSplashRoute) return '/login';
-        if (!isLoginRoute && !isRegisterRoute && !isPasswordResetRoute) return '/login';
+        if (!isLoginRoute && !isRegisterRoute && !isPasswordResetRoute) {
+          final from = state.uri.toString();
+          return '/login?from=${Uri.encodeComponent(from)}';
+        }
       }
 
-      if (isAuth && (isSplashRoute || isLoginRoute || isRegisterRoute)) return '/map';
+      if (isAuth && (isSplashRoute || isLoginRoute || isRegisterRoute)) {
+        final from = state.uri.queryParameters['from'];
+        if (from != null && from.isNotEmpty) return from;
+        return '/map';
+      }
 
       return null;
     },
@@ -42,11 +50,33 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/', builder: (_, _) => const SplashScreen()),
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
       GoRoute(path: '/register', builder: (_, _) => const RegisterScreen()),
-      GoRoute(path: '/map', builder: (_, _) => const MapScreen()),
+      GoRoute(
+        path: '/map',
+        builder: (context, state) {
+          final id = int.tryParse(state.uri.queryParameters['id'] ?? '');
+          final query = state.uri.queryParameters['q'];
+          return MapScreen(initialParkingId: id, searchQuery: query);
+        },
+        routes: [
+          GoRoute(
+            path: 'parking/:id',
+            builder: (context, state) {
+              final id = int.tryParse(state.pathParameters['id'] ?? '');
+              return MapScreen(initialParkingId: id);
+            },
+          ),
+        ],
+      ),
       GoRoute(path: '/profile', builder: (_, _) => const ProfileScreen(), routes: [
         GoRoute(path: 'edit', builder: (_, _) => const EditProfileScreen()),
       ]),
-      GoRoute(path: '/search', builder: (_, _) => const SearchScreen()),
+      GoRoute(
+        path: '/search',
+        builder: (context, state) {
+          final q = state.uri.queryParameters['q'];
+          return SearchScreen(initialQuery: q);
+        },
+      ),
       GoRoute(path: '/password-reset', builder: (_, _) => const PasswordResetScreen()),
     ],
   );
