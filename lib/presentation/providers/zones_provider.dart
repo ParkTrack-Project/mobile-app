@@ -40,12 +40,12 @@ class ZonesNotifier extends StateNotifier<AsyncValue<List<Zone>>> {
       );
       if (generation != _requestGeneration || cancelToken.isCancelled) return;
       state = AsyncValue.data(zones);
-    } on DioException catch (e) {
-      if (CancelToken.isCancel(e) || generation != _requestGeneration) return;
-      state = AsyncValue.error(e, e.stackTrace);
     } catch (e, st) {
       if (generation != _requestGeneration) return;
-      state = AsyncValue.error(e, st);
+      if (e is DioException && CancelToken.isCancel(e)) return;
+      
+      final failure = AppFailure.from(e);
+      state = AsyncValue<List<Zone>>.error(failure, st).copyWithPrevious(state);
     } finally {
       if (identical(_cancelToken, cancelToken)) _cancelToken = null;
     }

@@ -29,9 +29,13 @@ import 'widgets/web_map_view.dart';
 import 'widgets/web_map_types.dart';
 import 'widgets/parking_card_sheet.dart';
 import 'widgets/route_preview_sheet.dart';
+import 'widgets/pwa_install_guide.dart';
 
 class MapScreen extends ConsumerStatefulWidget {
-  const MapScreen({super.key});
+  const MapScreen({super.key, this.initialParkingId, this.searchQuery});
+
+  final int? initialParkingId;
+  final String? searchQuery;
 
   @override
   ConsumerState<MapScreen> createState() => _MapScreenState();
@@ -85,6 +89,40 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     _buildNavArrowBitmap().then((b) {
       if (mounted) setState(() => _navArrowBytes = b);
     });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (widget.initialParkingId != null) {
+        _loadAndShowParking(widget.initialParkingId!);
+      } else if (widget.searchQuery != null) {
+        _performSearch(widget.searchQuery!);
+      }
+    });
+  }
+
+  Future<void> _loadAndShowParking(int id) async {
+    try {
+      final repo = ref.read(zonesRepositoryProvider);
+      final zone = await repo.getZoneDetails(id);
+      if (!mounted) return;
+      _onZoneTap(zone);
+      final center = centroid(zone.geometry);
+      if (kIsWeb) {
+        _webMapController.move(center.latitude, center.longitude, 17);
+      } else {
+        _mapController?.moveCamera(
+          CameraUpdate.newCameraPosition(
+            CameraPosition(target: center, zoom: 17),
+          ),
+          animation: const MapAnimation(duration: 0.8),
+        );
+      }
+    } catch (e) {
+      debugPrint('Failed to load deep-link zone $id: $e');
+    }
+  }
+
+  void _performSearch(String query) {
+    context.push('/search?q=${Uri.encodeComponent(query)}');
   }
 
   @override
@@ -711,17 +749,21 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     });
 
     ref.listen(rawZonesProvider, (_, next) {
-      next.whenOrNull(
-        error: (e, st) {
-          showErrorSnackBar(
-            context,
-            ref.read(l10nProvider).errorLoadingZones,
-            error: e,
-            stackTrace: st,
-            s: ref.read(l10nProvider),
-          );
-        },
-      );
+      if (next.hasError && !next.isLoading) {
+        final error = next.error;
+        final message = error is AppFailure
+            ? error.localizedMessage(s)
+            : s.errorLoadingZones;
+
+        showErrorSnackBar(
+          context,
+          message,
+          error: error,
+          stackTrace: next.stackTrace,
+          s: s,
+          onRetry: () => ref.read(rawZonesProvider.notifier).refresh(),
+        );
+      }
     });
 
     ref.listen(destinationProvider, (_, dest) {
@@ -1257,6 +1299,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   ),
                 ),
               ),
+            const PwaInstallGuide(),
           ],
         ),
       ),
