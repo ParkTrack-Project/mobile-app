@@ -5,6 +5,7 @@ import '../../core/network/api_exception.dart';
 import '../../domain/models/route_result.dart';
 import 'app_providers.dart';
 import 'filters_provider.dart';
+import 'parking_search_provider.dart';
 import 'time_selector_provider.dart';
 
 part 'routing_provider.freezed.dart';
@@ -136,9 +137,11 @@ class RoutingNotifier extends StateNotifier<RoutingState> {
       if (generation != _requestGeneration || cancelToken.isCancelled) return;
       state = RoutingState.candidates(candidates);
       _stableState = state;
+      _ref.read(parkingSearchProvider.notifier).showResults(candidates);
     } catch (e) {
       if (e is DioException && CancelToken.isCancel(e)) return;
       if (generation != _requestGeneration) return;
+      _ref.read(parkingSearchProvider.notifier).backToResults();
       _publishFailure(
         e,
         fallback: AppFailureKind.network,
@@ -181,6 +184,7 @@ class RoutingNotifier extends StateNotifier<RoutingState> {
     } catch (e) {
       if (e is DioException && CancelToken.isCancel(e)) return;
       if (generation != _requestGeneration) return;
+      _ref.read(parkingSearchProvider.notifier).backToResults();
       _publishFailure(
         e,
         fallback: AppFailureKind.routeLoad,
@@ -199,6 +203,7 @@ class RoutingNotifier extends StateNotifier<RoutingState> {
     _cancelToken = null;
     _stableState = null;
     _ref.read(routingFailureProvider.notifier).state = null;
+    _ref.read(parkingSearchProvider.notifier).clear();
     state = const RoutingState.idle();
   }
 
