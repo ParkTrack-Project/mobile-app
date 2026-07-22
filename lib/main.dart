@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/router/app_router.dart';
+import 'core/router/url_strategy.dart';
 import 'core/theme/app_theme.dart';
 import 'presentation/providers/settings_provider.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  configureUrlStrategy();
   // MapKit API key is set via AndroidManifest.xml meta-data and ios/Runner/Info.plist
   runApp(const ProviderScope(child: ParkTrackApp()));
 }

@@ -33,7 +33,18 @@ import 'widgets/route_preview_sheet.dart';
 import 'widgets/pwa_install_guide.dart';
 
 class MapScreen extends ConsumerStatefulWidget {
-  const MapScreen({super.key});
+  const MapScreen({
+    super.key,
+    this.zoneId,
+    this.destinationLatitude,
+    this.destinationLongitude,
+    this.destinationName,
+  });
+
+  final int? zoneId;
+  final double? destinationLatitude;
+  final double? destinationLongitude;
+  final String? destinationName;
 
   @override
   ConsumerState<MapScreen> createState() => _MapScreenState();
@@ -87,6 +98,33 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     _buildNavArrowBitmap().then((b) {
       if (mounted) setState(() => _navArrowBytes = b);
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _applyDeepLink());
+  }
+
+  @override
+  void didUpdateWidget(covariant MapScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.zoneId != widget.zoneId ||
+        oldWidget.destinationLatitude != widget.destinationLatitude ||
+        oldWidget.destinationLongitude != widget.destinationLongitude ||
+        oldWidget.destinationName != widget.destinationName) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _applyDeepLink());
+    }
+  }
+
+  void _applyDeepLink() {
+    if (!mounted) return;
+    final latitude = widget.destinationLatitude;
+    final longitude = widget.destinationLongitude;
+    if (latitude != null && longitude != null) {
+      ref.read(destinationProvider.notifier).state = Destination(
+        latitude: latitude,
+        longitude: longitude,
+        name: widget.destinationName ?? ref.read(l10nProvider).selectedPlace,
+      );
+    }
+    final zoneId = widget.zoneId;
+    if (zoneId != null && zoneId > 0) _buildRouteForZone(zoneId);
   }
 
   @override
