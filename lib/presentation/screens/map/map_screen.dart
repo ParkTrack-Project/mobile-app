@@ -30,6 +30,7 @@ import 'widgets/web_map_view.dart';
 import 'widgets/web_map_types.dart';
 import 'widgets/parking_card_sheet.dart';
 import 'widgets/route_preview_sheet.dart';
+import 'widgets/pwa_install_guide.dart';
 
 class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({super.key});
@@ -1289,6 +1290,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   ),
                 ),
               ),
+            const PwaInstallGuide(),
           ],
         ),
       ),
