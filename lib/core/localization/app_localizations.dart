@@ -105,6 +105,15 @@ class AppStrings {
   final String invalidData;
   final String serverError;
   final String requestError;
+  final String noInternet;
+  final String requestTimedOut;
+  final String networkFailure;
+  final String serviceUnavailable;
+  final String unknownError;
+  final String locationServicesDisabled;
+  final String mapLoadError;
+  final String routeLoadError;
+  final String retry;
   final String searchTimeout;
   final String pointLookupError;
   final String pointLookupTimeout;
@@ -250,6 +259,15 @@ class AppStrings {
     required this.invalidData,
     required this.serverError,
     required this.requestError,
+    required this.noInternet,
+    required this.requestTimedOut,
+    required this.networkFailure,
+    required this.serviceUnavailable,
+    required this.unknownError,
+    required this.locationServicesDisabled,
+    required this.mapLoadError,
+    required this.routeLoadError,
+    required this.retry,
     required this.searchTimeout,
     required this.pointLookupError,
     required this.pointLookupTimeout,
@@ -313,7 +331,8 @@ class AppStrings {
     filters: 'Фильтры',
     apply: 'Применить',
     reset: 'Сбросить',
-    passwordResetInstructions: 'Введите свой email чтобы получить инструкции по сбросу пароля.',
+    passwordResetInstructions:
+        'Введите свой email чтобы получить инструкции по сбросу пароля.',
     logout: 'Выйти',
     settings: 'Настройки',
     appearance: 'Внешний вид',
@@ -397,6 +416,15 @@ class AppStrings {
     invalidData: 'Неверные данные',
     serverError: 'Ошибка сервера',
     requestError: 'Ошибка запроса',
+    noInternet: 'Нет подключения к интернету',
+    requestTimedOut: 'Сервер не ответил вовремя',
+    networkFailure: 'Не удалось подключиться к серверу',
+    serviceUnavailable: 'Сервис временно недоступен',
+    unknownError: 'Что-то пошло не так',
+    locationServicesDisabled: 'Геолокация отключена',
+    mapLoadError: 'Не удалось загрузить карту',
+    routeLoadError: 'Не удалось загрузить маршрут',
+    retry: 'Повторить',
     searchTimeout: 'Поиск занял слишком много времени',
     pointLookupError: 'Не удалось определить координаты места',
     pointLookupTimeout: 'Определение точки заняло слишком много времени',
@@ -476,7 +504,8 @@ class AppStrings {
     filters: 'Filters',
     apply: 'Apply',
     reset: 'Reset',
-    passwordResetInstructions: 'Enter your email to receive password reset instructions.',
+    passwordResetInstructions:
+        'Enter your email to receive password reset instructions.',
     logout: 'Logout',
     settings: 'Settings',
     appearance: 'Appearance',
@@ -560,6 +589,15 @@ class AppStrings {
     invalidData: 'Invalid data',
     serverError: 'Server error',
     requestError: 'Request error',
+    noInternet: 'No internet connection',
+    requestTimedOut: 'The server took too long to respond',
+    networkFailure: 'Could not connect to the server',
+    serviceUnavailable: 'Service is temporarily unavailable',
+    unknownError: 'Something went wrong',
+    locationServicesDisabled: 'Location services are disabled',
+    mapLoadError: 'Could not load the map',
+    routeLoadError: 'Could not load the route',
+    retry: 'Retry',
     searchTimeout: 'Search timeout',
     pointLookupError: 'Could not determine coordinates',
     pointLookupTimeout: 'Point lookup timeout',

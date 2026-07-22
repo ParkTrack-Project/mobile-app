@@ -16,6 +16,7 @@ import '../../providers/routing_provider.dart';
 import '../../providers/navigation_provider.dart';
 import '../../providers/time_selector_provider.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/utils/navigation_deeplink.dart';
 import '../../../core/utils/error_snackbar.dart';
 import '../../../core/localization/app_localizations.dart';
@@ -366,6 +367,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   Future<Position?> _getCurrentPosition({bool showDeniedDialog = true}) async {
     try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        throw const LocationServiceDisabledException();
+      }
       var permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
@@ -391,9 +395,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       );
       _userPosition = pos;
       return pos;
-    } on TimeoutException {
-      return null;
-    } catch (_) {
+    } catch (error, stackTrace) {
+      if (showDeniedDialog && error is! PermissionDeniedException && mounted) {
+        showErrorSnackBar(
+          context,
+          ref.read(l10nProvider).unknownError,
+          error: error,
+          stackTrace: stackTrace,
+          s: ref.read(l10nProvider),
+          onRetry: _goToMyLocation,
+        );
+      }
       return null;
     }
   }
@@ -640,6 +652,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           error: e,
           stackTrace: st,
           s: ref.read(l10nProvider),
+          failureFallback: AppFailureKind.routeLoad,
+          onRetry: () =>
+              _startInAppNavigation(zoneId: zoneId, toLat: toLat, toLon: toLon),
         );
       }
     } finally {
@@ -719,8 +734,22 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             error: e,
             stackTrace: st,
             s: ref.read(l10nProvider),
+            onRetry: () => ref.read(rawZonesProvider.notifier).refresh(),
+            failureFallback: AppFailureKind.network,
           );
         },
+      );
+    });
+
+    ref.listen(routingFailureProvider, (_, event) {
+      if (event == null) return;
+      showErrorSnackBar(
+        context,
+        ref.read(l10nProvider).errorCreatingRoute,
+        error: event.failure,
+        s: ref.read(l10nProvider),
+        onRetry: event.retry,
+        failureFallback: AppFailureKind.routeLoad,
       );
     });
 
@@ -754,14 +783,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           });
         },
         searching: () async {},
-        error: (message) async {
-          showErrorSnackBar(
-            context,
-            ref.read(l10nProvider).errorCreatingRoute,
-            error: message,
-            s: ref.read(l10nProvider),
-          );
-        },
+        error: (_) async {},
         candidates: (candidates) async {
           if (_isCandidatesSheetOpen || candidates.isEmpty) return;
           _isCandidatesSheetOpen = true;
@@ -1145,7 +1167,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 ),
               ),
             // ─── Loading indicators ─────────────────────────────────────
-            if (zonesAsync is AsyncLoading)
+            if (zonesAsync.isLoading && !zonesAsync.hasValue)
               const Positioned(
                 top: 100,
                 left: 0,
