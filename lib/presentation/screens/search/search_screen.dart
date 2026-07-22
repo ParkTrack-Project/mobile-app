@@ -10,7 +10,9 @@ import 'place_search_models.dart';
 import 'place_search_service.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
-  const SearchScreen({super.key});
+  const SearchScreen({super.key, this.initialQuery});
+
+  final String? initialQuery;
 
   @override
   ConsumerState<SearchScreen> createState() => _SearchScreenState();
@@ -42,10 +44,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusNode.requestFocus();
-      final saved = ref.read(searchQueryProvider);
-      if (saved.isNotEmpty) {
-        _controller.text = saved;
-        _suggest(saved);
+      final q = widget.initialQuery ?? ref.read(searchQueryProvider);
+      if (q != null && q.isNotEmpty) {
+        _controller.text = q;
+        ref.read(searchQueryProvider.notifier).state = q;
+        _suggest(q);
       }
     });
   }
