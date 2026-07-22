@@ -10,7 +10,9 @@ import 'place_search_models.dart';
 import 'place_search_service.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
-  const SearchScreen({super.key});
+  const SearchScreen({super.key, this.initialQuery});
+
+  final String? initialQuery;
 
   @override
   ConsumerState<SearchScreen> createState() => _SearchScreenState();
@@ -42,8 +44,12 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusNode.requestFocus();
-      final saved = ref.read(searchQueryProvider);
+      final initial = widget.initialQuery?.trim();
+      final saved = initial != null && initial.isNotEmpty
+          ? initial
+          : ref.read(searchQueryProvider);
       if (saved.isNotEmpty) {
+        ref.read(searchQueryProvider.notifier).state = saved;
         _controller.text = saved;
         _suggest(saved);
       }
@@ -143,7 +149,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   void _selectDestination(Destination destination) {
     ref.read(routingProvider.notifier).reset();
     ref.read(destinationProvider.notifier).state = destination;
-    context.pop();
+    if (GoRouter.of(context).canPop()) {
+      context.pop();
+    } else {
+      context.go('/map');
+    }
   }
 
   Future<void> _onSuggestionTap(PlaceSuggestion item) async {
