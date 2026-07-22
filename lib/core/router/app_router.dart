@@ -1,53 +1,130 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../presentation/providers/auth_provider.dart';
-import '../../presentation/screens/splash/splash_screen.dart';
 import '../../presentation/screens/auth/login_screen.dart';
+import '../../presentation/screens/auth/password_reset_screen.dart';
 import '../../presentation/screens/auth/register_screen.dart';
 import '../../presentation/screens/map/map_screen.dart';
-import '../../presentation/screens/profile/profile_screen.dart';
 import '../../presentation/screens/profile/edit_profile_screen.dart';
+import '../../presentation/screens/profile/profile_screen.dart';
 import '../../presentation/screens/search/search_screen.dart';
-import '../../presentation/screens/auth/password_reset_screen.dart';
+import '../../presentation/screens/splash/splash_screen.dart';
+import 'deep_link_coordinator.dart';
+
+class _RouterRefreshNotifier extends ChangeNotifier {
+  void refresh() => notifyListeners();
+}
 
 final routerProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(authStateProvider);
+  final refreshNotifier = _RouterRefreshNotifier();
+  final deepLinks = DeepLinkCoordinator();
+  ref.listen(authStateProvider, (_, _) => refreshNotifier.refresh());
+  ref.onDispose(refreshNotifier.dispose);
+
+  bool isPublicPath(String path) =>
+      path == '/login' || path == '/register' || path == '/password-reset';
 
   return GoRouter(
-    initialLocation: '/',
+    refreshListenable: refreshNotifier,
     redirect: (context, state) {
-      final isLoading = authState.maybeWhen(loading: () => true, orElse: () => false);
-      final isAuth = authState.maybeWhen(authenticated: (_) => true, orElse: () => false);
-      final isUnauth = authState.maybeWhen(unauthenticated: () => true, orElse: () => false);
+      final authState = ref.read(authStateProvider);
+      final isLoading = authState.maybeWhen(
+        loading: () => true,
+        orElse: () => false,
+      );
+      final isAuthenticated = authState.maybeWhen(
+        authenticated: (_) => true,
+        orElse: () => false,
+      );
+      final isUnauthenticated = authState.maybeWhen(
+        unauthenticated: () => true,
+        orElse: () => false,
+      );
+      final path = state.uri.path;
+      final isSplash = path == '/';
+      final isPublic = isPublicPath(path);
 
       if (isLoading) {
-        return state.matchedLocation == '/' ? null : '/';
+        if (!isSplash && !isPublic) deepLinks.remember(state.uri);
+        return isSplash ? null : '/';
       }
 
-      final isLoginRoute = state.matchedLocation == '/login';
-      final isRegisterRoute = state.matchedLocation == '/register';
-      final isPasswordResetRoute = state.matchedLocation == '/password-reset';
-      final isSplashRoute = state.matchedLocation == '/';
-
-      if (isUnauth) {
-        if (isSplashRoute) return '/login';
-        if (!isLoginRoute && !isRegisterRoute && !isPasswordResetRoute) return '/login';
+      if (isUnauthenticated) {
+        if (isSplash) return '/login';
+        if (!isPublic) {
+          deepLinks.remember(state.uri);
+          return Uri(
+            path: '/login',
+            queryParameters: {'from': state.uri.toString()},
+          ).toString();
+        }
       }
 
-      if (isAuth && (isSplashRoute || isLoginRoute || isRegisterRoute)) return '/map';
+      if (isAuthenticated && (isSplash || isPublic)) {
+        return deepLinks.takePendingOr(state.uri.queryParameters['from']);
+      }
+
+      if (isAuthenticated) {
+        final safeLocation = deepLinks.safeLocation(state.uri);
+        if (safeLocation != state.uri.toString()) return safeLocation;
+      }
 
       return null;
     },
+    errorBuilder: (_, _) => const MapScreen(),
     routes: [
       GoRoute(path: '/', builder: (_, _) => const SplashScreen()),
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
       GoRoute(path: '/register', builder: (_, _) => const RegisterScreen()),
-      GoRoute(path: '/map', builder: (_, _) => const MapScreen()),
-      GoRoute(path: '/profile', builder: (_, _) => const ProfileScreen(), routes: [
-        GoRoute(path: 'edit', builder: (_, _) => const EditProfileScreen()),
-      ]),
-      GoRoute(path: '/search', builder: (_, _) => const SearchScreen()),
-      GoRoute(path: '/password-reset', builder: (_, _) => const PasswordResetScreen()),
+      GoRoute(
+        path: '/password-reset',
+        builder: (_, _) => const PasswordResetScreen(),
+      ),
+      GoRoute(
+        path: '/map',
+        builder: (_, state) => MapScreen(
+          zoneId: int.tryParse(state.uri.queryParameters['zoneId'] ?? ''),
+          destinationLatitude: double.tryParse(
+            state.uri.queryParameters['lat'] ?? '',
+          ),
+          destinationLongitude: double.tryParse(
+            state.uri.queryParameters['lon'] ?? '',
+          ),
+          destinationName: state.uri.queryParameters['name'],
+        ),
+      ),
+      GoRoute(
+        path: '/parking/:zoneId',
+        builder: (_, state) => MapScreen(
+          zoneId: int.tryParse(state.pathParameters['zoneId'] ?? ''),
+        ),
+      ),
+      GoRoute(
+        path: '/destination',
+        builder: (_, state) => MapScreen(
+          destinationLatitude: double.tryParse(
+            state.uri.queryParameters['lat'] ?? '',
+          ),
+          destinationLongitude: double.tryParse(
+            state.uri.queryParameters['lon'] ?? '',
+          ),
+          destinationName: state.uri.queryParameters['name'],
+        ),
+      ),
+      GoRoute(
+        path: '/profile',
+        builder: (_, _) => const ProfileScreen(),
+        routes: [
+          GoRoute(path: 'edit', builder: (_, _) => const EditProfileScreen()),
+        ],
+      ),
+      GoRoute(
+        path: '/search',
+        builder: (_, state) =>
+            SearchScreen(initialQuery: state.uri.queryParameters['q']),
+      ),
     ],
   );
 });
