@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../providers/auth_provider.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/localization/app_localizations.dart';
+import 'widgets/language_switcher.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -67,7 +68,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           fontWeight: FontWeight.bold,
                         ),
                   ),
-                  const SizedBox(height: 40),
+                  const SizedBox(height: 8),
+                  const Center(child: LanguageSwitcher()),
+                  const SizedBox(height: 32),
                   TextFormField(
                     controller: _loginCtrl,
                     decoration: InputDecoration(

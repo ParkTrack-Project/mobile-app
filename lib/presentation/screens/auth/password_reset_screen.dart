@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../providers/auth_provider.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/localization/app_localizations.dart';
+import 'widgets/language_switcher.dart';
 
 class PasswordResetScreen extends ConsumerStatefulWidget {
   const PasswordResetScreen({super.key});
@@ -51,7 +52,15 @@ class _PasswordResetScreenState extends ConsumerState<PasswordResetScreen> {
   Widget build(BuildContext context) {
     final s = ref.watch(l10nProvider);
     return Scaffold(
-      appBar: AppBar(title: Text(s.resetPassword)),
+      appBar: AppBar(
+        title: Text(s.resetPassword),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 16),
+            child: Center(child: LanguageSwitcher()),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
