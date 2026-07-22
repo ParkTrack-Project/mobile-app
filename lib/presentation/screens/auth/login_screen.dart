@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../providers/auth_provider.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/localization/app_localizations.dart';
+import 'widgets/language_switcher.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -37,7 +38,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (mounted) {
         final s = ref.read(l10nProvider);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.getLocalizedMessage(s)), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text(e.getLocalizedMessage(s)),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -49,6 +53,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget build(BuildContext context) {
     final s = ref.watch(l10nProvider);
     return Scaffold(
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: LanguageSwitcher(),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -58,14 +71,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Icon(Icons.local_parking, size: 64, color: Color(0xFF2E7D32)),
+                  const Icon(
+                    Icons.local_parking,
+                    size: 64,
+                    color: Color(0xFF2E7D32),
+                  ),
                   const SizedBox(height: 8),
                   Text(
                     s.appTitle,
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const SizedBox(height: 40),
                   TextFormField(
@@ -87,9 +104,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       prefixIcon: const Icon(Icons.lock_outlined),
                       border: const OutlineInputBorder(),
                       suffixIcon: IconButton(
-                        icon: Icon(_obscure
-                            ? Icons.visibility_outlined
-                            : Icons.visibility_off_outlined),
+                        icon: Icon(
+                          _obscure
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined,
+                        ),
                         onPressed: () => setState(() => _obscure = !_obscure),
                       ),
                     ),
