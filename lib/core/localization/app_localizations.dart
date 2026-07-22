@@ -5,6 +5,16 @@ import '../../presentation/providers/settings_provider.dart';
 class AppStrings {
   final String appTitle;
   final String findParking;
+  final String noInternet;
+  final String requestTimedOut;
+  final String networkFailure;
+  final String mapLoadError;
+  final String routeLoadError;
+  final String unknownError;
+  final String retry;
+  final String pwaInstallTitle;
+  final String pwaInstallStep1;
+  final String pwaInstallStep2;
   final String searching;
   final String routeReady;
   final String selectParking;
@@ -296,6 +306,16 @@ class AppStrings {
   static AppStrings ru = AppStrings(
     appTitle: 'ParkTrack',
     findParking: 'Припарковаться',
+    noInternet: 'Нет интернета',
+    requestTimedOut: 'Время ожидания истекло',
+    networkFailure: 'Ошибка сети',
+    mapLoadError: 'Ошибка загрузки карты',
+    routeLoadError: 'Ошибка загрузки маршрута',
+    unknownError: 'Что-то пошло не так',
+    retry: 'Повторить',
+    pwaInstallTitle: 'Установка приложения',
+    pwaInstallStep1: 'Нажмите кнопку «Поделиться» в браузере',
+    pwaInstallStep2: 'Выберите «На экран Домой»',
     searching: 'Ищем...',
     routeReady: 'Маршрут готов',
     selectParking: 'Выберите парковку',
@@ -459,6 +479,16 @@ class AppStrings {
   static AppStrings en = AppStrings(
     appTitle: 'ParkTrack',
     findParking: 'Park Now',
+    noInternet: 'No internet',
+    requestTimedOut: 'Request timed out',
+    networkFailure: 'Network failure',
+    mapLoadError: 'Map load error',
+    routeLoadError: 'Route load error',
+    unknownError: 'Something went wrong',
+    retry: 'Retry',
+    pwaInstallTitle: 'Install App',
+    pwaInstallStep1: 'Tap the Share button in your browser',
+    pwaInstallStep2: 'Select "Add to Home Screen"',
     searching: 'Searching...',
     routeReady: 'Route Ready',
     selectParking: 'Select Parking',
