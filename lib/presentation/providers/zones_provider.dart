@@ -40,12 +40,12 @@ class ZonesNotifier extends StateNotifier<AsyncValue<List<Zone>>> {
       );
       if (generation != _requestGeneration || cancelToken.isCancelled) return;
       state = AsyncValue.data(zones);
-    } on DioException catch (e) {
+    } on DioException catch (e, st) {
       if (CancelToken.isCancel(e) || generation != _requestGeneration) return;
-      state = AsyncValue.error(e, e.stackTrace);
+      state = AsyncValue<List<Zone>>.error(e, st).copyWithPrevious(state);
     } catch (e, st) {
       if (generation != _requestGeneration) return;
-      state = AsyncValue.error(e, st);
+      state = AsyncValue<List<Zone>>.error(e, st).copyWithPrevious(state);
     } finally {
       if (identical(_cancelToken, cancelToken)) _cancelToken = null;
     }
@@ -60,11 +60,14 @@ class ZonesNotifier extends StateNotifier<AsyncValue<List<Zone>>> {
     _cancelToken?.cancel('Zone state cleared');
     _cancelToken = null;
     _lastRequestKey = null;
-    state = const AsyncValue.loading();
+    state = const AsyncValue<List<Zone>>.loading().copyWithPrevious(state);
   }
 
   void setErrorState(Object error, StackTrace stackTrace) {
-    state = AsyncValue.error(error, stackTrace);
+    state = AsyncValue<List<Zone>>.error(
+      error,
+      stackTrace,
+    ).copyWithPrevious(state);
   }
 
   @override

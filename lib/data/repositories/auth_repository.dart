@@ -13,33 +13,43 @@ class AuthRepository {
 
   Future<User> login(String login, String password) async {
     try {
-      final response = await _api.login(LoginRequestDto(login: login, password: password));
+      final response = await _api.login(
+        LoginRequestDto(login: login, password: password),
+      );
       await _tokenStorage.saveAccessToken(response.accessToken);
       await _tokenStorage.saveCredentials(login, password);
       return _mapUser(response.user);
     } on DioException catch (e) {
-      throw ApiException.fromStatusCode(e.response?.statusCode ?? 0);
+      throw ApiException.fromError(e);
     } on ApiException {
       rethrow;
     } catch (e) {
-      throw ApiException(e.toString());
+      throw ApiException.fromError(e);
     }
   }
 
-  Future<User> register(String email, String password, {String? fullName}) async {
+  Future<User> register(
+    String email,
+    String password, {
+    String? fullName,
+  }) async {
     try {
       final response = await _api.register(
-        RegisterRequestDto(email: email, password: password, fullName: fullName),
+        RegisterRequestDto(
+          email: email,
+          password: password,
+          fullName: fullName,
+        ),
       );
       await _tokenStorage.saveAccessToken(response.accessToken);
       await _tokenStorage.saveCredentials(email, password);
       return _mapUser(response.user);
     } on DioException catch (e) {
-      throw ApiException.fromStatusCode(e.response?.statusCode ?? 0);
+      throw ApiException.fromError(e);
     } on ApiException {
       rethrow;
     } catch (e) {
-      throw ApiException(e.toString());
+      throw ApiException.fromError(e);
     }
   }
 
@@ -65,9 +75,9 @@ class AuthRepository {
     try {
       await _api.requestPasswordReset(email);
     } on DioException catch (e) {
-      throw ApiException.fromStatusCode(e.response?.statusCode ?? 0);
+      throw ApiException.fromError(e);
     } catch (e) {
-      throw ApiException(e.toString());
+      throw ApiException.fromError(e);
     }
   }
 
@@ -75,20 +85,20 @@ class AuthRepository {
     try {
       final data = <String, dynamic>{};
       if (fullName != null) data['full_name'] = fullName;
-      
+
       final dto = await _api.updateProfile(data);
       return _mapUser(dto);
     } on DioException catch (e) {
-      throw ApiException.fromStatusCode(e.response?.statusCode ?? 0);
+      throw ApiException.fromError(e);
     } catch (e) {
-      throw ApiException(e.toString());
+      throw ApiException.fromError(e);
     }
   }
 
   User _mapUser(UserDto dto) => User(
-        userId: dto.userId,
-        email: dto.email,
-        fullName: dto.fullName,
-        roles: dto.globalRole != null ? [dto.globalRole!] : [],
-      );
+    userId: dto.userId,
+    email: dto.email,
+    fullName: dto.fullName,
+    roles: dto.globalRole != null ? [dto.globalRole!] : [],
+  );
 }
