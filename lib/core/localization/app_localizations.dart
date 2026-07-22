@@ -159,6 +159,14 @@ class AppStrings {
   final String editProfile;
   final String save;
   final String profileUpdated;
+  final String parkingNearby;
+  final String rankingPrinciple;
+  final String availablePlaces;
+  final String freeStatus;
+  final String goAction;
+  final String openInYandexMaps;
+  final String backToResults;
+  final String accessibleParking;
 
   AppStrings({
     required this.appTitle,
@@ -317,6 +325,14 @@ class AppStrings {
     required this.editProfile,
     required this.save,
     required this.profileUpdated,
+    required this.parkingNearby,
+    required this.rankingPrinciple,
+    required this.availablePlaces,
+    required this.freeStatus,
+    required this.goAction,
+    required this.openInYandexMaps,
+    required this.backToResults,
+    required this.accessibleParking,
   });
 
   static AppStrings ru = AppStrings(
@@ -494,6 +510,14 @@ class AppStrings {
     editProfile: 'Редактировать профиль',
     save: 'Сохранить',
     profileUpdated: 'Профиль обновлен',
+    parkingNearby: 'Парковки рядом',
+    rankingPrinciple: 'Сначала быстрее и с большей доступностью',
+    availablePlaces: 'свободных мест',
+    freeStatus: 'Бесплатно',
+    goAction: 'В путь',
+    openInYandexMaps: 'Открыть в Яндекс Картах',
+    backToResults: 'Назад к результатам',
+    accessibleParking: 'Доступная парковка',
   );
 
   static AppStrings en = AppStrings(
@@ -670,6 +694,14 @@ class AppStrings {
     editProfile: 'Edit Profile',
     save: 'Save',
     profileUpdated: 'Profile updated',
+    parkingNearby: 'Parking nearby',
+    rankingPrinciple: 'Fastest and most available options first',
+    availablePlaces: 'spaces available',
+    freeStatus: 'Free',
+    goAction: 'Go',
+    openInYandexMaps: 'Open in Yandex Maps',
+    backToResults: 'Back to results',
+    accessibleParking: 'Accessible parking',
   );
 }
 

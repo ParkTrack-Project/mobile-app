@@ -10,8 +10,11 @@ import 'package:go_router/go_router.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:yandex_mapkit/yandex_mapkit.dart';
 import '../../providers/zones_provider.dart';
+import '../../../domain/models/route_result.dart';
 import '../../../domain/models/zone.dart';
 import '../../providers/filters_provider.dart';
+import '../../providers/app_providers.dart';
+import '../../providers/parking_search_provider.dart';
 import '../../providers/routing_provider.dart';
 import '../../providers/navigation_provider.dart';
 import '../../providers/time_selector_provider.dart';
@@ -63,10 +66,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Uint8List? _userLocationBytes;
   Uint8List? _navArrowBytes;
 
-  bool _isSelectingOnMap = false;
-  bool _isCandidatesSheetOpen = false;
   bool _isRouteSheetOpen = false;
   bool _isParkingCardOpen = false;
+  bool _parkingDetailsLoading = false;
 
   Map<int, Uint8List> _zoneLabelCache = {};
   Map<int, Zone> _zonesById = {};
@@ -81,6 +83,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   List<Zone>? _cachedMapZones;
   Set<int> _cachedCandidateIds = const {};
+  int? _cachedSelectedZoneId;
   List<MapObject> _cachedZoneObjects = const [];
   Map<int, Uint8List>? _cachedLabelBitmaps;
   MapObject? _cachedZoneLabels;
@@ -272,19 +275,99 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   void _onZoneTap(Zone zone) {
-    if (_isSelectingOnMap && _candidateIds.contains(zone.zoneId)) {
-      _buildRouteForZone(zone.zoneId);
+    if (_candidateIds.contains(zone.zoneId)) {
+      _openCandidateDetails(zone);
       return;
     }
+    _openParkingDetails(zone);
+  }
+
+  Future<void> _openParkingDetails(Zone zone) async {
     if (_isParkingCardOpen) return;
     setState(() => _isParkingCardOpen = true);
-    showParkingCard(
-      context,
-      zone,
-      onBuildRoute: () => _buildRouteForZone(zone.zoneId),
-    ).then((_) {
-      if (mounted) setState(() => _isParkingCardOpen = false);
-    });
+    final result = await showParkingCard(context, zone);
+    if (!mounted) return;
+    setState(() => _isParkingCardOpen = false);
+    if (result == ParkingCardResult.buildRoute) {
+      await _buildRouteForZone(zone.zoneId);
+    }
+  }
+
+  Future<void> _openCandidateById(int zoneId) async {
+    if (_isParkingCardOpen || _parkingDetailsLoading) return;
+    var zone = _zonesById[zoneId];
+    if (zone == null) {
+      setState(() => _parkingDetailsLoading = true);
+      try {
+        zone = await ref.read(zonesRepositoryProvider).getZoneDetails(zoneId);
+      } catch (error, stackTrace) {
+        if (mounted) {
+          ref.read(parkingSearchProvider.notifier).backToResults();
+          showErrorSnackBar(
+            context,
+            ref.read(l10nProvider).errorLoadingZones,
+            error: error,
+            stackTrace: stackTrace,
+            s: ref.read(l10nProvider),
+            onRetry: () => _openCandidateById(zoneId),
+            failureFallback: AppFailureKind.network,
+          );
+        }
+        return;
+      } finally {
+        if (mounted) setState(() => _parkingDetailsLoading = false);
+      }
+    }
+    if (!mounted) return;
+    await _openCandidateDetails(zone);
+  }
+
+  Future<void> _openCandidateDetails(Zone zone) async {
+    if (_isParkingCardOpen) return;
+    if (!ref.read(parkingSearchProvider.notifier).showDetails(zone.zoneId)) {
+      return;
+    }
+    await _focusZone(zone);
+    if (!mounted) return;
+    setState(() => _isParkingCardOpen = true);
+    final result = await showParkingCard(context, zone, showBackButton: true);
+    if (!mounted) return;
+    setState(() => _isParkingCardOpen = false);
+    if (result == ParkingCardResult.buildRoute) {
+      ref.read(parkingSearchProvider.notifier).startRoute(zone.zoneId);
+      await _buildRouteForZone(zone.zoneId);
+    } else {
+      ref.read(parkingSearchProvider.notifier).backToResults();
+    }
+  }
+
+  Future<void> _focusZone(Zone zone) async {
+    if (zone.geometry.isEmpty) return;
+    final target = centroid(zone.geometry);
+    if (kIsWeb) {
+      _webMapController.move(target.latitude, target.longitude, 17);
+      return;
+    }
+    await _mapController?.moveCamera(
+      CameraUpdate.newCameraPosition(CameraPosition(target: target, zoom: 17)),
+      animation: const MapAnimation(duration: 0.65),
+    );
+  }
+
+  void _onCandidateAction(
+    CandidateAction action,
+    RouteCandidate candidate,
+    Zone? zone,
+  ) {
+    switch (action) {
+      case CandidateAction.go:
+        ref.read(parkingSearchProvider.notifier).startRoute(candidate.zoneId);
+        _buildRouteForZone(candidate.zoneId);
+      case CandidateAction.openExternal:
+        if (zone == null || zone.geometry.isEmpty) return;
+        final point = centroid(zone.geometry);
+        openYandexNavigator(point.latitude, point.longitude);
+    }
   }
 
   void _onClusterTap(_, Cluster cluster) {
@@ -316,14 +399,21 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     );
   }
 
-  List<MapObject> _zoneObjectsFor(List<Zone> zones, Set<int> candidateIds) {
+  List<MapObject> _zoneObjectsFor(
+    List<Zone> zones,
+    Set<int> candidateIds,
+    int? selectedZoneId,
+  ) {
     if (!identical(_cachedMapZones, zones) ||
-        !setEquals(_cachedCandidateIds, candidateIds)) {
+        !setEquals(_cachedCandidateIds, candidateIds) ||
+        _cachedSelectedZoneId != selectedZoneId) {
       _cachedMapZones = zones;
       _cachedCandidateIds = Set.unmodifiable(candidateIds);
+      _cachedSelectedZoneId = selectedZoneId;
       _cachedZoneObjects = buildZoneMapObjects(
         zones: zones,
-        highlightedIds: candidateIds,
+        resultIds: candidateIds,
+        selectedId: selectedZoneId,
         onTap: _onZoneTap,
       );
       _cachedZoneLabels = null;
@@ -331,7 +421,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     return _cachedZoneObjects;
   }
 
-  MapObject? _zoneLabelsFor(List<Zone> zones) {
+  MapObject? _zoneLabelsFor(
+    List<Zone> zones,
+    Set<int> candidateIds,
+    int? selectedZoneId,
+  ) {
     if (_zoneLabelCache.isEmpty) return null;
     if (_cachedZoneLabels == null ||
         !identical(_cachedMapZones, zones) ||
@@ -341,6 +435,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         zones: zones,
         bitmapCache: _zoneLabelCache,
         zonesById: _zonesById,
+        resultIds: candidateIds,
+        selectedId: selectedZoneId,
         onZoneTap: _onZoneTap,
         onClusterTap: _onClusterTap,
       );
@@ -585,7 +681,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Future<void> _buildRouteForZone(int zoneId) async {
     final origin = await _routingOrigin();
     if (origin == null) return;
-    setState(() => _isSelectingOnMap = false);
     await ref
         .read(routingProvider.notifier)
         .buildRoute(
@@ -823,34 +918,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         },
         searching: () async {},
         error: (_) async {},
-        candidates: (candidates) async {
-          if (_isCandidatesSheetOpen || candidates.isEmpty) return;
-          _isCandidatesSheetOpen = true;
-          await showModalBottomSheet(
-            context: context,
-            isScrollControlled: true,
-            builder: (_) => PointerInterceptor(
-              intercepting: kIsWeb,
-              child: CandidatesSheet(
-                candidates: candidates,
-                onSelectByList: (zoneId) {
-                  Navigator.pop(context);
-                  _buildRouteForZone(zoneId);
-                },
-                onSelectOnMap: () {
-                  Navigator.pop(context);
-                  setState(() => _isSelectingOnMap = true);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(ref.read(l10nProvider).pickZoneOnMap),
-                    ),
-                  );
-                },
-              ),
-            ),
-          );
-          _isCandidatesSheetOpen = false;
-        },
+        candidates: (_) async {},
         routePreview: (route) async {
           if (_isRouteSheetOpen) return;
           _isRouteSheetOpen = true;
@@ -913,14 +981,25 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       );
     });
 
-    final candidateIds = routingState.maybeWhen(
-      candidates: (c) => c.map((e) => e.zoneId).toSet(),
-      orElse: () => <int>{},
-    );
+    final parkingSearchState = ref.watch(parkingSearchProvider);
+    final candidateIds = parkingSearchState.resultZoneIds;
     _candidateIds = candidateIds;
+    final selectedSearchZoneId =
+        parkingSearchState.view == ParkingSearchView.details ||
+            parkingSearchState.view == ParkingSearchView.hidden
+        ? parkingSearchState.selectedZoneId
+        : null;
 
-    final zoneObjects = _zoneObjectsFor(zones, candidateIds);
-    final zoneLabels = _zoneLabelsFor(zones);
+    final zoneObjects = _zoneObjectsFor(
+      zones,
+      candidateIds,
+      selectedSearchZoneId,
+    );
+    final zoneLabels = _zoneLabelsFor(
+      zones,
+      candidateIds,
+      selectedSearchZoneId,
+    );
 
     final mapObjects = <MapObject>[
       ...zoneObjects,
@@ -933,6 +1012,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         ),
       if (_activeRouteZoneId != null)
         ...buildHighlightZone(zones, _activeRouteZoneId!),
+      if (selectedSearchZoneId != null &&
+          selectedSearchZoneId != _activeRouteZoneId)
+        ...buildHighlightZone(zones, selectedSearchZoneId),
       ?zoneLabels,
       if (_userPosition != null && _userLocationBytes != null && !isNavigating)
         PlacemarkMapObject(
@@ -977,6 +1059,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     ];
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final searchResultsVisible =
+        parkingSearchState.view == ParkingSearchView.results &&
+        parkingSearchState.candidates.isNotEmpty &&
+        !isNavigating;
+    final searchPanelHeight = (MediaQuery.sizeOf(context).height * 0.56).clamp(
+      240.0,
+      480.0,
+    );
 
     return Scaffold(
       body: SafeArea(
@@ -987,6 +1077,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 controller: _webMapController,
                 zones: zones,
                 candidateIds: candidateIds,
+                selectedZoneId: selectedSearchZoneId,
                 onZoneTap: _onZoneTap,
                 route: _routePolyline,
                 activeRouteZoneId: _activeRouteZoneId,
@@ -1059,6 +1150,28 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 },
                 onCameraPositionChanged: _onCameraPositionChanged,
               ),
+            if (searchResultsVisible)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: searchPanelHeight,
+                child: PointerInterceptor(
+                  intercepting: kIsWeb,
+                  child: CandidatesSheet(
+                    candidates: parkingSearchState.candidates,
+                    zones: zones,
+                    lastViewedZoneId: parkingSearchState.lastViewedZoneId,
+                    initialScrollOffset: parkingSearchState.scrollOffset,
+                    onSelect: _openCandidateById,
+                    onAction: _onCandidateAction,
+                    onScrollOffsetChanged: ref
+                        .read(parkingSearchProvider.notifier)
+                        .saveScrollOffset,
+                    onClose: ref.read(routingProvider.notifier).reset,
+                  ),
+                ),
+              ),
             // ─── Top bar ───────────────────────────────────────────────
             if (!isNavigating)
               PointerInterceptor(
@@ -1126,7 +1239,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             Positioned(
               right: 12,
               top: 0,
-              bottom: 0,
+              bottom: searchResultsVisible ? searchPanelHeight : 0,
               child: Align(
                 alignment: Alignment.center,
                 child: PointerInterceptor(
@@ -1160,7 +1273,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               ),
             ),
             // ─── Селектор времени: всегда левый край ──────────────
-            if (destination == null && !isNavigating)
+            if (destination == null &&
+                !isNavigating &&
+                parkingSearchState.view != ParkingSearchView.results)
               Positioned(
                 bottom: bottomInset + 20,
                 left: 16,
@@ -1170,7 +1285,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 ),
               ),
             // ─── FAB: всегда правый край ───────────────────────────
-            if (destination == null && !isNavigating)
+            if (destination == null &&
+                !isNavigating &&
+                parkingSearchState.view != ParkingSearchView.results)
               Positioned(
                 bottom: bottomInset + 20,
                 right: 16,
@@ -1189,7 +1306,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 ),
               ),
             // ─── Карточка назначения ────────────────────────────────────
-            if (destination != null && !isNavigating)
+            if (destination != null &&
+                !isNavigating &&
+                parkingSearchState.view != ParkingSearchView.results)
               Positioned(
                 bottom: bottomInset + 76,
                 left: 12,
@@ -1285,6 +1404,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       ),
                     ),
                   ),
+                ),
+              ),
+            if (_parkingDetailsLoading)
+              const Positioned.fill(
+                child: ColoredBox(
+                  color: Color(0x33000000),
+                  child: Center(child: CircularProgressIndicator()),
                 ),
               ),
             if (isRoutingLoading)

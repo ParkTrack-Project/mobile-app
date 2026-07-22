@@ -47,6 +47,7 @@ class WebMapView extends StatefulWidget {
     required this.controller,
     required this.zones,
     required this.candidateIds,
+    this.selectedZoneId,
     required this.onZoneTap,
     required this.onCameraChanged,
     required this.onMapReady,
@@ -65,6 +66,7 @@ class WebMapView extends StatefulWidget {
   final WebMapController controller;
   final List<Zone> zones;
   final Set<int> candidateIds;
+  final int? selectedZoneId;
   final void Function(Zone zone) onZoneTap;
   final void Function(WebMapCamera camera) onCameraChanged;
   final VoidCallback onMapReady;
@@ -198,6 +200,13 @@ class _WebMapViewState extends State<WebMapView> {
       'zones': widget.zones
           .map((zone) {
             final color = zoneColor(zone);
+            final isCandidate = widget.candidateIds.contains(zone.zoneId);
+            final isSelected = widget.selectedZoneId == zone.zoneId;
+            final opacity = widget.selectedZoneId != null
+                ? (isSelected ? 1.0 : 0.2)
+                : widget.candidateIds.isNotEmpty && !isCandidate
+                ? 0.2
+                : 1.0;
             return <String, Object?>{
               'id': zone.zoneId,
               'type': zone.zoneType == ZoneType.parallel ? 'line' : 'polygon',
@@ -211,8 +220,9 @@ class _WebMapViewState extends State<WebMapView> {
                   ? null
                   : zone.freeCount,
               'hasForecast': zone.hasForecast,
-              'candidate': widget.candidateIds.contains(zone.zoneId),
-              'active': widget.activeRouteZoneId == zone.zoneId,
+              'candidate': isCandidate,
+              'active': widget.activeRouteZoneId == zone.zoneId || isSelected,
+              'opacity': opacity,
               'center': () {
                 final point = centroid(zone.geometry);
                 return [point.latitude, point.longitude];
