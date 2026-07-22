@@ -8,26 +8,28 @@ import '../../../../presentation/providers/time_selector_provider.dart';
 import '../../../../presentation/providers/zones_provider.dart';
 import '../../../../core/localization/app_localizations.dart';
 
-Future<void> showParkingCard(
+enum ParkingCardResult { back, buildRoute }
+
+Future<ParkingCardResult?> showParkingCard(
   BuildContext context,
   Zone zone, {
-  VoidCallback? onBuildRoute,
+  bool showBackButton = false,
 }) {
   return showModalBottomSheet(
     context: context,
     isScrollControlled: true,
     builder: (_) => PointerInterceptor(
       intercepting: kIsWeb,
-      child: _ParkingCardSheet(zone: zone, onBuildRoute: onBuildRoute),
+      child: _ParkingCardSheet(zone: zone, showBackButton: showBackButton),
     ),
   );
 }
 
 class _ParkingCardSheet extends ConsumerWidget {
   final Zone zone;
-  final VoidCallback? onBuildRoute;
+  final bool showBackButton;
 
-  const _ParkingCardSheet({required this.zone, this.onBuildRoute});
+  const _ParkingCardSheet({required this.zone, required this.showBackButton});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -80,6 +82,13 @@ class _ParkingCardSheet extends ConsumerWidget {
               const SizedBox(height: 16),
               Row(
                 children: [
+                  if (showBackButton)
+                    IconButton(
+                      tooltip: s.backToResults,
+                      onPressed: () =>
+                          Navigator.pop(context, ParkingCardResult.back),
+                      icon: const Icon(Icons.arrow_back),
+                    ),
                   Expanded(
                     child: Text(
                       '${s.parkingZone} #${currentZone.zoneId}',
@@ -186,8 +195,7 @@ class _ParkingCardSheet extends ConsumerWidget {
                 width: double.infinity,
                 child: FilledButton.icon(
                   onPressed: () {
-                    Navigator.pop(context);
-                    onBuildRoute?.call();
+                    Navigator.pop(context, ParkingCardResult.buildRoute);
                   },
                   icon: const Icon(Icons.directions),
                   label: Text(s.buildRoute),

@@ -30,19 +30,41 @@ Future<Uint8List> _cachedClusterBitmap(
 List<MapObject> buildZoneMapObjects({
   required List<Zone> zones,
   required void Function(Zone) onTap,
-  Set<int> highlightedIds = const {},
+  Set<int> resultIds = const {},
+  int? selectedId,
 }) {
   final result = <MapObject>[];
+  final hasResults = resultIds.isNotEmpty;
   for (final zone in zones) {
     if (_isDegenerate(zone.geometry)) continue;
     final color = zoneColor(zone);
-    final highlighted = highlightedIds.contains(zone.zoneId);
+    final isResult = resultIds.contains(zone.zoneId);
+    final isSelected = selectedId == zone.zoneId;
+    final opacity = selectedId != null
+        ? (isSelected ? 1.0 : 0.2)
+        : hasResults && !isResult
+        ? 0.2
+        : 1.0;
     if (zone.zoneType == ZoneType.parallel) {
       result.add(
-        _buildParallelLine(zone, color, onTap, highlighted: highlighted),
+        _buildParallelLine(
+          zone,
+          color,
+          onTap,
+          highlighted: isSelected,
+          opacity: opacity,
+        ),
       );
     } else {
-      result.add(_buildPolygon(zone, color, onTap, highlighted: highlighted));
+      result.add(
+        _buildPolygon(
+          zone,
+          color,
+          onTap,
+          highlighted: isSelected,
+          opacity: opacity,
+        ),
+      );
     }
   }
   return result;
@@ -102,6 +124,8 @@ MapObject buildZoneLabels({
   required List<Zone> zones,
   required Map<int, Uint8List> bitmapCache,
   required Map<int, Zone> zonesById,
+  Set<int> resultIds = const {},
+  int? selectedId,
   ClusterTapCallback? onClusterTap,
   void Function(Zone)? onZoneTap,
 }) {
@@ -113,7 +137,7 @@ MapObject buildZoneLabels({
         (zone) => PlacemarkMapObject(
           mapId: MapObjectId('zone_label_${zone.zoneId}'),
           point: centroid(zone.geometry),
-          opacity: 1.0,
+          opacity: _zoneOpacity(zone.zoneId, resultIds, selectedId),
           icon: PlacemarkIcon.single(
             PlacemarkIconStyle(
               image: BitmapDescriptor.fromBytes(bitmapCache[zone.zoneId]!),
@@ -138,6 +162,12 @@ MapObject buildZoneLabels({
           )
           .whereType<int>()
           .toList();
+      final opacity = selectedId != null
+          ? (zoneIds.contains(selectedId) ? 1.0 : 0.2)
+          : resultIds.isNotEmpty &&
+                !zoneIds.any((zoneId) => resultIds.contains(zoneId))
+          ? 0.2
+          : 1.0;
       final hasForecast = zoneIds.any(
         (id) => zonesById[id]?.hasForecast == true,
       );
@@ -162,7 +192,7 @@ MapObject buildZoneLabels({
       );
       return cluster.copyWith(
         appearance: cluster.appearance.copyWith(
-          opacity: 1.0,
+          opacity: opacity,
           icon: PlacemarkIcon.single(
             PlacemarkIconStyle(
               image: BitmapDescriptor.fromBytes(bytes),
@@ -268,6 +298,7 @@ MapObject _buildPolygon(
   Color color,
   void Function(Zone) onTap, {
   bool highlighted = false,
+  double opacity = 1,
 }) {
   return PolygonMapObject(
     mapId: MapObjectId('zone_polygon_${zone.zoneId}'),
@@ -275,8 +306,10 @@ MapObject _buildPolygon(
       outerRing: LinearRing(points: zone.geometry),
       innerRings: [],
     ),
-    fillColor: color.withValues(alpha: 0.5),
-    strokeColor: highlighted ? Colors.white : color,
+    fillColor: color.withValues(alpha: 0.5 * opacity),
+    strokeColor: (highlighted ? Colors.white : color).withValues(
+      alpha: opacity,
+    ),
     strokeWidth: highlighted ? 4 : 2,
     onTap: (_, _) => onTap(zone),
   );
@@ -287,9 +320,12 @@ MapObject _buildParallelLine(
   Color color,
   void Function(Zone) onTap, {
   bool highlighted = false,
+  double opacity = 1,
 }) {
   final points = zone.geometry;
-  if (points.length < 4) return _buildPolygon(zone, color, onTap);
+  if (points.length < 4) {
+    return _buildPolygon(zone, color, onTap, opacity: opacity);
+  }
 
   final len01 = _distance(points[0], points[1]);
   final len12 = _distance(points[1], points[2]);
@@ -308,10 +344,18 @@ MapObject _buildParallelLine(
   return PolylineMapObject(
     mapId: MapObjectId('zone_line_${zone.zoneId}'),
     polyline: Polyline(points: [mid1, mid2]),
-    strokeColor: highlighted ? Colors.white : color,
+    strokeColor: (highlighted ? Colors.white : color).withValues(
+      alpha: opacity,
+    ),
     strokeWidth: highlighted ? 9 : 6,
     onTap: (_, _) => onTap(zone),
   );
+}
+
+double _zoneOpacity(int zoneId, Set<int> resultIds, int? selectedId) {
+  if (selectedId != null) return zoneId == selectedId ? 1 : 0.2;
+  if (resultIds.isNotEmpty && !resultIds.contains(zoneId)) return 0.2;
+  return 1;
 }
 
 double _distance(Point a, Point b) {

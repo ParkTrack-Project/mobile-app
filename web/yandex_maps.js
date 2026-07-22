@@ -189,6 +189,10 @@
 
   function clusterMarkerElement(features, onTap) {
     const zones = features.map((feature) => feature.properties.zone);
+    const opacity = zones.reduce(
+      (maximum, zone) => Math.max(maximum, Number(zone.opacity ?? 1)),
+      0
+    );
     const forecastZones = zones.filter((zone) => zone.hasForecast);
     const freeCount = forecastZones.length
       ? forecastZones.reduce((sum, zone) => sum + Number(zone.freeCount || 0), 0)
@@ -213,6 +217,7 @@
       'font:700 9px/1.1 Roboto,Arial,sans-serif',
       'cursor:pointer',
       'box-shadow:0 1px 4px rgba(0,0,0,.4)',
+      `opacity:${opacity}`,
     ].join(';');
     element.textContent = freeCount === null
       ? String(features.length)
@@ -647,6 +652,19 @@
           latitude: coordinates[0],
           longitude: coordinates[1],
         });
+      });
+    },
+
+    reverseGeocode(latitude, longitude) {
+      return withServicesReady(() =>
+        window.ymaps.geocode([latitude, longitude], { results: 1 })
+      ).then((result) => {
+        const geoObject = result.geoObjects.get(0);
+        const address =
+          geoObject && typeof geoObject.getAddressLine === 'function'
+            ? geoObject.getAddressLine()
+            : null;
+        return JSON.stringify(address || null);
       });
     },
 

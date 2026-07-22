@@ -1,0 +1,66 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:mobile/domain/models/route_result.dart';
+import 'package:mobile/presentation/providers/parking_search_provider.dart';
+
+RouteCandidate _candidate(int zoneId) => RouteCandidate(
+  zoneId: zoneId,
+  rank: zoneId,
+  freeCount: 3,
+  confidence: 0.8,
+  pay: 0,
+);
+
+void main() {
+  test('keeps result selection, last viewed item, and scroll position', () {
+    final notifier = ParkingSearchNotifier();
+    final candidates = [_candidate(1), _candidate(2)];
+
+    notifier.showResults(candidates);
+    notifier.saveScrollOffset(86);
+    expect(notifier.showDetails(2), isTrue);
+
+    expect(notifier.state.view, ParkingSearchView.details);
+    expect(notifier.state.selectedZoneId, 2);
+    expect(notifier.state.lastViewedZoneId, 2);
+
+    notifier.backToResults();
+
+    expect(notifier.state.view, ParkingSearchView.results);
+    expect(notifier.state.selectedZoneId, isNull);
+    expect(notifier.state.lastViewedZoneId, 2);
+    expect(notifier.state.scrollOffset, 86);
+
+    notifier.showResults(candidates);
+    expect(notifier.state.scrollOffset, 86);
+    expect(notifier.state.lastViewedZoneId, 2);
+  });
+
+  test('resets presentation state for a different result set', () {
+    final notifier = ParkingSearchNotifier();
+    notifier.showResults([_candidate(1)]);
+    notifier.saveScrollOffset(100);
+    notifier.showDetails(1);
+
+    notifier.showResults([_candidate(3)]);
+
+    expect(notifier.state.resultZoneIds, {3});
+    expect(notifier.state.scrollOffset, 0);
+    expect(notifier.state.lastViewedZoneId, isNull);
+  });
+
+  test('accepts only a result as the selected parking', () {
+    final notifier = ParkingSearchNotifier();
+    notifier.showResults([_candidate(5)]);
+
+    expect(notifier.showDetails(9), isFalse);
+    expect(notifier.state.selectedZoneId, isNull);
+
+    notifier.startRoute(5);
+    expect(notifier.state.view, ParkingSearchView.hidden);
+    expect(notifier.state.selectedZoneId, 5);
+
+    notifier.clear();
+    expect(notifier.state.candidates, isEmpty);
+    expect(notifier.state.view, ParkingSearchView.hidden);
+  });
+}
