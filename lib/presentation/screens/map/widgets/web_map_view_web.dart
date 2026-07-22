@@ -14,8 +14,11 @@ import 'web_map_types.dart';
 @JS('parkTrackYandexMaps.create')
 external void _createYandexMap(
   JSString elementId,
+  JSString locale,
+  JSString theme,
   JSFunction cameraCallback,
   JSFunction zoneTapCallback,
+  JSFunction errorCallback,
 );
 
 @JS('parkTrackYandexMaps.update')
@@ -35,6 +38,9 @@ external void _setYandexMapZoom(JSString elementId, JSNumber zoom);
 @JS('parkTrackYandexMaps.destroy')
 external void _destroyYandexMap(JSString elementId);
 
+@JS('parkTrackYandexMaps.retry')
+external void _retryYandexMap(JSString elementId);
+
 class WebMapView extends StatefulWidget {
   const WebMapView({
     super.key,
@@ -44,6 +50,7 @@ class WebMapView extends StatefulWidget {
     required this.onZoneTap,
     required this.onCameraChanged,
     required this.onMapReady,
+    required this.onError,
     this.route,
     this.activeRouteZoneId,
     this.userLatitude,
@@ -61,6 +68,7 @@ class WebMapView extends StatefulWidget {
   final void Function(Zone zone) onZoneTap;
   final void Function(WebMapCamera camera) onCameraChanged;
   final VoidCallback onMapReady;
+  final void Function(Object error) onError;
   final List<Point>? route;
   final int? activeRouteZoneId;
   final double? userLatitude;
@@ -119,6 +127,12 @@ class _WebMapViewState extends State<WebMapView> {
     if (_created) _updateMap();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_created) _updateMap();
+  }
+
   void _initializeMap() {
     if (_created) return;
     _created = true;
@@ -128,9 +142,20 @@ class _WebMapViewState extends State<WebMapView> {
     widget.controller.zoomHandler = (zoom) {
       _setYandexMapZoom(_elementId.toJS, zoom.toJS);
     };
+    widget.controller.retryHandler = () {
+      _retryYandexMap(_elementId.toJS);
+    };
+
+    final languageCode = Localizations.localeOf(context).languageCode;
+    final locale = languageCode == 'ru' ? 'ru_RU' : 'en_RU';
+    final theme = Theme.of(context).brightness == Brightness.dark
+        ? 'dark'
+        : 'light';
 
     _createYandexMap(
       _elementId.toJS,
+      locale.toJS,
+      theme.toJS,
       ((JSString value) {
         final data = jsonDecode(value.toDart) as Map<String, dynamic>;
         final camera = WebMapCamera(
@@ -156,12 +181,20 @@ class _WebMapViewState extends State<WebMapView> {
           }
         }
       }).toJS,
+      ((JSString errorCode) {
+        widget.onError(StateError(errorCode.toDart));
+      }).toJS,
     );
     _updateMap();
   }
 
   void _updateMap() {
+    final languageCode = Localizations.localeOf(context).languageCode;
     final state = <String, Object?>{
+      'locale': languageCode == 'ru' ? 'ru_RU' : 'en_RU',
+      'theme': Theme.of(context).brightness == Brightness.dark
+          ? 'dark'
+          : 'light',
       'zones': widget.zones
           .map((zone) {
             final color = zoneColor(zone);

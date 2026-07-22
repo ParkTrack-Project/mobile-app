@@ -963,6 +963,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 destinationLatitude: destination?.latitude,
                 destinationLongitude: destination?.longitude,
                 onCameraChanged: _onWebCameraChanged,
+                onError: (error) {
+                  showErrorSnackBar(
+                    context,
+                    ref.read(l10nProvider).mapLoadError,
+                    error: error,
+                    s: ref.read(l10nProvider),
+                    onRetry: _webMapController.retry,
+                    failureFallback: AppFailureKind.mapLoad,
+                  );
+                },
                 onMapReady: () {
                   _webMapReady = true;
                   final camera = _webMapController.camera;
