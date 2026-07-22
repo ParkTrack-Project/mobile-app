@@ -16,6 +16,7 @@ import '../../providers/routing_provider.dart';
 import '../../providers/navigation_provider.dart';
 import '../../providers/time_selector_provider.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/utils/navigation_deeplink.dart';
 import '../../../core/utils/error_snackbar.dart';
 import '../../../core/localization/app_localizations.dart';
@@ -29,9 +30,21 @@ import 'widgets/web_map_view.dart';
 import 'widgets/web_map_types.dart';
 import 'widgets/parking_card_sheet.dart';
 import 'widgets/route_preview_sheet.dart';
+import 'widgets/pwa_install_guide.dart';
 
 class MapScreen extends ConsumerStatefulWidget {
-  const MapScreen({super.key});
+  const MapScreen({
+    super.key,
+    this.zoneId,
+    this.destinationLatitude,
+    this.destinationLongitude,
+    this.destinationName,
+  });
+
+  final int? zoneId;
+  final double? destinationLatitude;
+  final double? destinationLongitude;
+  final String? destinationName;
 
   @override
   ConsumerState<MapScreen> createState() => _MapScreenState();
@@ -85,6 +98,33 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     _buildNavArrowBitmap().then((b) {
       if (mounted) setState(() => _navArrowBytes = b);
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _applyDeepLink());
+  }
+
+  @override
+  void didUpdateWidget(covariant MapScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.zoneId != widget.zoneId ||
+        oldWidget.destinationLatitude != widget.destinationLatitude ||
+        oldWidget.destinationLongitude != widget.destinationLongitude ||
+        oldWidget.destinationName != widget.destinationName) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _applyDeepLink());
+    }
+  }
+
+  void _applyDeepLink() {
+    if (!mounted) return;
+    final latitude = widget.destinationLatitude;
+    final longitude = widget.destinationLongitude;
+    if (latitude != null && longitude != null) {
+      ref.read(destinationProvider.notifier).state = Destination(
+        latitude: latitude,
+        longitude: longitude,
+        name: widget.destinationName ?? ref.read(l10nProvider).selectedPlace,
+      );
+    }
+    final zoneId = widget.zoneId;
+    if (zoneId != null && zoneId > 0) _buildRouteForZone(zoneId);
   }
 
   @override
@@ -366,6 +406,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   Future<Position?> _getCurrentPosition({bool showDeniedDialog = true}) async {
     try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        throw const LocationServiceDisabledException();
+      }
       var permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
@@ -391,9 +434,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       );
       _userPosition = pos;
       return pos;
-    } on TimeoutException {
-      return null;
-    } catch (_) {
+    } catch (error, stackTrace) {
+      if (showDeniedDialog && error is! PermissionDeniedException && mounted) {
+        showErrorSnackBar(
+          context,
+          ref.read(l10nProvider).unknownError,
+          error: error,
+          stackTrace: stackTrace,
+          s: ref.read(l10nProvider),
+          onRetry: _goToMyLocation,
+        );
+      }
       return null;
     }
   }
@@ -640,6 +691,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           error: e,
           stackTrace: st,
           s: ref.read(l10nProvider),
+          failureFallback: AppFailureKind.routeLoad,
+          onRetry: () =>
+              _startInAppNavigation(zoneId: zoneId, toLat: toLat, toLon: toLon),
         );
       }
     } finally {
@@ -719,8 +773,22 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             error: e,
             stackTrace: st,
             s: ref.read(l10nProvider),
+            onRetry: () => ref.read(rawZonesProvider.notifier).refresh(),
+            failureFallback: AppFailureKind.network,
           );
         },
+      );
+    });
+
+    ref.listen(routingFailureProvider, (_, event) {
+      if (event == null) return;
+      showErrorSnackBar(
+        context,
+        ref.read(l10nProvider).errorCreatingRoute,
+        error: event.failure,
+        s: ref.read(l10nProvider),
+        onRetry: event.retry,
+        failureFallback: AppFailureKind.routeLoad,
       );
     });
 
@@ -754,14 +822,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           });
         },
         searching: () async {},
-        error: (message) async {
-          showErrorSnackBar(
-            context,
-            ref.read(l10nProvider).errorCreatingRoute,
-            error: message,
-            s: ref.read(l10nProvider),
-          );
-        },
+        error: (_) async {},
         candidates: (candidates) async {
           if (_isCandidatesSheetOpen || candidates.isEmpty) return;
           _isCandidatesSheetOpen = true;
@@ -941,6 +1002,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 destinationLatitude: destination?.latitude,
                 destinationLongitude: destination?.longitude,
                 onCameraChanged: _onWebCameraChanged,
+                onError: (error) {
+                  showErrorSnackBar(
+                    context,
+                    ref.read(l10nProvider).mapLoadError,
+                    error: error,
+                    s: ref.read(l10nProvider),
+                    onRetry: _webMapController.retry,
+                    failureFallback: AppFailureKind.mapLoad,
+                  );
+                },
                 onMapReady: () {
                   _webMapReady = true;
                   final camera = _webMapController.camera;
@@ -1145,7 +1216,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 ),
               ),
             // ─── Loading indicators ─────────────────────────────────────
-            if (zonesAsync is AsyncLoading)
+            if (zonesAsync.isLoading && !zonesAsync.hasValue)
               const Positioned(
                 top: 100,
                 left: 0,
@@ -1257,6 +1328,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   ),
                 ),
               ),
+            const PwaInstallGuide(),
           ],
         ),
       ),

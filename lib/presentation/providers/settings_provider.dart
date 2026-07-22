@@ -7,10 +7,7 @@ class SettingsState {
   final ThemeMode themeMode;
   final Locale? locale;
 
-  SettingsState({
-    required this.themeMode,
-    this.locale,
-  });
+  SettingsState({required this.themeMode, this.locale});
 
   SettingsState copyWith({
     ThemeMode? themeMode,
@@ -27,15 +24,18 @@ class SettingsState {
 class SettingsNotifier extends StateNotifier<SettingsState> {
   final SettingsStorage _storage;
   static const _channel = MethodChannel('com.parktrack.mobile/mapkit');
+  int _languageGeneration = 0;
 
   SettingsNotifier(this._storage)
-      : super(SettingsState(themeMode: ThemeMode.system)) {
+    : super(SettingsState(themeMode: ThemeMode.system)) {
     _loadSettings();
   }
 
   Future<void> _loadSettings() async {
+    final generation = _languageGeneration;
     final theme = await _storage.getThemeMode();
     final lang = await _storage.getLanguage();
+    if (generation != _languageGeneration) return;
     if (lang != null) {
       _setMapKitLocale(lang);
     }
@@ -51,14 +51,15 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
   }
 
   Future<void> setLanguage(String? languageCode) async {
-    await _storage.saveLanguage(languageCode);
-    if (languageCode != null) {
-      _setMapKitLocale(languageCode);
-    }
+    _languageGeneration++;
     state = state.copyWith(
       locale: languageCode != null ? Locale(languageCode) : null,
       clearLocale: languageCode == null,
     );
+    await _storage.saveLanguage(languageCode);
+    if (languageCode != null) {
+      await _setMapKitLocale(languageCode);
+    }
   }
 
   Future<void> _setMapKitLocale(String lang) async {
@@ -72,6 +73,8 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
 
 final settingsStorageProvider = Provider((ref) => SettingsStorage());
 
-final settingsProvider = StateNotifierProvider<SettingsNotifier, SettingsState>((ref) {
-  return SettingsNotifier(ref.watch(settingsStorageProvider));
-});
+final settingsProvider = StateNotifierProvider<SettingsNotifier, SettingsState>(
+  (ref) {
+    return SettingsNotifier(ref.watch(settingsStorageProvider));
+  },
+);

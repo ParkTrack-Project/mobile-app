@@ -1,13 +1,18 @@
 {
     "name": "ParkTrack",
     "short_name": "ParkTrack",
-    "start_url": ".",
+    "id": "/",
+    "start_url": "/map",
+    "scope": "/",
     "display": "standalone",
     "background_color": "#121212FF",
     "theme_color": "#121212FF",
     "description": "Available parking map.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
+    "launch_handler": {
+        "client_mode": "navigate-existing"
+    },
     "icons": [
         {
             "src": "favicon.png",
