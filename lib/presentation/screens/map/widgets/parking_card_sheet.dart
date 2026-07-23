@@ -91,7 +91,7 @@ class _ParkingCardSheet extends ConsumerWidget {
                     ),
                   Expanded(
                     child: Text(
-                      '${s.parkingZone} #${currentZone.zoneId}',
+                      s.parkingZone,
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,

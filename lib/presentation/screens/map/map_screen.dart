@@ -284,8 +284,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   void _onZoneTap(Zone zone) {
-    if (_candidateIds.contains(zone.zoneId)) {
-      _openCandidateDetails(zone);
+    final searchState = ref.read(parkingSearchProvider);
+    final searchIsActive = searchState.view != ParkingSearchView.hidden;
+    if (searchIsActive) {
+      if (_candidateIds.contains(zone.zoneId)) {
+        _selectSearchCandidate(zone.zoneId, knownZone: zone);
+      }
       return;
     }
     _openParkingDetails(zone);
@@ -303,8 +307,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   Future<void> _openCandidateById(int zoneId) async {
+    await _selectSearchCandidate(zoneId);
+  }
+
+  Future<void> _selectSearchCandidate(int zoneId, {Zone? knownZone}) async {
     if (_isParkingCardOpen || _parkingDetailsLoading) return;
-    var zone = _zonesById[zoneId];
+    var zone = knownZone ?? _zonesById[zoneId];
     if (zone == null) {
       setState(() => _parkingDetailsLoading = true);
       try {

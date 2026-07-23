@@ -10,6 +10,44 @@ import '../../../../core/theme/app_colors.dart';
 final Map<({int? totalFree, int clusterSize, int color}), Future<Uint8List>>
 _clusterBitmapCache = {};
 
+class ParkingMarkerState {
+  const ParkingMarkerState({
+    required this.activeIds,
+    required this.mutedResultIds,
+    required this.contextIds,
+  });
+
+  final Set<int> activeIds;
+  final Set<int> mutedResultIds;
+  final Set<int> contextIds;
+}
+
+ParkingMarkerState resolveParkingMarkerState({
+  required Set<int> allIds,
+  required Set<int> resultIds,
+  int? selectedId,
+}) {
+  if (resultIds.isEmpty) {
+    return ParkingMarkerState(
+      activeIds: Set.unmodifiable(allIds),
+      mutedResultIds: const {},
+      contextIds: const {},
+    );
+  }
+  if (selectedId != null && resultIds.contains(selectedId)) {
+    return ParkingMarkerState(
+      activeIds: Set.unmodifiable({selectedId}),
+      mutedResultIds: Set.unmodifiable(resultIds.difference({selectedId})),
+      contextIds: Set.unmodifiable(allIds.difference(resultIds)),
+    );
+  }
+  return ParkingMarkerState(
+    activeIds: Set.unmodifiable(resultIds),
+    mutedResultIds: const {},
+    contextIds: Set.unmodifiable(allIds.difference(resultIds)),
+  );
+}
+
 Future<Uint8List> _cachedClusterBitmap(
   int? totalFree,
   int clusterSize,
@@ -34,17 +72,20 @@ List<MapObject> buildZoneMapObjects({
   int? selectedId,
 }) {
   final result = <MapObject>[];
-  final hasResults = resultIds.isNotEmpty;
+  final markerState = resolveParkingMarkerState(
+    allIds: zones.map((zone) => zone.zoneId).toSet(),
+    resultIds: resultIds,
+    selectedId: selectedId,
+  );
   for (final zone in zones) {
     if (_isDegenerate(zone.geometry)) continue;
     final color = zoneColor(zone);
-    final isResult = resultIds.contains(zone.zoneId);
     final isSelected = selectedId == zone.zoneId;
-    final opacity = selectedId != null
-        ? (isSelected ? 1.0 : 0.2)
-        : hasResults && !isResult
-        ? 0.2
-        : 1.0;
+    final opacity = markerState.activeIds.contains(zone.zoneId)
+        ? 1.0
+        : markerState.mutedResultIds.contains(zone.zoneId)
+        ? 0.35
+        : 0.18;
     if (zone.zoneType == ZoneType.parallel) {
       result.add(
         _buildParallelLine(
@@ -162,11 +203,14 @@ MapObject buildZoneLabels({
           )
           .whereType<int>()
           .toList();
-      final opacity = selectedId != null
-          ? (zoneIds.contains(selectedId) ? 1.0 : 0.2)
+      final opacity = zoneIds.contains(selectedId)
+          ? 1.0
+          : selectedId != null &&
+                zoneIds.any((zoneId) => resultIds.contains(zoneId))
+          ? 0.35
           : resultIds.isNotEmpty &&
                 !zoneIds.any((zoneId) => resultIds.contains(zoneId))
-          ? 0.2
+          ? 0.18
           : 1.0;
       final hasForecast = zoneIds.any(
         (id) => zonesById[id]?.hasForecast == true,
@@ -353,8 +397,11 @@ MapObject _buildParallelLine(
 }
 
 double _zoneOpacity(int zoneId, Set<int> resultIds, int? selectedId) {
-  if (selectedId != null) return zoneId == selectedId ? 1 : 0.2;
-  if (resultIds.isNotEmpty && !resultIds.contains(zoneId)) return 0.2;
+  if (selectedId != null) {
+    if (zoneId == selectedId) return 1;
+    return resultIds.contains(zoneId) ? 0.35 : 0.18;
+  }
+  if (resultIds.isNotEmpty && !resultIds.contains(zoneId)) return 0.18;
   return 1;
 }
 
