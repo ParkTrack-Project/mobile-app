@@ -10,7 +10,8 @@ class PasswordResetScreen extends ConsumerStatefulWidget {
   const PasswordResetScreen({super.key});
 
   @override
-  ConsumerState<PasswordResetScreen> createState() => _PasswordResetScreenState();
+  ConsumerState<PasswordResetScreen> createState() =>
+      _PasswordResetScreenState();
 }
 
 class _PasswordResetScreenState extends ConsumerState<PasswordResetScreen> {
@@ -31,16 +32,19 @@ class _PasswordResetScreenState extends ConsumerState<PasswordResetScreen> {
     try {
       await ref.read(authStateProvider.notifier).requestPasswordReset(email);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Instructions sent to $email')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Instructions sent to $email')));
         context.pop();
       }
     } on ApiException catch (e) {
       if (mounted) {
         final s = ref.read(l10nProvider);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.getLocalizedMessage(s)), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text(e.getLocalizedMessage(s)),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -70,7 +74,11 @@ class _PasswordResetScreenState extends ConsumerState<PasswordResetScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Icon(Icons.lock_reset_outlined, size: 64, color: Color(0xFF2E7D32)),
+                  const Icon(
+                    Icons.lock_reset_outlined,
+                    size: 64,
+                    color: Color(0xFF2E7D32),
+                  ),
                   const SizedBox(height: 16),
                   Text(
                     s.passwordResetInstructions,

@@ -1,4 +1,5 @@
-• Improved reliability: the app preserves data on network failures and provides clear error messages.
-• Added support for deep links (App Links).
-• Added language switcher to login and registration screens.
-• Enhanced stability of navigation and maps.
+• Faster maps with fewer redraws, DOM scans, and duplicate camera updates.
+• Parallel parking is now shown as lines; zero availability is visible on markers.
+• Fixed Android place search with managed sessions and reliable fallback geocoding.
+• Added App Links, language selection on authentication screens, and an iOS PWA installation guide.
+• Improved offline resilience, navigation stability, and release build optimization.

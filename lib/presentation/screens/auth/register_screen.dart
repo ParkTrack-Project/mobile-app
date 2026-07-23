@@ -33,7 +33,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _loading = true);
     try {
-      await ref.read(authStateProvider.notifier).register(
+      await ref
+          .read(authStateProvider.notifier)
+          .register(
             _emailCtrl.text.trim(),
             _passwordCtrl.text,
             fullName: _nameCtrl.text.trim(),
@@ -42,7 +44,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       if (mounted) {
         final s = ref.read(l10nProvider);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.getLocalizedMessage(s)), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text(e.getLocalizedMessage(s)),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -78,7 +83,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     prefixIcon: const Icon(Icons.person_outlined),
                     border: const OutlineInputBorder(),
                   ),
-                  validator: (v) => v == null || v.trim().isEmpty ? s.nameRequired : null,
+                  validator: (v) =>
+                      v == null || v.trim().isEmpty ? s.nameRequired : null,
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
@@ -89,7 +95,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     border: const OutlineInputBorder(),
                   ),
                   keyboardType: TextInputType.emailAddress,
-                  validator: (v) => v == null || !v.contains('@') ? s.invalidEmail : null,
+                  validator: (v) =>
+                      v == null || !v.contains('@') ? s.invalidEmail : null,
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
@@ -99,9 +106,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     prefixIcon: const Icon(Icons.lock_outlined),
                     border: const OutlineInputBorder(),
                     suffixIcon: IconButton(
-                      icon: Icon(_obscure
-                          ? Icons.visibility_outlined
-                          : Icons.visibility_off_outlined),
+                      icon: Icon(
+                        _obscure
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                      ),
                       onPressed: () => setState(() => _obscure = !_obscure),
                     ),
                   ),
@@ -120,7 +129,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                           height: 20,
                           width: 20,
                           child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white),
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
                         )
                       : Text(s.createAccount),
                 ),

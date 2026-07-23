@@ -1,20 +1,24 @@
 # Release 1.3.0
 
-## Changes
+## Что нового
 
-### Android
-- Added support for m.parktrack.live App Links.
-- Added language switcher to all auth screens.
-- Improved error handling and offline data preservation.
-- Fixed location permission and network error reporting.
+### Карты и парковки
 
-### Web & PWA
-- Synchronized map theme and locale with the app.
-- Disabled accidental interactions with base map POIs.
-- Added iOS PWA installation guide.
-- Formatted and optimized Yandex Maps JS bridge.
+• Веб-карта приведена к внешнему виду Android: параллельные парковки отображаются полосами, а маркеры показывают `0`, когда свободных мест нет.
+• Снижена нагрузка веб-карты: обновляются только изменившиеся слои, ограничена частота событий камеры и устранены повторные обходы DOM.
+• Синхронизированы тема и язык карт, отключены случайные нажатия на POI базовой карты.
+• Улучшены построение маршрута, выбор зоны и расчёт области показа маршрута.
 
-### Core
-- Centralized `AppFailure` logic for better reliability.
-- Implemented stale-while-revalidate pattern for parking data.
-- Added non-intrusive error banners with retry capability.
+### Android и поиск
+
+• Исправлен поиск мест, который мог завершаться сообщением «Поиск занял слишком много времени».
+• Добавлено управляемое завершение поисковых сессий и резервное геокодирование.
+• Добавлена поддержка App Links для `m.parktrack.live`.
+• Оптимизированы release-сборки: включены минификация кода и удаление неиспользуемых ресурсов.
+
+### Интерфейс и надёжность
+
+• Добавлен переключатель языка на экранах авторизации.
+• Добавлена инструкция по установке PWA на iOS.
+• Данные парковок сохраняются при временных сетевых ошибках; сообщения об ошибках стали понятнее.
+• Снижено количество лишних перерисовок, операций с хранилищем и фоновых вычислений.

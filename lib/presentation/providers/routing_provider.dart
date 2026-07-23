@@ -36,10 +36,21 @@ final destinationModeProvider = StateProvider<DestinationMode>(
 );
 
 class SearchBias {
-  const SearchBias({required this.latitude, required this.longitude});
+  const SearchBias({
+    required this.latitude,
+    required this.longitude,
+    this.south,
+    this.west,
+    this.north,
+    this.east,
+  });
 
   final double latitude;
   final double longitude;
+  final double? south;
+  final double? west;
+  final double? north;
+  final double? east;
 }
 
 final searchBiasProvider = StateProvider<SearchBias?>((ref) => null);

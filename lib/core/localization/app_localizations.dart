@@ -15,6 +15,8 @@ class AppStrings {
   final String pwaInstallTitle;
   final String pwaInstallStep1;
   final String pwaInstallStep2;
+  final String serviceUnavailable;
+  final String locationServicesDisabled;
   final String searching;
   final String routeReady;
   final String selectParking;
@@ -160,6 +162,18 @@ class AppStrings {
   AppStrings({
     required this.appTitle,
     required this.findParking,
+    required this.noInternet,
+    required this.requestTimedOut,
+    required this.networkFailure,
+    required this.mapLoadError,
+    required this.routeLoadError,
+    required this.unknownError,
+    required this.retry,
+    required this.pwaInstallTitle,
+    required this.pwaInstallStep1,
+    required this.pwaInstallStep2,
+    required this.serviceUnavailable,
+    required this.locationServicesDisabled,
     required this.searching,
     required this.routeReady,
     required this.selectParking,
@@ -316,6 +330,8 @@ class AppStrings {
     pwaInstallTitle: 'Установка приложения',
     pwaInstallStep1: 'Нажмите кнопку «Поделиться» в браузере',
     pwaInstallStep2: 'Выберите «На экран Домой»',
+    serviceUnavailable: 'Сервис временно недоступен',
+    locationServicesDisabled: 'Геолокация отключена',
     searching: 'Ищем...',
     routeReady: 'Маршрут готов',
     selectParking: 'Выберите парковку',
@@ -333,7 +349,8 @@ class AppStrings {
     filters: 'Фильтры',
     apply: 'Применить',
     reset: 'Сбросить',
-    passwordResetInstructions: 'Введите свой email чтобы получить инструкции по сбросу пароля.',
+    passwordResetInstructions:
+        'Введите свой email чтобы получить инструкции по сбросу пароля.',
     logout: 'Выйти',
     settings: 'Настройки',
     appearance: 'Внешний вид',
@@ -489,6 +506,8 @@ class AppStrings {
     pwaInstallTitle: 'Install App',
     pwaInstallStep1: 'Tap the Share button in your browser',
     pwaInstallStep2: 'Select "Add to Home Screen"',
+    serviceUnavailable: 'Service temporarily unavailable',
+    locationServicesDisabled: 'Location services disabled',
     searching: 'Searching...',
     routeReady: 'Route Ready',
     selectParking: 'Select Parking',
@@ -506,7 +525,8 @@ class AppStrings {
     filters: 'Filters',
     apply: 'Apply',
     reset: 'Reset',
-    passwordResetInstructions: 'Enter your email to receive password reset instructions.',
+    passwordResetInstructions:
+        'Enter your email to receive password reset instructions.',
     logout: 'Logout',
     settings: 'Settings',
     appearance: 'Appearance',

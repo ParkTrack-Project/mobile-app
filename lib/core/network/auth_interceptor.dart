@@ -67,8 +67,10 @@ class AuthInterceptor extends Interceptor {
   }
 
   Future<String> _loginAgain() async {
-    final login = await _tokenStorage.getLogin();
-    final password = await _tokenStorage.getPassword();
+    final loginFuture = _tokenStorage.getLogin();
+    final passwordFuture = _tokenStorage.getPassword();
+    final login = await loginFuture;
+    final password = await passwordFuture;
     if (login == null || password == null) {
       throw StateError('No credentials available for token refresh');
     }
