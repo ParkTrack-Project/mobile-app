@@ -171,6 +171,7 @@ class AppStrings {
   final String freeStatus;
   final String goAction;
   final String openInYandexMaps;
+  final String externalMapOpenError;
   final String backToResults;
   final String accessibleParking;
 
@@ -343,6 +344,7 @@ class AppStrings {
     required this.freeStatus,
     required this.goAction,
     required this.openInYandexMaps,
+    required this.externalMapOpenError,
     required this.backToResults,
     required this.accessibleParking,
   });
@@ -399,8 +401,8 @@ class AppStrings {
     notAuthenticated: 'Неверные данные для входа',
     logoutConfirm: 'Вы уверены, что хотите выйти из аккаунта?',
     cancel: 'Отмена',
-    inAppRoute: 'В приложении',
-    yandexNavigator: 'Яндекс',
+    inAppRoute: 'В путь',
+    yandexNavigator: 'Открыть в Яндекс Картах',
     buildRoute: 'Построить маршрут',
     searchParkingNear: 'Искать парковку рядом',
     selectedPlace: 'Выбранное место',
@@ -534,6 +536,7 @@ class AppStrings {
     freeStatus: 'Бесплатно',
     goAction: 'В путь',
     openInYandexMaps: 'Открыть в Яндекс Картах',
+    externalMapOpenError: 'Не удалось открыть Яндекс Карты',
     backToResults: 'Назад к результатам',
     accessibleParking: 'Доступная парковка',
   );
@@ -590,8 +593,8 @@ class AppStrings {
     notAuthenticated: 'Invalid login credentials',
     logoutConfirm: 'Are you sure you want to sign out?',
     cancel: 'Cancel',
-    inAppRoute: 'In-app',
-    yandexNavigator: 'Yandex',
+    inAppRoute: 'Go',
+    yandexNavigator: 'Open in Yandex Maps',
     buildRoute: 'Build Route',
     searchParkingNear: 'Search parking nearby',
     selectedPlace: 'Selected place',
@@ -724,6 +727,7 @@ class AppStrings {
     freeStatus: 'Free',
     goAction: 'Go',
     openInYandexMaps: 'Open in Yandex Maps',
+    externalMapOpenError: 'Could not open Yandex Maps',
     backToResults: 'Back to results',
     accessibleParking: 'Accessible parking',
   );

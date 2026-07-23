@@ -121,4 +121,20 @@ void main() {
       listSelection.state.candidates.map((candidate) => candidate.zoneId),
     );
   });
+
+  test('route failure returns to results without losing candidates', () {
+    final notifier = ParkingSearchNotifier();
+    final candidates = [_candidate(2), _candidate(4)];
+    notifier.showResults(candidates);
+    notifier.startRoute(4);
+
+    notifier.backToResults();
+
+    expect(notifier.state.view, ParkingSearchView.results);
+    expect(notifier.state.lastViewedZoneId, 4);
+    expect(notifier.state.candidates.map((candidate) => candidate.zoneId), [
+      2,
+      4,
+    ]);
+  });
 }

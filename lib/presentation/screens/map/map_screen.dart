@@ -23,7 +23,9 @@ import '../../../core/utils/navigation_deeplink.dart';
 import '../../../core/utils/error_snackbar.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/services/yandex_web_route.dart';
+import 'route_camera.dart';
 import 'widgets/candidates_sheet.dart';
+import 'widgets/destination_marker.dart';
 import 'widgets/navigation_overlay.dart'
     show NavigationTurnCard, NavigationBottomBar;
 import 'widgets/parking_zone_layer.dart';
@@ -57,7 +59,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Uint8List? _userLocationBytes;
   Uint8List? _navArrowBytes;
 
-  bool _isRouteSheetOpen = false;
   bool _isParkingCardOpen = false;
   bool _parkingDetailsLoading = false;
 
@@ -96,7 +97,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   Future<void> _loadMarkerBitmaps() async {
     final bitmaps = await Future.wait<Uint8List>([
-      _buildDestinationPinBitmap(),
+      buildDestinationPinBitmap(),
       _buildUserLocationBitmap(),
       _buildNavArrowBitmap(),
     ]);
@@ -140,29 +141,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     _timeDebounce?.cancel();
     _drivingSession?.close();
     super.dispose();
-  }
-
-  Future<Uint8List> _buildDestinationPinBitmap() async {
-    const size = 48.0;
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-    canvas.drawCircle(
-      const Offset(size / 2, size / 2),
-      size / 2 - 2,
-      Paint()..color = AppColors.primary,
-    );
-    canvas.drawCircle(
-      const Offset(size / 2, size / 2),
-      size / 2 - 2,
-      Paint()
-        ..color = Colors.white
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 3,
-    );
-    final picture = recorder.endRecording();
-    final image = await picture.toImage(size.toInt(), size.toInt());
-    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-    return byteData!.buffer.asUint8List();
   }
 
   Future<void> _updateZoneBitmaps(List<Zone> zones) async {
@@ -370,19 +348,34 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     );
   }
 
-  void _onCandidateAction(
+  Future<void> _onCandidateAction(
     CandidateAction action,
     RouteCandidate candidate,
     Zone? zone,
-  ) {
+  ) async {
     switch (action) {
       case CandidateAction.go:
         ref.read(parkingSearchProvider.notifier).startRoute(candidate.zoneId);
-        _buildRouteForZone(candidate.zoneId);
+        await _buildRouteForZone(candidate.zoneId);
       case CandidateAction.openExternal:
         if (zone == null || zone.geometry.isEmpty) return;
         final point = centroid(zone.geometry);
-        openYandexNavigator(point.latitude, point.longitude);
+        await _openExternalMap(point.latitude, point.longitude);
+    }
+  }
+
+  Future<void> _openExternalMap(double latitude, double longitude) async {
+    try {
+      await openYandexMapsRoute(latitude, longitude);
+    } catch (error, stackTrace) {
+      if (!mounted) return;
+      showErrorSnackBar(
+        context,
+        ref.read(l10nProvider).externalMapOpenError,
+        error: error,
+        stackTrace: stackTrace,
+        s: ref.read(l10nProvider),
+      );
     }
   }
 
@@ -858,6 +851,29 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       searching: () => true,
       orElse: () => false,
     );
+    final routePreview = routingState.maybeWhen(
+      routePreview: (route) => route,
+      orElse: () => null,
+    );
+    Point? routePreviewTarget;
+    if (routePreview != null) {
+      final matches = zones.where(
+        (zone) =>
+            zone.zoneId == routePreview.selectedZoneId &&
+            zone.geometry.isNotEmpty,
+      );
+      if (matches.isNotEmpty) {
+        routePreviewTarget = centroid(matches.first.geometry);
+      } else {
+        final selectedCandidates = routePreview.candidates.where(
+          (candidate) => candidate.zoneId == routePreview.selectedZoneId,
+        );
+        final candidate =
+            selectedCandidates.firstOrNull ??
+            routePreview.candidates.firstOrNull;
+        routePreviewTarget = candidate?.routePolyline?.lastOrNull;
+      }
+    }
 
     ref.listen(timeSelectorProvider, (_, _) {
       ref.read(rawZonesProvider.notifier).clearZones();
@@ -955,9 +971,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         error: (_) async {},
         candidates: (_) async {},
         routePreview: (route) async {
-          if (_isRouteSheetOpen) return;
-          _isRouteSheetOpen = true;
-
           final matches = zones.where((z) => z.zoneId == route.selectedZoneId);
           double? zoneLat, zoneLon;
           if (matches.isNotEmpty) {
@@ -983,18 +996,41 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             zoneLon = lastPoint.longitude;
           }
 
-          if (zoneLat != null && zoneLon != null) {
-            final target = Point(latitude: zoneLat, longitude: zoneLon);
-            final polyline = route.routePolyline ?? candidate?.routePolyline;
+          final polyline = route.routePolyline ?? candidate?.routePolyline;
+          setState(() {
+            _routePolyline = polyline;
+            _routeDurationSeconds =
+                candidate?.durationFromOriginSeconds?.toDouble() ?? 0;
+            _activeRouteZoneId = route.selectedZoneId;
+          });
 
-            if (polyline != null && polyline.isNotEmpty && kIsWeb) {
-              // On web, try to fit bounds for better UX
-              final south = polyline.map((p) => p.latitude).reduce(math.min);
-              final north = polyline.map((p) => p.latitude).reduce(math.max);
-              final west = polyline.map((p) => p.longitude).reduce(math.min);
-              final east = polyline.map((p) => p.longitude).reduce(math.max);
-              _webMapController.fitBounds(south, west, north, east);
-            } else if (kIsWeb) {
+          final bounds = calculateRouteBounds(polyline);
+          if (bounds != null) {
+            if (kIsWeb) {
+              final padded = padRouteBoundsForPanel(bounds);
+              _webMapController.fitBounds(
+                padded.south,
+                padded.west,
+                padded.north,
+                padded.east,
+              );
+            } else {
+              final mediaQuery = MediaQuery.of(context);
+              await _mapController?.moveCamera(
+                CameraUpdate.newGeometry(
+                  Geometry.fromBoundingBox(bounds.boundingBox),
+                  focusRect: routeFocusRect(
+                    viewport: mediaQuery.size,
+                    safePadding: mediaQuery.padding,
+                    bottomPanelHeight: 330,
+                  ),
+                ),
+                animation: const MapAnimation(duration: 0.8),
+              );
+            }
+          } else if (zoneLat != null && zoneLon != null) {
+            final target = Point(latitude: zoneLat, longitude: zoneLon);
+            if (kIsWeb) {
               _webMapController.move(zoneLat, zoneLon, 17);
             } else {
               await _mapController?.moveCamera(
@@ -1005,35 +1041,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               );
             }
           }
-
-          setState(() {
-            _routePolyline = route.routePolyline ?? candidate?.routePolyline;
-            _routeDurationSeconds =
-                candidate?.durationFromOriginSeconds?.toDouble() ?? 0;
-            _activeRouteZoneId = route.selectedZoneId;
-          });
-
-          if (!context.mounted) return;
-          await showModalBottomSheet(
-            context: context,
-            isScrollControlled: true,
-            builder: (_) => PointerInterceptor(
-              intercepting: kIsWeb,
-              child: RoutePreviewSheet(
-                route: route,
-                zoneLat: zoneLat,
-                zoneLon: zoneLon,
-                onNavigateInApp: (zoneLat != null && zoneLon != null)
-                    ? () => _startInAppNavigation(
-                        zoneId: route.selectedZoneId,
-                        toLat: zoneLat!,
-                        toLon: zoneLon!,
-                      )
-                    : null,
-              ),
-            ),
-          );
-          _isRouteSheetOpen = false;
         },
       );
     });
@@ -1109,6 +1116,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           icon: PlacemarkIcon.single(
             PlacemarkIconStyle(
               image: BitmapDescriptor.fromBytes(_destinationPinBytes!),
+              anchor: destinationMarkerAnchor,
+              zIndex: 10,
               scale: 1.0,
             ),
           ),
@@ -1132,6 +1141,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       240.0,
       480.0,
     );
+    final routePreviewVisible = routePreview != null && !isNavigating;
+    final routePreviewPanelHeight = (MediaQuery.sizeOf(context).height * 0.42)
+        .clamp(260.0, 330.0);
+    final mapPanelHeight = searchResultsVisible
+        ? searchPanelHeight
+        : routePreviewVisible
+        ? routePreviewPanelHeight
+        : 0.0;
 
     return Scaffold(
       body: SafeArea(
@@ -1222,6 +1239,29 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   ),
                 ),
               ),
+            if (routePreviewVisible)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: routePreviewPanelHeight,
+                child: PointerInterceptor(
+                  intercepting: kIsWeb,
+                  child: RoutePreviewSheet(
+                    route: routePreview,
+                    zoneLat: routePreviewTarget?.latitude,
+                    zoneLon: routePreviewTarget?.longitude,
+                    onNavigateInApp: routePreviewTarget == null
+                        ? null
+                        : () => _startInAppNavigation(
+                            zoneId: routePreview.selectedZoneId,
+                            toLat: routePreviewTarget!.latitude,
+                            toLon: routePreviewTarget.longitude,
+                          ),
+                    onClose: ref.read(routingProvider.notifier).reset,
+                  ),
+                ),
+              ),
             // ─── Top bar ───────────────────────────────────────────────
             if (!isNavigating)
               PointerInterceptor(
@@ -1289,7 +1329,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             Positioned(
               right: 12,
               top: 0,
-              bottom: searchResultsVisible ? searchPanelHeight : 0,
+              bottom: mapPanelHeight,
               child: Align(
                 alignment: Alignment.center,
                 child: PointerInterceptor(
@@ -1325,6 +1365,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             // ─── Селектор времени: всегда левый край ──────────────
             if (destination == null &&
                 !isNavigating &&
+                !routePreviewVisible &&
                 parkingSearchState.view != ParkingSearchView.results)
               Positioned(
                 bottom: bottomInset + 20,
@@ -1337,6 +1378,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             // ─── FAB: всегда правый край ───────────────────────────
             if (destination == null &&
                 !isNavigating &&
+                !routePreviewVisible &&
                 parkingSearchState.view != ParkingSearchView.results)
               Positioned(
                 bottom: bottomInset + 20,
@@ -1358,6 +1400,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             // ─── Карточка назначения ────────────────────────────────────
             if (destination != null &&
                 !isNavigating &&
+                !routePreviewVisible &&
                 parkingSearchState.view != ParkingSearchView.results)
               Positioned(
                 bottom: bottomInset + 76,
@@ -1368,12 +1411,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   child: _DestinationCard(
                     destination: destination,
                     onFindParking: isRoutingLoading ? null : _findParking,
-                    onNavigate: kIsWeb
-                        ? () {}
-                        : () => openYandexNavigator(
-                            destination.latitude,
-                            destination.longitude,
-                          ),
+                    onNavigate: () => _openExternalMap(
+                      destination.latitude,
+                      destination.longitude,
+                    ),
                     onNavigateInApp: () => _startInAppNavigation(
                       zoneId: 0,
                       toLat: destination.latitude,
@@ -1596,7 +1637,7 @@ class _DestinationCard extends ConsumerWidget {
                 child: FilledButton.icon(
                   onPressed: onNavigateInApp,
                   icon: const Icon(Icons.map_outlined, size: 16),
-                  label: Text(s.inAppRoute),
+                  label: Text(s.goAction),
                   style: FilledButton.styleFrom(
                     textStyle: const TextStyle(fontSize: 13),
                     padding: const EdgeInsets.symmetric(vertical: 10),
@@ -1604,17 +1645,16 @@ class _DestinationCard extends ConsumerWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              if (!kIsWeb)
-                Expanded(
-                  child: FilledButton.tonal(
-                    onPressed: onNavigate,
-                    style: FilledButton.styleFrom(
-                      textStyle: const TextStyle(fontSize: 13),
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                    ),
-                    child: Text(s.yandexNavigator),
+              Expanded(
+                child: FilledButton.tonal(
+                  onPressed: onNavigate,
+                  style: FilledButton.styleFrom(
+                    textStyle: const TextStyle(fontSize: 13),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
                   ),
+                  child: Text(s.openInYandexMaps),
                 ),
+              ),
             ],
           ),
         ],
