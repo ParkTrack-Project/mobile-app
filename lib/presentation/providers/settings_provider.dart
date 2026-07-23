@@ -1,16 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../core/utils/browser_locale.dart';
 import '../../core/storage/settings_storage.dart';
 
 class SettingsState {
   final ThemeMode themeMode;
   final Locale? locale;
 
-  SettingsState({
-    required this.themeMode,
-    this.locale,
-  });
+  SettingsState({required this.themeMode, this.locale});
 
   SettingsState copyWith({
     ThemeMode? themeMode,
@@ -29,13 +28,27 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
   static const _channel = MethodChannel('com.parktrack.mobile/mapkit');
 
   SettingsNotifier(this._storage)
-      : super(SettingsState(themeMode: ThemeMode.system)) {
+    : super(SettingsState(themeMode: ThemeMode.system)) {
     _loadSettings();
   }
 
   Future<void> _loadSettings() async {
-    final theme = await _storage.getThemeMode();
-    final lang = await _storage.getLanguage();
+    final themeFuture = _storage.getThemeMode();
+    final languageFuture = _storage.getLanguage();
+    final theme = await themeFuture;
+    String? lang = await languageFuture;
+
+    if (lang == null) {
+      final browserLang = detectBrowserLanguage();
+      if (browserLang != null) {
+        if (browserLang.startsWith('ru')) {
+          lang = 'ru';
+        } else {
+          lang = 'en';
+        }
+      }
+    }
+
     if (lang != null) {
       _setMapKitLocale(lang);
     }
@@ -61,6 +74,8 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
     );
   }
 
+  Future<void> setLocale(Locale locale) => setLanguage(locale.languageCode);
+
   Future<void> _setMapKitLocale(String lang) async {
     try {
       // MapKit uses language codes like "ru_RU" or "en_US"
@@ -72,6 +87,8 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
 
 final settingsStorageProvider = Provider((ref) => SettingsStorage());
 
-final settingsProvider = StateNotifierProvider<SettingsNotifier, SettingsState>((ref) {
-  return SettingsNotifier(ref.watch(settingsStorageProvider));
-});
+final settingsProvider = StateNotifierProvider<SettingsNotifier, SettingsState>(
+  (ref) {
+    return SettingsNotifier(ref.watch(settingsStorageProvider));
+  },
+);

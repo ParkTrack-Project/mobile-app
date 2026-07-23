@@ -4,16 +4,27 @@ import 'package:flutter/services.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 import '../localization/app_localizations.dart';
 
+String? _lastShownMessage;
+DateTime? _lastShownTime;
+
 void showErrorSnackBar(
   BuildContext context,
   String message, {
   Object? error,
   StackTrace? stackTrace,
   AppStrings? s,
+  VoidCallback? onRetry,
 }) {
-  final details = _buildDetails(error, stackTrace);
+  final now = DateTime.now();
+  if (_lastShownMessage == message &&
+      _lastShownTime != null &&
+      now.difference(_lastShownTime!) < const Duration(seconds: 3)) {
+    return;
+  }
+  _lastShownMessage = message;
+  _lastShownTime = now;
 
-  final label = s?.moreInfo ?? 'Details';
+  final details = _buildDetails(error, stackTrace);
 
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
@@ -26,13 +37,18 @@ void showErrorSnackBar(
             Expanded(child: Text(message)),
           ],
         ),
-        action: details != null
+        action: onRetry != null
             ? SnackBarAction(
-                label: label,
-                onPressed: () =>
-                    _showDetailsDialog(context, message, details, s),
+                label: s?.retry ?? 'Retry',
+                onPressed: onRetry,
               )
-            : null,
+            : details != null
+                ? SnackBarAction(
+                    label: s?.moreInfo ?? 'Details',
+                    onPressed: () =>
+                        _showDetailsDialog(context, message, details, s),
+                  )
+                : null,
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 6),
       ),

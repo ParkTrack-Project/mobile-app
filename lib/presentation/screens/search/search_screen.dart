@@ -10,7 +10,9 @@ import 'place_search_models.dart';
 import 'place_search_service.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
-  const SearchScreen({super.key});
+  const SearchScreen({super.key, this.initialQuery});
+
+  final String? initialQuery;
 
   @override
   ConsumerState<SearchScreen> createState() => _SearchScreenState();
@@ -42,10 +44,11 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusNode.requestFocus();
-      final saved = ref.read(searchQueryProvider);
-      if (saved.isNotEmpty) {
-        _controller.text = saved;
-        _suggest(saved);
+      final q = widget.initialQuery ?? ref.read(searchQueryProvider);
+      if (q != null && q.isNotEmpty) {
+        _controller.text = q;
+        ref.read(searchQueryProvider.notifier).state = q;
+        _suggest(q);
       }
     });
   }
@@ -62,8 +65,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   void _onChanged(String text) {
     ref.read(searchQueryProvider.notifier).state = text;
     _debounce?.cancel();
+    _suggestSeq++;
     if (text.trim().isEmpty) {
-      _suggestSeq++;
       setState(() {
         _suggestions = [];
         _loading = false;
@@ -83,31 +86,45 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   }
 
   PlaceSearchBounds _buildLocalBoundingBox(SearchBias bias) {
-    final south = _clamp(bias.latitude - _biasLatDelta, -90.0, 90.0);
-    final north = _clamp(bias.latitude + _biasLatDelta, -90.0, 90.0);
-    final west = _clamp(bias.longitude - _biasLonDelta, -180.0, 180.0);
-    final east = _clamp(bias.longitude + _biasLonDelta, -180.0, 180.0);
+    final south = bias.south;
+    final west = bias.west;
+    final north = bias.north;
+    final east = bias.east;
+    if (south != null &&
+        west != null &&
+        north != null &&
+        east != null &&
+        north > south &&
+        east > west) {
+      return PlaceSearchBounds(
+        south: south,
+        west: west,
+        north: north,
+        east: east,
+      );
+    }
+
+    final fallbackSouth = _clamp(bias.latitude - _biasLatDelta, -90.0, 90.0);
+    final fallbackNorth = _clamp(bias.latitude + _biasLatDelta, -90.0, 90.0);
+    final fallbackWest = _clamp(bias.longitude - _biasLonDelta, -180.0, 180.0);
+    final fallbackEast = _clamp(bias.longitude + _biasLonDelta, -180.0, 180.0);
     return PlaceSearchBounds(
-      south: south,
-      west: west,
-      north: north,
-      east: east,
+      south: fallbackSouth,
+      west: fallbackWest,
+      north: fallbackNorth,
+      east: fallbackEast,
     );
   }
 
   Future<List<PlaceSuggestion>> _loadSuggestions(
     String text,
     PlaceSearchBounds boundingBox,
-  ) => _searchService
-      .suggestions(text, boundingBox)
-      .timeout(const Duration(seconds: 5));
+  ) => _searchService.suggestions(text, boundingBox);
 
   Future<PlaceSearchPoint?> _searchPointByText(
     String text,
     PlaceSearchBounds boundingBox,
-  ) => _searchService
-      .pointByText(text, boundingBox)
-      .timeout(const Duration(seconds: 5));
+  ) => _searchService.pointByText(text, boundingBox);
 
   Future<void> _suggest(String text) async {
     if (!mounted) return;

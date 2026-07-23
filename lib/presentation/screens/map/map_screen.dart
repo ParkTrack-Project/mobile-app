@@ -9,6 +9,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:yandex_mapkit/yandex_mapkit.dart';
+import '../../providers/app_providers.dart';
 import '../../providers/zones_provider.dart';
 import '../../../domain/models/zone.dart';
 import '../../providers/filters_provider.dart';
@@ -16,6 +17,7 @@ import '../../providers/routing_provider.dart';
 import '../../providers/navigation_provider.dart';
 import '../../providers/time_selector_provider.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/utils/navigation_deeplink.dart';
 import '../../../core/utils/error_snackbar.dart';
 import '../../../core/localization/app_localizations.dart';
@@ -31,7 +33,10 @@ import 'widgets/parking_card_sheet.dart';
 import 'widgets/route_preview_sheet.dart';
 
 class MapScreen extends ConsumerStatefulWidget {
-  const MapScreen({super.key});
+  const MapScreen({super.key, this.initialParkingId, this.searchQuery});
+
+  final int? initialParkingId;
+  final String? searchQuery;
 
   @override
   ConsumerState<MapScreen> createState() => _MapScreenState();
@@ -76,15 +81,55 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   @override
   void initState() {
     super.initState();
-    _buildDestinationPinBitmap().then((b) {
-      if (mounted) setState(() => _destinationPinBytes = b);
+    _loadMarkerBitmaps();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (widget.initialParkingId != null) {
+        _loadAndShowParking(widget.initialParkingId!);
+      } else if (widget.searchQuery != null) {
+        _performSearch(widget.searchQuery!);
+      }
     });
-    _buildUserLocationBitmap().then((b) {
-      if (mounted) setState(() => _userLocationBytes = b);
+  }
+
+  Future<void> _loadMarkerBitmaps() async {
+    final bitmaps = await Future.wait<Uint8List>([
+      _buildDestinationPinBitmap(),
+      _buildUserLocationBitmap(),
+      _buildNavArrowBitmap(),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _destinationPinBytes = bitmaps[0];
+      _userLocationBytes = bitmaps[1];
+      _navArrowBytes = bitmaps[2];
     });
-    _buildNavArrowBitmap().then((b) {
-      if (mounted) setState(() => _navArrowBytes = b);
-    });
+  }
+
+  Future<void> _loadAndShowParking(int id) async {
+    try {
+      final repo = ref.read(zonesRepositoryProvider);
+      final zone = await repo.getZoneDetails(id);
+      if (!mounted) return;
+      _onZoneTap(zone);
+      final center = centroid(zone.geometry);
+      if (kIsWeb) {
+        _webMapController.move(center.latitude, center.longitude, 17);
+      } else {
+        _mapController?.moveCamera(
+          CameraUpdate.newCameraPosition(
+            CameraPosition(target: center, zoom: 17),
+          ),
+          animation: const MapAnimation(duration: 0.8),
+        );
+      }
+    } catch (e) {
+      debugPrint('Failed to load deep-link zone $id: $e');
+    }
+  }
+
+  void _performSearch(String query) {
+    context.push('/search?q=${Uri.encodeComponent(query)}');
   }
 
   @override
@@ -222,13 +267,18 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     return byteData!.buffer.asUint8List();
   }
 
-  void _onCameraPositionChanged(CameraPosition position, _, _) {
+  void _onCameraPositionChanged(
+    CameraPosition position,
+    _,
+    bool cameraUpdateFinished,
+  ) {
     _lastCameraTarget = position.target;
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 400), _fetchZones);
     if ((position.azimuth - _currentAzimuth).abs() > 2) {
       setState(() => _currentAzimuth = position.azimuth);
     }
+    if (!cameraUpdateFinished) return;
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), _fetchZones);
   }
 
   void _onZoneTap(Zone zone) {
@@ -508,7 +558,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   Future<void> _openSearch() async {
-    final bias = _userPosition != null
+    final webCamera = kIsWeb ? _webMapController.camera : null;
+    final bias = webCamera != null
+        ? SearchBias(
+            latitude: webCamera.latitude,
+            longitude: webCamera.longitude,
+            south: webCamera.south,
+            west: webCamera.west,
+            north: webCamera.north,
+            east: webCamera.east,
+          )
+        : _userPosition != null
         ? SearchBias(
             latitude: _userPosition!.latitude,
             longitude: _userPosition!.longitude,
@@ -580,8 +640,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             toLatitude: toLat,
             toLongitude: toLon,
           );
-          if (webRoute == null) {
-            throw StateError('Yandex Maps did not return a route');
+          if (webRoute == null || webRoute.points.length < 2) {
+            if (mounted) {
+              showErrorSnackBar(
+                context,
+                ref.read(l10nProvider).errorCreatingRoute,
+                s: ref.read(l10nProvider),
+              );
+            }
+            return;
           }
           if (!mounted) return;
           route = webRoute.points;
@@ -711,17 +778,21 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     });
 
     ref.listen(rawZonesProvider, (_, next) {
-      next.whenOrNull(
-        error: (e, st) {
-          showErrorSnackBar(
-            context,
-            ref.read(l10nProvider).errorLoadingZones,
-            error: e,
-            stackTrace: st,
-            s: ref.read(l10nProvider),
-          );
-        },
-      );
+      if (next.hasError && !next.isLoading) {
+        final error = next.error;
+        final message = error is AppFailure
+            ? error.localizedMessage(s)
+            : s.errorLoadingZones;
+
+        showErrorSnackBar(
+          context,
+          message,
+          error: error,
+          stackTrace: next.stackTrace,
+          s: s,
+          onRetry: () => ref.read(rawZonesProvider.notifier).refresh(),
+        );
+      }
     });
 
     ref.listen(destinationProvider, (_, dest) {
@@ -802,25 +873,47 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               final c = centroid(zone.geometry);
               zoneLat = c.latitude;
               zoneLon = c.longitude;
-              if (kIsWeb) {
-                _webMapController.move(c.latitude, c.longitude, 17);
-              } else {
-                await _mapController?.moveCamera(
-                  CameraUpdate.newCameraPosition(
-                    CameraPosition(target: c, zoom: 17),
-                  ),
-                  animation: const MapAnimation(duration: 0.8),
-                );
-              }
+            }
+          }
+
+          final selectedCandidates = route.candidates.where(
+            (candidate) => candidate.zoneId == route.selectedZoneId,
+          );
+          final candidate =
+              selectedCandidates.firstOrNull ?? route.candidates.firstOrNull;
+
+          if (zoneLat == null &&
+              candidate?.routePolyline != null &&
+              candidate!.routePolyline!.isNotEmpty) {
+            final lastPoint = candidate.routePolyline!.last;
+            zoneLat = lastPoint.latitude;
+            zoneLon = lastPoint.longitude;
+          }
+
+          if (zoneLat != null && zoneLon != null) {
+            final target = Point(latitude: zoneLat, longitude: zoneLon);
+            final polyline = route.routePolyline ?? candidate?.routePolyline;
+
+            if (polyline != null && polyline.isNotEmpty && kIsWeb) {
+              // On web, try to fit bounds for better UX
+              final south = polyline.map((p) => p.latitude).reduce(math.min);
+              final north = polyline.map((p) => p.latitude).reduce(math.max);
+              final west = polyline.map((p) => p.longitude).reduce(math.min);
+              final east = polyline.map((p) => p.longitude).reduce(math.max);
+              _webMapController.fitBounds(south, west, north, east);
+            } else if (kIsWeb) {
+              _webMapController.move(zoneLat, zoneLon, 17);
+            } else {
+              await _mapController?.moveCamera(
+                CameraUpdate.newCameraPosition(
+                  CameraPosition(target: target, zoom: 17),
+                ),
+                animation: const MapAnimation(duration: 0.8),
+              );
             }
           }
 
           setState(() {
-            final selectedCandidates = route.candidates.where(
-              (candidate) => candidate.zoneId == route.selectedZoneId,
-            );
-            final candidate =
-                selectedCandidates.firstOrNull ?? route.candidates.firstOrNull;
             _routePolyline = route.routePolyline ?? candidate?.routePolyline;
             _routeDurationSeconds =
                 candidate?.durationFromOriginSeconds?.toDouble() ?? 0;
@@ -951,7 +1044,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     );
                     _fetchWebZones(camera);
                   }
-                },
+                }, onError: (Object error) {  },
               )
             else
               YandexMap(
@@ -970,21 +1063,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     ),
                   );
                   _fetchZones();
-                  final pos = await _getCurrentPosition();
-                  if (pos != null && mounted) {
-                    final target = Point(
-                      latitude: 61.789114,
-                      longitude: 34.359757,
-                    );
-                    _lastCameraTarget = target;
-                    await controller.moveCamera(
-                      CameraUpdate.newCameraPosition(
-                        CameraPosition(target: target, zoom: 15),
-                      ),
-                      animation: const MapAnimation(duration: 0.8),
-                    );
-                    _fetchZones();
-                  }
                 },
                 onCameraPositionChanged: _onCameraPositionChanged,
               ),
@@ -1128,10 +1206,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   child: _DestinationCard(
                     destination: destination,
                     onFindParking: isRoutingLoading ? null : _findParking,
-                    onNavigate: () => openYandexNavigator(
-                      destination.latitude,
-                      destination.longitude,
-                    ),
+                    onNavigate: kIsWeb
+                        ? () {}
+                        : () => openYandexNavigator(
+                            destination.latitude,
+                            destination.longitude,
+                          ),
                     onNavigateInApp: () => _startInAppNavigation(
                       zoneId: 0,
                       toLat: destination.latitude,
@@ -1354,16 +1434,17 @@ class _DestinationCard extends ConsumerWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              Expanded(
-                child: FilledButton.tonal(
-                  onPressed: onNavigate,
-                  style: FilledButton.styleFrom(
-                    textStyle: const TextStyle(fontSize: 13),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
+              if (!kIsWeb)
+                Expanded(
+                  child: FilledButton.tonal(
+                    onPressed: onNavigate,
+                    style: FilledButton.styleFrom(
+                      textStyle: const TextStyle(fontSize: 13),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                    ),
+                    child: Text(s.yandexNavigator),
                   ),
-                  child: Text(s.yandexNavigator),
                 ),
-              ),
             ],
           ),
         ],

@@ -41,6 +41,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
     if (_isCheckingSession || _sessionChecked) return;
     _isCheckingSession = true;
     try {
+      final hasToken = await _ref.read(tokenStorageProvider).hasToken();
+      if (!hasToken) {
+        state = const AuthState.unauthenticated();
+        return;
+      }
       final user = await _ref
           .read(authRepositoryProvider)
           .getMe()
@@ -63,12 +68,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = AuthState.authenticated(user);
   }
 
-  Future<void> register(String email, String password, {String? fullName}) async {
-    final user = await _ref.read(authRepositoryProvider).register(
-          email,
-          password,
-          fullName: fullName,
-        );
+  Future<void> register(
+    String email,
+    String password, {
+    String? fullName,
+  }) async {
+    final user = await _ref
+        .read(authRepositoryProvider)
+        .register(email, password, fullName: fullName);
     state = AuthState.authenticated(user);
   }
 
@@ -81,7 +88,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
       _ref.read(authRepositoryProvider).requestPasswordReset(email);
 
   Future<void> updateProfile({String? fullName}) async {
-    final user = await _ref.read(authRepositoryProvider).updateProfile(fullName: fullName);
+    final user = await _ref
+        .read(authRepositoryProvider)
+        .updateProfile(fullName: fullName);
     state = AuthState.authenticated(user);
   }
 }

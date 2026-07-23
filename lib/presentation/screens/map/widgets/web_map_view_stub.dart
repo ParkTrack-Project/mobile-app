@@ -13,6 +13,7 @@ class WebMapView extends StatelessWidget {
     required this.onZoneTap,
     required this.onCameraChanged,
     required this.onMapReady,
+    required this.onError,
     this.route,
     this.activeRouteZoneId,
     this.userLatitude,
@@ -30,6 +31,7 @@ class WebMapView extends StatelessWidget {
   final void Function(Zone zone) onZoneTap;
   final void Function(WebMapCamera camera) onCameraChanged;
   final VoidCallback onMapReady;
+  final void Function(Object error) onError;
   final List<Point>? route;
   final int? activeRouteZoneId;
   final double? userLatitude;
