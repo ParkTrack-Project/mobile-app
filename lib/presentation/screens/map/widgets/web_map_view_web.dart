@@ -255,21 +255,22 @@ class _WebMapViewState extends State<WebMapView> {
     _serializedSelectedZoneId = widget.selectedZoneId;
     _serializedActiveRouteZoneId = widget.activeRouteZoneId;
     _zonesById = {for (final zone in widget.zones) zone.zoneId: zone};
+    final markerState = resolveParkingMarkerState(
+      allIds: _zonesById.keys.toSet(),
+      resultIds: widget.candidateIds,
+      selectedId: widget.selectedZoneId,
+    );
     _serializedZones = widget.zones
         .map((zone) {
           final color = zoneColor(zone);
           final center = centroid(zone.geometry);
           final isCandidate = widget.candidateIds.contains(zone.zoneId);
           final isSelected = widget.selectedZoneId == zone.zoneId;
-          final opacity = widget.selectedZoneId != null
-              ? (isSelected
-                    ? 1.0
-                    : isCandidate
-                    ? 0.35
-                    : 0.18)
-              : widget.candidateIds.isNotEmpty && !isCandidate
-              ? 0.22
-              : 1.0;
+          final opacity = markerState.activeIds.contains(zone.zoneId)
+              ? 1.0
+              : markerState.mutedResultIds.contains(zone.zoneId)
+              ? 0.35
+              : 0.18;
           return <String, Object?>{
             'id': zone.zoneId,
             'type': zone.zoneType == ZoneType.parallel ? 'line' : 'polygon',

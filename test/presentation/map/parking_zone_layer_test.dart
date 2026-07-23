@@ -20,6 +20,18 @@ Zone _zone(int id) => Zone(
 int _alpha(PolygonMapObject object) => object.fillColor.toARGB32() >>> 24;
 
 void main() {
+  test('resolves active, muted result, and context marker IDs', () {
+    final results = resolveParkingMarkerState(
+      allIds: {1, 2, 3, 4},
+      resultIds: {1, 2, 3},
+      selectedId: 2,
+    );
+
+    expect(results.activeIds, {2});
+    expect(results.mutedResultIds, {1, 3});
+    expect(results.contextIds, {4});
+  });
+
   test('mutes zones outside results and keeps result zones active', () {
     final objects = buildZoneMapObjects(
       zones: [_zone(1), _zone(2)],
@@ -40,5 +52,17 @@ void main() {
 
     expect(_alpha(objects[1]), greaterThan(_alpha(objects[0])));
     expect(objects[1].strokeWidth, 4);
+  });
+
+  test('keeps other results more visible than context after selection', () {
+    final objects = buildZoneMapObjects(
+      zones: [_zone(1), _zone(2), _zone(3)],
+      resultIds: {1, 2},
+      selectedId: 2,
+      onTap: (_) {},
+    ).cast<PolygonMapObject>();
+
+    expect(_alpha(objects[1]), greaterThan(_alpha(objects[0])));
+    expect(_alpha(objects[0]), greaterThan(_alpha(objects[2])));
   });
 }

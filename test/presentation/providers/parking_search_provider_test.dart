@@ -98,4 +98,27 @@ void main() {
     expect(notifier.state.candidates, isEmpty);
     expect(notifier.state.view, ParkingSearchView.hidden);
   });
+
+  test('list and marker selection produce the same result state', () {
+    final listSelection = ParkingSearchNotifier()
+      ..showResults([_candidate(5), _candidate(7)])
+      ..showDetails(7);
+    final markerSelection = ParkingSearchNotifier()
+      ..showResults([_candidate(5), _candidate(7)])
+      ..showDetails(7);
+
+    expect(markerSelection.state.view, listSelection.state.view);
+    expect(
+      markerSelection.state.selectedZoneId,
+      listSelection.state.selectedZoneId,
+    );
+    expect(
+      markerSelection.state.lastViewedZoneId,
+      listSelection.state.lastViewedZoneId,
+    );
+    expect(
+      markerSelection.state.candidates.map((candidate) => candidate.zoneId),
+      listSelection.state.candidates.map((candidate) => candidate.zoneId),
+    );
+  });
 }
