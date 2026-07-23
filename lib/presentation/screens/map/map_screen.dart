@@ -1044,7 +1044,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     );
                     _fetchWebZones(camera);
                   }
-                },
+                }, onError: (Object error) {  },
               )
             else
               YandexMap(
@@ -1063,21 +1063,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     ),
                   );
                   _fetchZones();
-                  final pos = await _getCurrentPosition();
-                  if (pos != null && mounted) {
-                    final target = Point(
-                      latitude: pos.latitude,
-                      longitude: pos.longitude,
-                    );
-                    _lastCameraTarget = target;
-                    await controller.moveCamera(
-                      CameraUpdate.newCameraPosition(
-                        CameraPosition(target: target, zoom: 15),
-                      ),
-                      animation: const MapAnimation(duration: 0.8),
-                    );
-                    _fetchZones();
-                  }
                 },
                 onCameraPositionChanged: _onCameraPositionChanged,
               ),
