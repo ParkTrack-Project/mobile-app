@@ -84,13 +84,15 @@ class RoutingNotifier extends StateNotifier<RoutingState> {
   int _failureGeneration = 0;
   RoutingState? _stableState;
 
-  void _startRequest() {
+  void _startRequest({bool preserveStableState = true}) {
     _ref.read(routingFailureProvider.notifier).state = null;
-    final stable = state.maybeWhen(
-      candidates: (_) => state,
-      routePreview: (_) => state,
-      orElse: () => null,
-    );
+    final stable = preserveStableState
+        ? state.maybeWhen(
+            candidates: (_) => state,
+            routePreview: (_) => state,
+            orElse: () => null,
+          )
+        : null;
     if (stable != null) {
       _stableState = stable;
     } else {
@@ -125,7 +127,9 @@ class RoutingNotifier extends StateNotifier<RoutingState> {
     _cancelToken?.cancel('Superseded by a newer routing request');
     final cancelToken = CancelToken();
     _cancelToken = cancelToken;
-    _startRequest();
+    _ref.read(parkingSearchProvider.notifier).startSearch();
+    _stableState = null;
+    _startRequest(preserveStableState: false);
     try {
       final destination = _ref.read(destinationProvider);
       final filters = _ref.read(filtersProvider);
@@ -152,7 +156,7 @@ class RoutingNotifier extends StateNotifier<RoutingState> {
     } catch (e) {
       if (e is DioException && CancelToken.isCancel(e)) return;
       if (generation != _requestGeneration) return;
-      _ref.read(parkingSearchProvider.notifier).backToResults();
+      _ref.read(parkingSearchProvider.notifier).showSearchError();
       _publishFailure(
         e,
         fallback: AppFailureKind.network,

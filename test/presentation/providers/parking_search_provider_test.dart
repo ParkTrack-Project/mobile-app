@@ -11,6 +11,26 @@ RouteCandidate _candidate(int zoneId) => RouteCandidate(
 );
 
 void main() {
+  test(
+    'opens the panel after backend results without changing their order',
+    () {
+      final notifier = ParkingSearchNotifier();
+      final candidates = [_candidate(8), _candidate(3), _candidate(5)];
+
+      notifier.startSearch();
+      expect(notifier.state.view, ParkingSearchView.loading);
+
+      notifier.showResults(candidates);
+
+      expect(notifier.state.view, ParkingSearchView.results);
+      expect(notifier.state.candidates.map((candidate) => candidate.zoneId), [
+        8,
+        3,
+        5,
+      ]);
+    },
+  );
+
   test('keeps result selection, last viewed item, and scroll position', () {
     final notifier = ParkingSearchNotifier();
     final candidates = [_candidate(1), _candidate(2)];
@@ -46,6 +66,21 @@ void main() {
     expect(notifier.state.resultZoneIds, {3});
     expect(notifier.state.scrollOffset, 0);
     expect(notifier.state.lastViewedZoneId, isNull);
+  });
+
+  test('resets previous results and selection when a new search starts', () {
+    final notifier = ParkingSearchNotifier();
+    notifier.showResults([_candidate(1), _candidate(2)]);
+    notifier.showDetails(2);
+    notifier.saveScrollOffset(80);
+
+    notifier.startSearch();
+
+    expect(notifier.state.view, ParkingSearchView.loading);
+    expect(notifier.state.candidates, isEmpty);
+    expect(notifier.state.selectedZoneId, isNull);
+    expect(notifier.state.lastViewedZoneId, isNull);
+    expect(notifier.state.scrollOffset, 0);
   });
 
   test('accepts only a result as the selected parking', () {

@@ -3,13 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/theme/app_colors.dart';
-import '../../../../core/utils/nav_math.dart';
 import '../../../../domain/models/route_result.dart';
 import '../../../../domain/models/zone.dart';
-import '../../../providers/parking_address_provider.dart';
-import 'parking_zone_layer.dart';
+import 'parking_result_formatter.dart';
 
 enum CandidateAction { go, openExternal }
+
+enum ParkingResultsPanelState { loading, results, error }
 
 class CandidatesSheet extends ConsumerStatefulWidget {
   const CandidatesSheet({
@@ -22,6 +22,7 @@ class CandidatesSheet extends ConsumerStatefulWidget {
     required this.onAction,
     required this.onScrollOffsetChanged,
     required this.onClose,
+    this.panelState = ParkingResultsPanelState.results,
   });
 
   final List<RouteCandidate> candidates;
@@ -37,6 +38,7 @@ class CandidatesSheet extends ConsumerStatefulWidget {
   onAction;
   final ValueChanged<double> onScrollOffsetChanged;
   final VoidCallback onClose;
+  final ParkingResultsPanelState panelState;
 
   @override
   ConsumerState<CandidatesSheet> createState() => _CandidatesSheetState();
@@ -115,40 +117,63 @@ class _CandidatesSheetState extends ConsumerState<CandidatesSheet> {
           ),
           Divider(height: 1, color: colors.outlineVariant),
           Expanded(
-            child: NotificationListener<ScrollEndNotification>(
-              onNotification: (_) {
-                widget.onScrollOffsetChanged(_scrollController.offset);
-                return false;
-              },
-              child: ListView.separated(
-                key: const Key('parking_search_results'),
-                controller: _scrollController,
-                padding: const EdgeInsets.only(bottom: 16),
-                itemCount: widget.candidates.length,
-                separatorBuilder: (_, _) => Divider(
-                  height: 1,
-                  indent: 20,
-                  endIndent: 20,
-                  color: colors.outlineVariant.withValues(alpha: 0.6),
-                ),
-                itemBuilder: (context, index) {
-                  final candidate = widget.candidates[index];
-                  return _CandidateTile(
-                    key: Key('parking_candidate_${candidate.zoneId}'),
-                    candidate: candidate,
-                    zone: zonesById[candidate.zoneId],
-                    isLastViewed: candidate.zoneId == widget.lastViewedZoneId,
-                    s: s,
-                    onTap: () => widget.onSelect(candidate.zoneId),
-                    onAction: (action) => widget.onAction(
-                      action,
-                      candidate,
-                      zonesById[candidate.zoneId],
-                    ),
-                  );
-                },
+            child: switch (widget.panelState) {
+              ParkingResultsPanelState.loading => _PanelMessage(
+                key: const Key('parking_search_loading'),
+                icon: const CircularProgressIndicator(),
+                message: s.searching,
               ),
-            ),
+              ParkingResultsPanelState.error => _PanelMessage(
+                key: const Key('parking_search_error'),
+                icon: Icon(Icons.error_outline, color: colors.error),
+                message: s.searchError,
+              ),
+              ParkingResultsPanelState.results when widget.candidates.isEmpty =>
+                _PanelMessage(
+                  key: const Key('parking_search_empty'),
+                  icon: Icon(
+                    Icons.local_parking_outlined,
+                    color: colors.onSurfaceVariant,
+                  ),
+                  message: s.searchNoResults,
+                ),
+              ParkingResultsPanelState.results =>
+                NotificationListener<ScrollEndNotification>(
+                  onNotification: (_) {
+                    widget.onScrollOffsetChanged(_scrollController.offset);
+                    return false;
+                  },
+                  child: ListView.separated(
+                    key: const Key('parking_search_results'),
+                    controller: _scrollController,
+                    padding: const EdgeInsets.only(bottom: 16),
+                    itemCount: widget.candidates.length,
+                    separatorBuilder: (_, _) => Divider(
+                      height: 1,
+                      indent: 20,
+                      endIndent: 20,
+                      color: colors.outlineVariant.withValues(alpha: 0.6),
+                    ),
+                    itemBuilder: (context, index) {
+                      final candidate = widget.candidates[index];
+                      return _CandidateTile(
+                        key: Key('parking_candidate_${candidate.zoneId}'),
+                        candidate: candidate,
+                        zone: zonesById[candidate.zoneId],
+                        isLastViewed:
+                            candidate.zoneId == widget.lastViewedZoneId,
+                        s: s,
+                        onTap: () => widget.onSelect(candidate.zoneId),
+                        onAction: (action) => widget.onAction(
+                          action,
+                          candidate,
+                          zonesById[candidate.zoneId],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+            },
           ),
         ],
       ),
@@ -156,7 +181,7 @@ class _CandidatesSheetState extends ConsumerState<CandidatesSheet> {
   }
 }
 
-class _CandidateTile extends ConsumerWidget {
+class _CandidateTile extends StatelessWidget {
   const _CandidateTile({
     super.key,
     required this.candidate,
@@ -175,23 +200,23 @@ class _CandidateTile extends ConsumerWidget {
   final ValueChanged<CandidateAction> onAction;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final center = zone?.geometry.isNotEmpty == true
-        ? centroid(zone!.geometry)
-        : null;
-    final address = center == null
-        ? null
-        : ref
-              .watch(
-                parkingAddressProvider((
-                  latitude: center.latitude,
-                  longitude: center.longitude,
-                )),
-              )
-              .valueOrNull;
-    final duration = candidate.durationFromOriginSeconds;
-    final timeColor = switch (duration) {
+    final durationText = formatParkingDuration(
+      candidate.durationFromOriginSeconds,
+      s,
+    );
+    final distanceText = formatParkingDistance(
+      candidate.distanceToDestinationMeters,
+      s,
+    );
+    final spacesText = formatParkingSpaces(candidate.freeCount, s);
+    final priceText = formatParkingPrice(candidate.pay, s);
+    final predictedSpacesText = formatParkingSpaces(
+      candidate.predictedFreeCount,
+      s,
+    );
+    final timeColor = switch (candidate.durationFromOriginSeconds) {
       null => colors.onSurfaceVariant,
       < 300 => AppColors.primary,
       < 600 => Colors.orange.shade700,
@@ -209,7 +234,7 @@ class _CandidateTile extends ConsumerWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (duration != null)
+            if (durationText != null)
               Container(
                 constraints: const BoxConstraints(minWidth: 48),
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -218,7 +243,7 @@ class _CandidateTile extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  formatNavDuration(duration, s),
+                  durationText,
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: timeColor,
@@ -227,16 +252,14 @@ class _CandidateTile extends ConsumerWidget {
                   ),
                 ),
               ),
-            if (duration != null) const SizedBox(width: 12),
+            if (durationText != null) const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    address?.trim().isNotEmpty == true
-                        ? address!
-                        : '${s.parkingZone} #${candidate.zoneId}',
-                    maxLines: 1,
+                    s.parkingZone,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontSize: 15,
@@ -249,32 +272,22 @@ class _CandidateTile extends ConsumerWidget {
                     runSpacing: 4,
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      if (candidate.distanceToDestinationMeters != null)
+                      if (distanceText != null)
+                        _Fact(icon: Icons.route_outlined, text: distanceText),
+                      if (spacesText != null)
                         _Fact(
-                          icon: Icons.route_outlined,
-                          text: formatNavDistance(
-                            candidate.distanceToDestinationMeters!,
-                            s,
-                          ),
+                          icon: Icons.local_parking,
+                          text: spacesText,
+                          color: candidate.freeCount > 0
+                              ? AppColors.primary
+                              : colors.error,
                         ),
-                      _Fact(
-                        icon: Icons.local_parking,
-                        text: '${candidate.freeCount} ${s.availablePlaces}',
-                        color: candidate.freeCount > 0
-                            ? AppColors.primary
-                            : colors.error,
-                      ),
-                      _Fact(
-                        icon: Icons.payments_outlined,
-                        text: candidate.pay == 0
-                            ? s.freeStatus
-                            : '${candidate.pay} ₽/${s.hourSign}',
-                      ),
-                      if (candidate.predictedFreeCount != null)
+                      if (priceText != null)
+                        _Fact(icon: Icons.payments_outlined, text: priceText),
+                      if (predictedSpacesText != null)
                         _Fact(
                           icon: Icons.auto_graph,
-                          text:
-                              '${s.forecast}: ${candidate.predictedFreeCount}',
+                          text: '${s.forecast}: $predictedSpacesText',
                         ),
                       if (zone?.isPrivate == true)
                         _Fact(icon: Icons.lock_outline, text: s.private),
@@ -317,6 +330,32 @@ class _CandidateTile extends ConsumerWidget {
       ),
     );
   }
+}
+
+class _PanelMessage extends StatelessWidget {
+  const _PanelMessage({super.key, required this.icon, required this.message});
+
+  final Widget icon;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox.square(dimension: 32, child: Center(child: icon)),
+          const SizedBox(height: 12),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class _Fact extends StatelessWidget {
