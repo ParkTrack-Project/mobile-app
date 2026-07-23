@@ -4,8 +4,27 @@ import 'package:flutter/services.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 import '../localization/app_localizations.dart';
 
-String? _lastShownMessage;
-DateTime? _lastShownTime;
+class ErrorMessageDeduplicator {
+  ErrorMessageDeduplicator({this.interval = const Duration(seconds: 3)});
+
+  final Duration interval;
+  String? _lastMessage;
+  DateTime? _lastShownAt;
+
+  bool shouldShow(String message, DateTime now) {
+    final isDuplicate =
+        _lastMessage == message &&
+        _lastShownAt != null &&
+        now.difference(_lastShownAt!) < interval;
+    if (isDuplicate) return false;
+
+    _lastMessage = message;
+    _lastShownAt = now;
+    return true;
+  }
+}
+
+final _errorDeduplicator = ErrorMessageDeduplicator();
 
 void showErrorSnackBar(
   BuildContext context,
@@ -15,14 +34,7 @@ void showErrorSnackBar(
   AppStrings? s,
   VoidCallback? onRetry,
 }) {
-  final now = DateTime.now();
-  if (_lastShownMessage == message &&
-      _lastShownTime != null &&
-      now.difference(_lastShownTime!) < const Duration(seconds: 3)) {
-    return;
-  }
-  _lastShownMessage = message;
-  _lastShownTime = now;
+  if (!_errorDeduplicator.shouldShow(message, DateTime.now())) return;
 
   final details = _buildDetails(error, stackTrace);
 
@@ -38,9 +50,12 @@ void showErrorSnackBar(
           ],
         ),
         action: onRetry != null
+            ? SnackBarAction(label: s?.retry ?? 'Retry', onPressed: onRetry)
+            : details != null
             ? SnackBarAction(
-                label: s?.retry ?? 'Retry',
-                onPressed: onRetry,
+                label: s?.moreInfo ?? 'Details',
+                onPressed: () =>
+                    _showDetailsDialog(context, message, details, s),
               )
             : details != null
                 ? SnackBarAction(

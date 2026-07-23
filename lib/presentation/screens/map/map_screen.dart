@@ -1044,7 +1044,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     );
                     _fetchWebZones(camera);
                   }
-                }, onError: (Object error) {  },
+                },
+                onError: (Object error) {},
               )
             else
               YandexMap(
