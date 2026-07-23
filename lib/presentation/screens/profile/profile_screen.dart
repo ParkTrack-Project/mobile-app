@@ -112,6 +112,15 @@ class ProfileScreen extends ConsumerWidget {
                   ),
                 ),
               ),
+
+            const SizedBox(height: 24),
+            Center(
+              child: Text(
+                'ParkTrack v1.3.0+3',
+                style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+              ),
+            ),
+            const SizedBox(height: 16),
           ],
         ),
       ),

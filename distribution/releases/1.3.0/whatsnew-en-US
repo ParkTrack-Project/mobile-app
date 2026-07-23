@@ -1,0 +1,4 @@
+• Added App Links for opening m.parktrack.live URLs in the app.
+• Added language selection to sign-in, registration, and password reset screens.
+• Kept parking data visible during temporary network failures and improved error messages.
+• Improved map and navigation stability and optimized release builds.

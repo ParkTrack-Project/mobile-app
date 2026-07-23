@@ -22,6 +22,9 @@ class WebMapController {
   WebMapCamera? camera;
   void Function(double latitude, double longitude, double zoom)? moveHandler;
   void Function(double zoom)? zoomHandler;
+  void Function(double south, double west, double north, double east)?
+  fitBoundsHandler;
+  void Function()? retryHandler;
 
   bool get isReady => camera != null;
 
@@ -33,9 +36,16 @@ class WebMapController {
     if (current != null) zoomHandler?.call(current.zoom + delta);
   }
 
+  void fitBounds(double south, double west, double north, double east) =>
+      fitBoundsHandler?.call(south, west, north, east);
+
+  void retry() => retryHandler?.call();
+
   void clear() {
     camera = null;
     moveHandler = null;
     zoomHandler = null;
+    fitBoundsHandler = null;
+    retryHandler = null;
   }
 }

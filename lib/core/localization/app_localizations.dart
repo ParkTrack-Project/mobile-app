@@ -5,6 +5,18 @@ import '../../presentation/providers/settings_provider.dart';
 class AppStrings {
   final String appTitle;
   final String findParking;
+  final String noInternet;
+  final String requestTimedOut;
+  final String networkFailure;
+  final String mapLoadError;
+  final String routeLoadError;
+  final String unknownError;
+  final String retry;
+  final String pwaInstallTitle;
+  final String pwaInstallStep1;
+  final String pwaInstallStep2;
+  final String serviceUnavailable;
+  final String locationServicesDisabled;
   final String searching;
   final String routeReady;
   final String selectParking;
@@ -105,6 +117,19 @@ class AppStrings {
   final String invalidData;
   final String serverError;
   final String requestError;
+  final String noInternet;
+  final String requestTimedOut;
+  final String networkFailure;
+  final String serviceUnavailable;
+  final String unknownError;
+  final String locationServicesDisabled;
+  final String mapLoadError;
+  final String routeLoadError;
+  final String retry;
+  final String installPwa;
+  final String pwaStep1;
+  final String pwaStep2;
+  final String ok;
   final String searchTimeout;
   final String pointLookupError;
   final String pointLookupTimeout;
@@ -150,6 +175,18 @@ class AppStrings {
   AppStrings({
     required this.appTitle,
     required this.findParking,
+    required this.noInternet,
+    required this.requestTimedOut,
+    required this.networkFailure,
+    required this.mapLoadError,
+    required this.routeLoadError,
+    required this.unknownError,
+    required this.retry,
+    required this.pwaInstallTitle,
+    required this.pwaInstallStep1,
+    required this.pwaInstallStep2,
+    required this.serviceUnavailable,
+    required this.locationServicesDisabled,
     required this.searching,
     required this.routeReady,
     required this.selectParking,
@@ -250,6 +287,19 @@ class AppStrings {
     required this.invalidData,
     required this.serverError,
     required this.requestError,
+    required this.noInternet,
+    required this.requestTimedOut,
+    required this.networkFailure,
+    required this.serviceUnavailable,
+    required this.unknownError,
+    required this.locationServicesDisabled,
+    required this.mapLoadError,
+    required this.routeLoadError,
+    required this.retry,
+    required this.installPwa,
+    required this.pwaStep1,
+    required this.pwaStep2,
+    required this.ok,
     required this.searchTimeout,
     required this.pointLookupError,
     required this.pointLookupTimeout,
@@ -296,6 +346,18 @@ class AppStrings {
   static AppStrings ru = AppStrings(
     appTitle: 'ParkTrack',
     findParking: 'Припарковаться',
+    noInternet: 'Нет интернета',
+    requestTimedOut: 'Время ожидания истекло',
+    networkFailure: 'Ошибка сети',
+    mapLoadError: 'Ошибка загрузки карты',
+    routeLoadError: 'Ошибка загрузки маршрута',
+    unknownError: 'Что-то пошло не так',
+    retry: 'Повторить',
+    pwaInstallTitle: 'Установка приложения',
+    pwaInstallStep1: 'Нажмите кнопку «Поделиться» в браузере',
+    pwaInstallStep2: 'Выберите «На экран Домой»',
+    serviceUnavailable: 'Сервис временно недоступен',
+    locationServicesDisabled: 'Геолокация отключена',
     searching: 'Ищем...',
     routeReady: 'Маршрут готов',
     selectParking: 'Выберите парковку',
@@ -313,7 +375,8 @@ class AppStrings {
     filters: 'Фильтры',
     apply: 'Применить',
     reset: 'Сбросить',
-    passwordResetInstructions: 'Введите свой email чтобы получить инструкции по сбросу пароля.',
+    passwordResetInstructions:
+        'Введите свой email чтобы получить инструкции по сбросу пароля.',
     logout: 'Выйти',
     settings: 'Настройки',
     appearance: 'Внешний вид',
@@ -397,6 +460,19 @@ class AppStrings {
     invalidData: 'Неверные данные',
     serverError: 'Ошибка сервера',
     requestError: 'Ошибка запроса',
+    noInternet: 'Нет подключения к интернету',
+    requestTimedOut: 'Сервер не ответил вовремя',
+    networkFailure: 'Не удалось подключиться к серверу',
+    serviceUnavailable: 'Сервис временно недоступен',
+    unknownError: 'Что-то пошло не так',
+    locationServicesDisabled: 'Геолокация отключена',
+    mapLoadError: 'Не удалось загрузить карту',
+    routeLoadError: 'Не удалось загрузить маршрут',
+    retry: 'Повторить',
+    installPwa: 'Установить ParkTrack',
+    pwaStep1: '1. Нажмите «Поделиться»',
+    pwaStep2: '2. Выберите «На экран Домой»',
+    ok: 'ОК',
     searchTimeout: 'Поиск занял слишком много времени',
     pointLookupError: 'Не удалось определить координаты места',
     pointLookupTimeout: 'Определение точки заняло слишком много времени',
@@ -459,6 +535,18 @@ class AppStrings {
   static AppStrings en = AppStrings(
     appTitle: 'ParkTrack',
     findParking: 'Park Now',
+    noInternet: 'No internet',
+    requestTimedOut: 'Request timed out',
+    networkFailure: 'Network failure',
+    mapLoadError: 'Map load error',
+    routeLoadError: 'Route load error',
+    unknownError: 'Something went wrong',
+    retry: 'Retry',
+    pwaInstallTitle: 'Install App',
+    pwaInstallStep1: 'Tap the Share button in your browser',
+    pwaInstallStep2: 'Select "Add to Home Screen"',
+    serviceUnavailable: 'Service temporarily unavailable',
+    locationServicesDisabled: 'Location services disabled',
     searching: 'Searching...',
     routeReady: 'Route Ready',
     selectParking: 'Select Parking',
@@ -476,7 +564,8 @@ class AppStrings {
     filters: 'Filters',
     apply: 'Apply',
     reset: 'Reset',
-    passwordResetInstructions: 'Enter your email to receive password reset instructions.',
+    passwordResetInstructions:
+        'Enter your email to receive password reset instructions.',
     logout: 'Logout',
     settings: 'Settings',
     appearance: 'Appearance',
@@ -560,6 +649,19 @@ class AppStrings {
     invalidData: 'Invalid data',
     serverError: 'Server error',
     requestError: 'Request error',
+    noInternet: 'No internet connection',
+    requestTimedOut: 'The server took too long to respond',
+    networkFailure: 'Could not connect to the server',
+    serviceUnavailable: 'Service is temporarily unavailable',
+    unknownError: 'Something went wrong',
+    locationServicesDisabled: 'Location services are disabled',
+    mapLoadError: 'Could not load the map',
+    routeLoadError: 'Could not load the route',
+    retry: 'Retry',
+    installPwa: 'Install ParkTrack',
+    pwaStep1: '1. Tap “Share”',
+    pwaStep2: '2. Choose “Add to Home Screen”',
+    ok: 'OK',
     searchTimeout: 'Search timeout',
     pointLookupError: 'Could not determine coordinates',
     pointLookupTimeout: 'Point lookup timeout',
