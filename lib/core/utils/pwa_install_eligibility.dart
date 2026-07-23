@@ -1,3 +1,6 @@
+export 'pwa_install_eligibility_stub.dart'
+    if (dart.library.js_interop) 'pwa_install_eligibility_web.dart';
+
 const pwaInstallGuideVersion = '1';
 
 bool shouldShowPwaInstallGuide({
@@ -13,12 +16,12 @@ bool shouldShowPwaInstallGuide({
 
   final normalizedAgent = userAgent.toLowerCase();
   final normalizedPlatform = platform.toLowerCase();
-  final isIos =
+  final isIphoneOrIpad =
       normalizedAgent.contains('iphone') ||
       normalizedAgent.contains('ipad') ||
       normalizedAgent.contains('ipod') ||
       (normalizedPlatform == 'macintel' && maxTouchPoints > 1);
-  if (!isIos) return false;
+  if (!isIphoneOrIpad) return false;
 
   return dismissedVersion != pwaInstallGuideVersion;
 }

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../core/utils/browser_locale.dart';
 import '../../core/storage/settings_storage.dart';
 
 class SettingsState {
@@ -32,10 +34,27 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
   }
 
   Future<void> _loadSettings() async {
-    final generation = _languageGeneration;
-    final theme = await _storage.getThemeMode();
-    final lang = await _storage.getLanguage();
-    if (generation != _languageGeneration) return;
+    final languageGeneration = _languageGeneration;
+    final themeFuture = _storage.getThemeMode();
+    final languageFuture = _storage.getLanguage();
+    final theme = await themeFuture;
+    String? lang = await languageFuture;
+
+    if (lang == null) {
+      final browserLang = detectBrowserLanguage();
+      if (browserLang != null) {
+        if (browserLang.startsWith('ru')) {
+          lang = 'ru';
+        } else {
+          lang = 'en';
+        }
+      }
+    }
+
+    if (languageGeneration != _languageGeneration) {
+      state = state.copyWith(themeMode: theme);
+      return;
+    }
     if (lang != null) {
       _setMapKitLocale(lang);
     }
@@ -58,9 +77,11 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
     );
     await _storage.saveLanguage(languageCode);
     if (languageCode != null) {
-      await _setMapKitLocale(languageCode);
+      _setMapKitLocale(languageCode);
     }
   }
+
+  Future<void> setLocale(Locale locale) => setLanguage(locale.languageCode);
 
   Future<void> _setMapKitLocale(String lang) async {
     try {

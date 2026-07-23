@@ -12,9 +12,8 @@ void main() {
   test('keeps rendering and service contracts implemented', () {
     expect(bridge, contains('window.ymaps.route'));
     expect(bridge, contains('window.ymaps.geocode'));
-    expect(bridge, contains('reverseGeocode(latitude, longitude)'));
-    expect(bridge, contains('geoObject.getAddressLine()'));
-    expect(bridge, contains('SearchControl'));
+    expect(bridge, contains('searchViaServices'));
+    expect(bridge, contains('api-maps.yandex.ru/services/search/'));
     expect(bridge, isNot(contains("return JSON.stringify({ points: []")));
     expect(bridge, isNot(contains('return JSON.stringify([])')));
   });
@@ -29,5 +28,6 @@ void main() {
     expect(bridge, isNot(contains('grayscale(')));
     expect(bridge, isNot(contains('YMapOpenMapsButton')));
     expect(bridge, contains(r'opacity:${zone.opacity ?? 1}'));
+    expect(bridge, contains('opacity: zone.opacity ?? 1'));
   });
 }

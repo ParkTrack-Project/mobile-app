@@ -1,5 +1,4 @@
-- Cached parking data stays visible during recoverable network and API failures.
-- The web map now follows the app theme and language, and background POIs no longer open accidentally.
-- Added an iPhone and iPad PWA installation guide.
-- Added a RU/EN switcher to every authentication screen.
-- Added secure app-link routing for m.parktrack.live on Android and the web.
+• Added App Links for opening m.parktrack.live URLs in the app.
+• Added language selection to sign-in, registration, and password reset screens.
+• Kept parking data visible during temporary network failures and improved error messages.
+• Improved map and navigation stability and optimized release builds.

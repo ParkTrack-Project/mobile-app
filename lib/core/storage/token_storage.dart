@@ -39,8 +39,10 @@ class TokenStorage {
   }
 
   Future<void> saveCredentials(String login, String password) async {
-    await _storage.write(key: _keyLogin, value: login);
-    await _storage.write(key: _keyPassword, value: password);
+    await Future.wait([
+      _storage.write(key: _keyLogin, value: login),
+      _storage.write(key: _keyPassword, value: password),
+    ]);
   }
 
   Future<String?> getLogin() => _storage.read(key: _keyLogin);
@@ -50,9 +52,11 @@ class TokenStorage {
     _accessTokenRevision++;
     _cachedAccessToken = null;
     _accessTokenLoaded = true;
-    await _storage.delete(key: _keyAccess);
-    await _storage.delete(key: _keyLogin);
-    await _storage.delete(key: _keyPassword);
+    await Future.wait([
+      _storage.delete(key: _keyAccess),
+      _storage.delete(key: _keyLogin),
+      _storage.delete(key: _keyPassword),
+    ]);
   }
 
   Future<void> clearTokens() async {

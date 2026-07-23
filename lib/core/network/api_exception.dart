@@ -1,11 +1,8 @@
 import 'dart:async';
-
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
-
 import '../localization/app_localizations.dart';
-import 'network_error_classifier.dart';
 
 enum AppFailureKind {
   noInternet,
@@ -52,9 +49,15 @@ class AppFailure implements Exception {
     if (error is TimeoutException) {
       return const AppFailure(AppFailureKind.timeout);
     }
-    if (isSocketNetworkError(error)) {
+
+    // Check for network errors (SocketException etc)
+    final errorStr = error.toString().toLowerCase();
+    if (errorStr.contains('socketexception') ||
+        errorStr.contains('handshake') ||
+        errorStr.contains('connection failed')) {
       return const AppFailure(AppFailureKind.noInternet);
     }
+
     if (error is LocationServiceDisabledException) {
       return const AppFailure(AppFailureKind.locationServicesDisabled);
     }
@@ -79,9 +82,16 @@ class AppFailure implements Exception {
   }
 
   static AppFailure _fromDio(DioException error, AppFailureKind fallback) {
-    if (error.error != null && isSocketNetworkError(error.error!)) {
-      return const AppFailure(AppFailureKind.noInternet);
+    // Check inner error for network issues
+    if (error.error != null) {
+      final innerStr = error.error.toString().toLowerCase();
+      if (innerStr.contains('socketexception') ||
+          innerStr.contains('handshake') ||
+          innerStr.contains('connection failed')) {
+        return const AppFailure(AppFailureKind.noInternet);
+      }
     }
+
     switch (error.type) {
       case DioExceptionType.connectionTimeout:
       case DioExceptionType.sendTimeout:
@@ -167,5 +177,5 @@ class ApiException implements Exception {
       failure.localizedMessage(strings);
 
   @override
-  String toString() => 'ApiException(statusCode: $statusCode)';
+  String toString() => 'ApiException(statusCode: $statusCode): $message';
 }
