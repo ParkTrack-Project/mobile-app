@@ -12,7 +12,8 @@ void main() {
   test('keeps rendering and service contracts implemented', () {
     expect(bridge, contains('window.ymaps.route'));
     expect(bridge, contains('window.ymaps.geocode'));
-    expect(bridge, contains('SearchControl'));
+    expect(bridge, contains('searchViaServices'));
+    expect(bridge, contains('api-maps.yandex.ru/services/search/'));
     expect(bridge, isNot(contains("return JSON.stringify({ points: []")));
     expect(bridge, isNot(contains('return JSON.stringify([])')));
   });

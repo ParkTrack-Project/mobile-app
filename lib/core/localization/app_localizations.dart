@@ -117,15 +117,6 @@ class AppStrings {
   final String invalidData;
   final String serverError;
   final String requestError;
-  final String noInternet;
-  final String requestTimedOut;
-  final String networkFailure;
-  final String serviceUnavailable;
-  final String unknownError;
-  final String locationServicesDisabled;
-  final String mapLoadError;
-  final String routeLoadError;
-  final String retry;
   final String installPwa;
   final String pwaStep1;
   final String pwaStep2;
@@ -287,15 +278,6 @@ class AppStrings {
     required this.invalidData,
     required this.serverError,
     required this.requestError,
-    required this.noInternet,
-    required this.requestTimedOut,
-    required this.networkFailure,
-    required this.serviceUnavailable,
-    required this.unknownError,
-    required this.locationServicesDisabled,
-    required this.mapLoadError,
-    required this.routeLoadError,
-    required this.retry,
     required this.installPwa,
     required this.pwaStep1,
     required this.pwaStep2,
@@ -460,15 +442,6 @@ class AppStrings {
     invalidData: 'Неверные данные',
     serverError: 'Ошибка сервера',
     requestError: 'Ошибка запроса',
-    noInternet: 'Нет подключения к интернету',
-    requestTimedOut: 'Сервер не ответил вовремя',
-    networkFailure: 'Не удалось подключиться к серверу',
-    serviceUnavailable: 'Сервис временно недоступен',
-    unknownError: 'Что-то пошло не так',
-    locationServicesDisabled: 'Геолокация отключена',
-    mapLoadError: 'Не удалось загрузить карту',
-    routeLoadError: 'Не удалось загрузить маршрут',
-    retry: 'Повторить',
     installPwa: 'Установить ParkTrack',
     pwaStep1: '1. Нажмите «Поделиться»',
     pwaStep2: '2. Выберите «На экран Домой»',
@@ -649,15 +622,6 @@ class AppStrings {
     invalidData: 'Invalid data',
     serverError: 'Server error',
     requestError: 'Request error',
-    noInternet: 'No internet connection',
-    requestTimedOut: 'The server took too long to respond',
-    networkFailure: 'Could not connect to the server',
-    serviceUnavailable: 'Service is temporarily unavailable',
-    unknownError: 'Something went wrong',
-    locationServicesDisabled: 'Location services are disabled',
-    mapLoadError: 'Could not load the map',
-    routeLoadError: 'Could not load the route',
-    retry: 'Retry',
     installPwa: 'Install ParkTrack',
     pwaStep1: '1. Tap “Share”',
     pwaStep2: '2. Choose “Add to Home Screen”',
