@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
+import 'package:yandex_mapkit/yandex_mapkit.dart';
 import '../../core/network/api_exception.dart';
 import '../../domain/models/route_result.dart';
 import 'app_providers.dart';
@@ -169,6 +170,9 @@ class RoutingNotifier extends StateNotifier<RoutingState> {
     required double originLat,
     required double originLon,
     required int selectedZoneId,
+    List<Point>? routePolyline,
+    int? routeDistanceMeters,
+    int? routeDurationSeconds,
   }) async {
     final generation = ++_requestGeneration;
     _cancelToken?.cancel('Superseded by a newer routing request');
@@ -182,7 +186,7 @@ class RoutingNotifier extends StateNotifier<RoutingState> {
         future: (_) => true,
         orElse: () => null,
       );
-      final route = await _ref
+      var route = await _ref
           .read(routingRepositoryProvider)
           .createRoute(
             originLat: originLat,
@@ -194,6 +198,12 @@ class RoutingNotifier extends StateNotifier<RoutingState> {
             cancelToken: cancelToken,
           );
       if (generation != _requestGeneration || cancelToken.isCancelled) return;
+      route = route.copyWith(
+        routePolyline: routePolyline ?? route.routePolyline,
+        routeDistanceMeters: routeDistanceMeters ?? route.routeDistanceMeters,
+        routeDurationSeconds:
+            routeDurationSeconds ?? route.routeDurationSeconds,
+      );
       state = RoutingState.routePreview(route);
       _stableState = state;
     } catch (e) {
@@ -207,6 +217,9 @@ class RoutingNotifier extends StateNotifier<RoutingState> {
           originLat: originLat,
           originLon: originLon,
           selectedZoneId: selectedZoneId,
+          routePolyline: routePolyline,
+          routeDistanceMeters: routeDistanceMeters,
+          routeDurationSeconds: routeDurationSeconds,
         ),
       );
     }

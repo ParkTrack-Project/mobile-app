@@ -29,6 +29,8 @@ void main() {
     expect(bridge, isNot(contains('YMapOpenMapsButton')));
     expect(bridge, contains(r'opacity:${zone.opacity ?? 1}'));
     expect(bridge, contains('opacity: zone.opacity ?? 1'));
+    expect(bridge, contains('azimuth: 0, tilt: 0'));
+    expect(bridge, contains('const azimuth = Number(entry.map.azimuth || 0)'));
     expect(bridge, contains("left:-16px;top:-40px"));
     expect(bridge, contains('M16 39C13 32'));
   });

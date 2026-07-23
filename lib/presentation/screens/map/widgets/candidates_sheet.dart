@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:pointer_interceptor/pointer_interceptor.dart';
 
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../domain/models/route_result.dart';
 import '../../../../domain/models/zone.dart';
+import '../../../providers/parking_address_provider.dart';
+import 'parking_zone_layer.dart';
 import 'parking_result_formatter.dart';
 
 enum CandidateAction { go, openExternal }
@@ -22,6 +26,8 @@ class CandidatesSheet extends ConsumerStatefulWidget {
     required this.onAction,
     required this.onScrollOffsetChanged,
     required this.onClose,
+    this.hasDestination = false,
+    this.onPanelHeightChanged,
     this.panelState = ParkingResultsPanelState.results,
   });
 
@@ -38,6 +44,8 @@ class CandidatesSheet extends ConsumerStatefulWidget {
   onAction;
   final ValueChanged<double> onScrollOffsetChanged;
   final VoidCallback onClose;
+  final bool hasDestination;
+  final ValueChanged<double>? onPanelHeightChanged;
   final ParkingResultsPanelState panelState;
 
   @override
@@ -48,6 +56,14 @@ class _CandidatesSheetState extends ConsumerState<CandidatesSheet> {
   late final ScrollController _scrollController = ScrollController(
     initialScrollOffset: widget.initialScrollOffset,
   );
+  double? _panelHeight;
+
+  void _setPanelHeight(double value, double minHeight, double maxHeight) {
+    final next = value.clamp(minHeight, maxHeight);
+    if (next == _panelHeight) return;
+    setState(() => _panelHeight = next);
+    widget.onPanelHeightChanged?.call(next);
+  }
 
   @override
   void dispose() {
@@ -64,128 +80,202 @@ class _CandidatesSheetState extends ConsumerState<CandidatesSheet> {
     final zonesById = {for (final zone in widget.zones) zone.zoneId: zone};
     final colors = Theme.of(context).colorScheme;
 
-    return Material(
-      color: colors.surface,
-      elevation: 14,
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const SizedBox(height: 10),
-          Center(
-            child: Container(
-              width: 42,
-              height: 4,
-              decoration: BoxDecoration(
-                color: colors.outlineVariant,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 14, 20, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        s.parkingNearby,
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxHeight = constraints.maxHeight < 280
+            ? constraints.maxHeight
+            : (constraints.maxHeight * 0.86).clamp(
+                240.0,
+                constraints.maxHeight,
+              );
+        final minHeight = mathMin(108.0, maxHeight);
+        final initialHeight = (constraints.maxHeight * 0.54).clamp(
+          minHeight,
+          maxHeight,
+        );
+        final panelHeight = (_panelHeight ?? initialHeight).clamp(
+          minHeight,
+          maxHeight,
+        );
+        if (_panelHeight == null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && _panelHeight == null) {
+              setState(() => _panelHeight = initialHeight);
+              widget.onPanelHeightChanged?.call(initialHeight);
+            }
+          });
+        }
+
+        return Stack(
+          children: [
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: panelHeight,
+              child: PointerInterceptor(
+                intercepting: kIsWeb,
+                child: Material(
+                  color: colors.surface,
+                  elevation: 14,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(24),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      GestureDetector(
+                        key: const Key('parking_results_drag_handle'),
+                        behavior: HitTestBehavior.opaque,
+                        onVerticalDragUpdate: (details) => _setPanelHeight(
+                          panelHeight - details.delta.dy,
+                          minHeight,
+                          maxHeight,
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(0, 10, 0, 6),
+                          child: Center(
+                            child: Container(
+                              width: 42,
+                              height: 4,
+                              decoration: BoxDecoration(
+                                color: colors.outlineVariant,
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                    IconButton(
-                      tooltip: s.close,
-                      visualDensity: VisualDensity.compact,
-                      onPressed: widget.onClose,
-                      icon: const Icon(Icons.close),
-                    ),
-                  ],
-                ),
-                Text(
-                  s.rankingPrinciple,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: colors.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Divider(height: 1, color: colors.outlineVariant),
-          Expanded(
-            child: switch (widget.panelState) {
-              ParkingResultsPanelState.loading => _PanelMessage(
-                key: const Key('parking_search_loading'),
-                icon: const CircularProgressIndicator(),
-                message: s.searching,
-              ),
-              ParkingResultsPanelState.error => _PanelMessage(
-                key: const Key('parking_search_error'),
-                icon: Icon(Icons.error_outline, color: colors.error),
-                message: s.searchError,
-              ),
-              ParkingResultsPanelState.results when widget.candidates.isEmpty =>
-                _PanelMessage(
-                  key: const Key('parking_search_empty'),
-                  icon: Icon(
-                    Icons.local_parking_outlined,
-                    color: colors.onSurfaceVariant,
-                  ),
-                  message: s.searchNoResults,
-                ),
-              ParkingResultsPanelState.results =>
-                NotificationListener<ScrollEndNotification>(
-                  onNotification: (_) {
-                    widget.onScrollOffsetChanged(_scrollController.offset);
-                    return false;
-                  },
-                  child: ListView.separated(
-                    key: const Key('parking_search_results'),
-                    controller: _scrollController,
-                    padding: const EdgeInsets.only(bottom: 16),
-                    itemCount: widget.candidates.length,
-                    separatorBuilder: (_, _) => Divider(
-                      height: 1,
-                      indent: 20,
-                      endIndent: 20,
-                      color: colors.outlineVariant.withValues(alpha: 0.6),
-                    ),
-                    itemBuilder: (context, index) {
-                      final candidate = widget.candidates[index];
-                      return _CandidateTile(
-                        key: Key('parking_candidate_${candidate.zoneId}'),
-                        candidate: candidate,
-                        zone: zonesById[candidate.zoneId],
-                        isLastViewed:
-                            candidate.zoneId == widget.lastViewedZoneId,
-                        s: s,
-                        onTap: () => widget.onSelect(candidate.zoneId),
-                        onAction: (action) => widget.onAction(
-                          action,
-                          candidate,
-                          zonesById[candidate.zoneId],
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 4, 12, 10),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    s.parkingNearby,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleLarge
+                                        ?.copyWith(fontWeight: FontWeight.w700),
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip: s.close,
+                                  visualDensity: VisualDensity.compact,
+                                  onPressed: widget.onClose,
+                                  icon: const Icon(Icons.close),
+                                ),
+                              ],
+                            ),
+                            Text(
+                              s.rankingPrinciple,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: colors.onSurfaceVariant),
+                            ),
+                          ],
                         ),
-                      );
-                    },
+                      ),
+                      Divider(height: 1, color: colors.outlineVariant),
+                      Expanded(
+                        child: switch (widget.panelState) {
+                          ParkingResultsPanelState.loading => _PanelMessage(
+                            key: const Key('parking_search_loading'),
+                            icon: const CircularProgressIndicator(),
+                            message: s.searching,
+                          ),
+                          ParkingResultsPanelState.error => _PanelMessage(
+                            key: const Key('parking_search_error'),
+                            icon: Icon(
+                              Icons.error_outline,
+                              color: colors.error,
+                            ),
+                            message: s.searchError,
+                          ),
+                          ParkingResultsPanelState.results
+                              when widget.candidates.isEmpty =>
+                            _PanelMessage(
+                              key: const Key('parking_search_empty'),
+                              icon: Icon(
+                                Icons.local_parking_outlined,
+                                color: colors.onSurfaceVariant,
+                              ),
+                              message: s.searchNoResults,
+                            ),
+                          ParkingResultsPanelState.results =>
+                            NotificationListener<ScrollNotification>(
+                              onNotification: (notification) {
+                                if (notification is ScrollEndNotification) {
+                                  widget.onScrollOffsetChanged(
+                                    _scrollController.offset,
+                                  );
+                                }
+                                return false;
+                              },
+                              child: ListView.separated(
+                                key: const Key('parking_search_results'),
+                                controller: _scrollController,
+                                padding: const EdgeInsets.only(bottom: 16),
+                                itemCount: widget.candidates.length,
+                                separatorBuilder: (_, _) => Divider(
+                                  height: 1,
+                                  indent: 20,
+                                  endIndent: 20,
+                                  color: colors.outlineVariant.withValues(
+                                    alpha: 0.6,
+                                  ),
+                                ),
+                                itemBuilder: (context, index) {
+                                  final candidate = widget.candidates[index];
+                                  return _CandidateTile(
+                                    key: Key(
+                                      'parking_candidate_${candidate.zoneId}',
+                                    ),
+                                    candidate: candidate,
+                                    zone: zonesById[candidate.zoneId],
+                                    hasDestination: widget.hasDestination,
+                                    isLastViewed:
+                                        candidate.zoneId ==
+                                        widget.lastViewedZoneId,
+                                    s: s,
+                                    onTap: () =>
+                                        widget.onSelect(candidate.zoneId),
+                                    onAction: (action) => widget.onAction(
+                                      action,
+                                      candidate,
+                                      zonesById[candidate.zoneId],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                        },
+                      ),
+                    ],
                   ),
                 ),
-            },
-          ),
-        ],
-      ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
 
-class _CandidateTile extends StatelessWidget {
+double mathMin(double left, double right) => left < right ? left : right;
+
+class _CandidateTile extends ConsumerWidget {
   const _CandidateTile({
     super.key,
     required this.candidate,
     required this.zone,
+    required this.hasDestination,
     required this.isLastViewed,
     required this.s,
     required this.onTap,
@@ -194,28 +284,49 @@ class _CandidateTile extends StatelessWidget {
 
   final RouteCandidate candidate;
   final Zone? zone;
+  final bool hasDestination;
   final bool isLastViewed;
   final AppStrings s;
   final VoidCallback onTap;
   final ValueChanged<CandidateAction> onAction;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final colors = Theme.of(context).colorScheme;
     final durationText = formatParkingDuration(
       candidate.durationFromOriginSeconds,
       s,
     );
-    final distanceText = formatParkingDistance(
+    final destinationDistanceText = formatParkingDistance(
       candidate.distanceToDestinationMeters,
       s,
     );
-    final spacesText = formatParkingSpaces(candidate.freeCount, s);
-    final priceText = formatParkingPrice(candidate.pay, s);
+    final drivingDistanceText = formatParkingDistance(
+      parkingPolylineLengthMeters(candidate.routePolyline),
+      s,
+    );
+    final walkingText = formatParkingWalkingDuration(
+      candidate.distanceToDestinationMeters,
+      s,
+    );
+    final spacesText = formatParkingSpaces(
+      zone?.hasForecast == true ? zone?.freeCount : candidate.freeCount,
+      s,
+    );
+    final priceText = formatParkingPrice(zone?.pay ?? candidate.pay, s);
     final predictedSpacesText = formatParkingSpaces(
       candidate.predictedFreeCount,
       s,
     );
+    final arrivalText = formatParkingArrival(candidate.eta);
+    final address = zone == null || zone!.geometry.isEmpty
+        ? const AsyncValue<String?>.data(null)
+        : ref.watch(
+            parkingAddressProvider((
+              latitude: centroid(zone!.geometry).latitude,
+              longitude: centroid(zone!.geometry).longitude,
+            )),
+          );
     final timeColor = switch (candidate.durationFromOriginSeconds) {
       null => colors.onSurfaceVariant,
       < 300 => AppColors.primary,
@@ -234,36 +345,75 @@ class _CandidateTile extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (durationText != null)
+            if ((hasDestination && destinationDistanceText != null) ||
+                (!hasDestination && durationText != null))
               Container(
-                constraints: const BoxConstraints(minWidth: 48),
+                constraints: const BoxConstraints(minWidth: 58),
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                 decoration: BoxDecoration(
                   color: timeColor.withValues(alpha: 0.14),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Text(
-                  durationText,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: timeColor,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      hasDestination ? destinationDistanceText! : durationText!,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: timeColor,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      hasDestination
+                          ? '${walkingText ?? ''} ${s.walkingTime}'.trim()
+                          : s.drivingTime,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: timeColor,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            if (durationText != null) const SizedBox(width: 12),
+            if ((hasDestination && destinationDistanceText != null) ||
+                (!hasDestination && durationText != null))
+              const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  address.when(
+                    data: (value) => Text(
+                      value ?? '${s.parkingNumber}${candidate.zoneId}',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    loading: () => Text(
+                      s.addressLoading,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: colors.onSurfaceVariant),
+                    ),
+                    error: (_, _) => Text(
+                      '${s.parkingNumber}${candidate.zoneId}',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
                   Text(
-                    s.parkingZone,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
+                    '${s.parkingNumber}${candidate.zoneId}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: colors.onSurfaceVariant,
                     ),
                   ),
                   const SizedBox(height: 5),
@@ -272,8 +422,6 @@ class _CandidateTile extends StatelessWidget {
                     runSpacing: 4,
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      if (distanceText != null)
-                        _Fact(icon: Icons.route_outlined, text: distanceText),
                       if (spacesText != null)
                         _Fact(
                           icon: Icons.local_parking,
@@ -287,7 +435,24 @@ class _CandidateTile extends StatelessWidget {
                       if (predictedSpacesText != null)
                         _Fact(
                           icon: Icons.auto_graph,
-                          text: '${s.forecast}: $predictedSpacesText',
+                          text: arrivalText == null
+                              ? '${s.forecast}: $predictedSpacesText'
+                              : '$predictedSpacesText '
+                                    '${s.expectedAvailability} $arrivalText',
+                        ),
+                      if (drivingDistanceText != null || durationText != null)
+                        _Fact(
+                          icon: Icons.directions_car_outlined,
+                          text: [
+                            ?drivingDistanceText,
+                            if (durationText != null) '($durationText)',
+                            s.fromYou,
+                          ].join(' '),
+                        ),
+                      if (hasDestination && destinationDistanceText != null)
+                        _Fact(
+                          icon: Icons.flag_outlined,
+                          text: '$destinationDistanceText ${s.toDestination}',
                         ),
                       if (zone?.isPrivate == true)
                         _Fact(icon: Icons.lock_outline, text: s.private),
@@ -301,26 +466,33 @@ class _CandidateTile extends StatelessWidget {
                 ],
               ),
             ),
-            PopupMenuButton<CandidateAction>(
-              key: Key('parking_candidate_action_${candidate.zoneId}'),
-              tooltip: s.moreInfo,
-              onSelected: onAction,
-              itemBuilder: (_) => [
-                PopupMenuItem(
-                  value: CandidateAction.go,
-                  child: ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.navigation_outlined),
-                    title: Text(s.goAction),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton.filledTonal(
+                  key: Key('parking_candidate_go_${candidate.zoneId}'),
+                  tooltip: s.goAction,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 46,
+                    height: 46,
                   ),
+                  onPressed: () => onAction(CandidateAction.go),
+                  icon: const Icon(Icons.navigation_rounded),
                 ),
-                PopupMenuItem(
-                  value: CandidateAction.openExternal,
-                  enabled: zone?.geometry.isNotEmpty == true,
-                  child: ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.open_in_new),
-                    title: Text(s.openInYandexMaps),
+                const SizedBox(width: 4),
+                IconButton.outlined(
+                  key: Key('parking_candidate_yandex_${candidate.zoneId}'),
+                  tooltip: s.openInYandexMaps,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 46,
+                    height: 46,
+                  ),
+                  onPressed: zone?.geometry.isNotEmpty == true
+                      ? () => onAction(CandidateAction.openExternal)
+                      : null,
+                  icon: const Icon(
+                    Icons.map_outlined,
+                    color: Color(0xFFE53935),
                   ),
                 ),
               ],

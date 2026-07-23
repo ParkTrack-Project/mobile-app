@@ -200,6 +200,7 @@
     const bounds = entry.map.bounds;
     if (!bounds[0] || !bounds[1]) return false;
     const zoom = entry.map.zoom;
+    const azimuth = Number(entry.map.azimuth || 0);
     const cameraKey = [
       center[0],
       center[1],
@@ -208,6 +209,7 @@
       bounds[0][1],
       bounds[1][0],
       bounds[1][1],
+      azimuth,
     ]
       .map((value) => Number(value).toFixed(7))
       .join('|');
@@ -224,6 +226,7 @@
       south: bounds[0][1],
       east: bounds[1][0],
       north: bounds[1][1],
+      azimuth,
     }));
     return true;
   }
@@ -301,7 +304,8 @@
   function parkingMarkerElement(zone, onTap) {
     const el = document.createElement('div');
     el.className = 'parktrack-marker';
-    el.style.cssText = `position:absolute;left:-12px;top:-12px;width:24px;height:24px;box-sizing:border-box;border:1px solid #fff;border-radius:50%;background:${zone.color};display:flex;align-items:center;justify-content:center;color:#fff;font:700 9.5px/1 Roboto,Arial,sans-serif;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.35);opacity:${zone.opacity ?? 1};z-index:2100`;
+    const zIndex = zone.active ? 2300 : zone.candidate ? 2200 : 2100;
+    el.style.cssText = `position:absolute;left:-12px;top:-12px;width:24px;height:24px;box-sizing:border-box;border:1px solid #fff;border-radius:50%;background:${zone.color};display:flex;align-items:center;justify-content:center;color:#fff;font:700 9.5px/1 Roboto,Arial,sans-serif;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.35);opacity:${zone.opacity ?? 1};z-index:${zIndex}`;
     el.textContent = zone.label == null ? '' : String(zone.label);
     el.onclick = (e) => { e.stopPropagation(); onTap(); };
     return el;
@@ -321,8 +325,8 @@
     el.style.cssText = `position:absolute;left:-14px;top:-14px;width:28px;height:28px;box-sizing:border-box;border:1px solid #fff;border-radius:50%;background:${freeCount === null ? '#757575' : freeCount > 0 ? '#2e7d32' : '#d32f2f'};display:flex;align-items:center;justify-content:center;text-align:center;white-space:pre-line;color:#fff;font:700 8px/1.2 Roboto,Arial,sans-serif;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.4);z-index:2050`;
     el.textContent =
       freeCount === null
-        ? `(${features.length})`
-        : `${freeCount}\n(${features.length})`;
+        ? String(features.length)
+        : String(freeCount);
     el.onclick = (e) => { e.stopPropagation(); onTap(); };
     return el;
   }
@@ -541,6 +545,12 @@
     setZoom(id, z) {
       const entry = entries.get(id);
       if (entry && entry.map) entry.map.setLocation({ zoom: z, duration: 200 });
+    },
+    resetNorth(id) {
+      const entry = entries.get(id);
+      if (entry && entry.map) {
+        entry.map.setLocation({ azimuth: 0, tilt: 0, duration: 300 });
+      }
     },
     fitBounds(id, south, west, north, east) {
       const entry = entries.get(id);

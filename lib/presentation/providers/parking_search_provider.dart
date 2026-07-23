@@ -75,6 +75,21 @@ class ParkingSearchNotifier extends StateNotifier<ParkingSearchState> {
     return true;
   }
 
+  int? showAdjacent(int delta) {
+    final selected = state.selectedZoneId;
+    if (selected == null || delta == 0) return null;
+    final index = state.candidates.indexWhere(
+      (candidate) => candidate.zoneId == selected,
+    );
+    final nextIndex = index + delta;
+    if (index < 0 || nextIndex < 0 || nextIndex >= state.candidates.length) {
+      return null;
+    }
+    final nextId = state.candidates[nextIndex].zoneId;
+    showDetails(nextId);
+    return nextId;
+  }
+
   void backToResults() {
     if (state.candidates.isEmpty) return;
     state = state.copyWith(

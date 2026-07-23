@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/domain/models/zone.dart';
 import 'package:mobile/presentation/screens/map/widgets/parking_zone_layer.dart';
@@ -64,5 +65,13 @@ void main() {
 
     expect(_alpha(objects[1]), greaterThan(_alpha(objects[0])));
     expect(_alpha(objects[0]), greaterThan(_alpha(objects[2])));
+  });
+
+  test('uses a brighter parking palette on the dark map theme', () {
+    final light = zoneColor(_zone(1), brightness: Brightness.light);
+    final dark = zoneColor(_zone(1), brightness: Brightness.dark);
+
+    expect(dark, isNot(light));
+    expect(dark.computeLuminance(), greaterThan(light.computeLuminance()));
   });
 }

@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/core/localization/app_localizations.dart';
 import 'package:mobile/presentation/screens/map/widgets/parking_result_formatter.dart';
+import 'package:yandex_mapkit/yandex_mapkit.dart';
 
 void main() {
   test('formats distance, time, price, and spaces in English', () {
@@ -29,4 +30,17 @@ void main() {
     expect(formatParkingSpaces(-1, AppStrings.en), isNull);
     expect(formatParkingPrice(-1, AppStrings.en), isNull);
   });
+
+  test(
+    'formats destination walk time, arrival, and real polyline distance',
+    () {
+      expect(formatParkingWalkingDuration(160, AppStrings.en), '~2 min');
+      expect(formatParkingArrival('2026-07-23T13:23:00+03:00'), '13:23');
+      final distance = parkingPolylineLengthMeters(const [
+        Point(latitude: 61.789, longitude: 34.359),
+        Point(latitude: 61.790, longitude: 34.359),
+      ]);
+      expect(distance, inInclusiveRange(110, 112));
+    },
+  );
 }

@@ -122,6 +122,19 @@ void main() {
     );
   });
 
+  test('moves between adjacent backend results without changing order', () {
+    final notifier = ParkingSearchNotifier()
+      ..showResults([_candidate(8), _candidate(3), _candidate(5)])
+      ..showDetails(3);
+
+    expect(notifier.showAdjacent(-1), 8);
+    expect(notifier.state.selectedZoneId, 8);
+    expect(notifier.showAdjacent(-1), isNull);
+    expect(notifier.showAdjacent(1), 3);
+    expect(notifier.state.lastViewedZoneId, 3);
+    expect(notifier.state.candidates.map((item) => item.zoneId), [8, 3, 5]);
+  });
+
   test('route failure returns to results without losing candidates', () {
     final notifier = ParkingSearchNotifier();
     final candidates = [_candidate(2), _candidate(4)];
