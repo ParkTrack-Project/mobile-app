@@ -57,7 +57,13 @@ void showErrorSnackBar(
                 onPressed: () =>
                     _showDetailsDialog(context, message, details, s),
               )
-            : null,
+            : details != null
+                ? SnackBarAction(
+                    label: s?.moreInfo ?? 'Details',
+                    onPressed: () =>
+                        _showDetailsDialog(context, message, details, s),
+                  )
+                : null,
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 6),
       ),
