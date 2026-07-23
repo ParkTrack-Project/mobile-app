@@ -40,6 +40,17 @@ class _FakeZonesRepository extends ZonesRepository {
 }
 
 void main() {
+  test('refreshes parking availability inside the requested interval', () {
+    expect(
+      zoneAutoRefreshInterval,
+      greaterThanOrEqualTo(const Duration(seconds: 15)),
+    );
+    expect(
+      zoneAutoRefreshInterval,
+      lessThanOrEqualTo(const Duration(seconds: 30)),
+    );
+  });
+
   test('keeps cached zones when background refresh fails', () async {
     final repository = _FakeZonesRepository();
     final container = ProviderContainer(
