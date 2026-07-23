@@ -57,15 +57,11 @@ class _PasswordResetScreenState extends ConsumerState<PasswordResetScreen> {
     final s = ref.watch(l10nProvider);
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          s.resetPassword,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
+        title: Text(s.resetPassword),
         actions: const [
           Padding(
-            padding: EdgeInsets.only(right: 8),
-            child: LanguageSwitcher(),
+            padding: EdgeInsets.only(right: 16),
+            child: Center(child: LanguageSwitcher()),
           ),
         ],
       ),

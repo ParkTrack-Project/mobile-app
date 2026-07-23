@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/network/api_exception.dart';
 import '../../domain/models/zone.dart';
 import 'app_providers.dart';
 import 'time_selector_provider.dart';
@@ -40,12 +41,12 @@ class ZonesNotifier extends StateNotifier<AsyncValue<List<Zone>>> {
       );
       if (generation != _requestGeneration || cancelToken.isCancelled) return;
       state = AsyncValue.data(zones);
-    } on DioException catch (e, st) {
-      if (CancelToken.isCancel(e) || generation != _requestGeneration) return;
-      state = AsyncValue<List<Zone>>.error(e, st).copyWithPrevious(state);
     } catch (e, st) {
       if (generation != _requestGeneration) return;
-      state = AsyncValue<List<Zone>>.error(e, st).copyWithPrevious(state);
+      if (e is DioException && CancelToken.isCancel(e)) return;
+
+      final failure = AppFailure.from(e);
+      state = AsyncValue<List<Zone>>.error(failure, st).copyWithPrevious(state);
     } finally {
       if (identical(_cancelToken, cancelToken)) _cancelToken = null;
     }
@@ -60,14 +61,11 @@ class ZonesNotifier extends StateNotifier<AsyncValue<List<Zone>>> {
     _cancelToken?.cancel('Zone state cleared');
     _cancelToken = null;
     _lastRequestKey = null;
-    state = const AsyncValue<List<Zone>>.loading().copyWithPrevious(state);
+    state = const AsyncValue.loading();
   }
 
   void setErrorState(Object error, StackTrace stackTrace) {
-    state = AsyncValue<List<Zone>>.error(
-      error,
-      stackTrace,
-    ).copyWithPrevious(state);
+    state = AsyncValue.error(error, stackTrace);
   }
 
   @override
@@ -78,10 +76,11 @@ class ZonesNotifier extends StateNotifier<AsyncValue<List<Zone>>> {
 }
 
 final filteredZonesProvider = Provider<List<Zone>>((ref) {
-  final zonesAsync = ref.watch(rawZonesProvider);
+  final zones =
+      ref.watch(rawZonesProvider.select((value) => value.valueOrNull)) ??
+      const <Zone>[];
   final filters = ref.watch(filtersProvider);
 
-  final zones = zonesAsync.valueOrNull ?? [];
   return zones.where((z) {
     if (filters.hideInactive && !z.isActive) return false;
     if (filters.hideNoFreeSpots && z.freeCount == 0) return false;

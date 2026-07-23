@@ -60,15 +60,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     final s = ref.watch(l10nProvider);
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          s.registration,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
+        title: Text(s.registration),
         actions: const [
           Padding(
-            padding: EdgeInsets.only(right: 8),
-            child: LanguageSwitcher(),
+            padding: EdgeInsets.only(right: 16),
+            child: Center(child: LanguageSwitcher()),
           ),
         ],
       ),

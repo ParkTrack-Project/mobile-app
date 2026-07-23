@@ -5,6 +5,7 @@ import 'core/router/app_router.dart';
 import 'core/router/url_strategy.dart';
 import 'core/theme/app_theme.dart';
 import 'presentation/providers/settings_provider.dart';
+import 'presentation/screens/map/widgets/pwa_install_guide.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -35,6 +36,25 @@ class ParkTrackApp extends ConsumerWidget {
         GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: const [Locale('ru', 'RU'), Locale('en')],
+      builder: (context, child) => _AppBuilder(child: child),
+    );
+  }
+}
+
+class _AppBuilder extends StatelessWidget {
+  const _AppBuilder({this.child});
+  final Widget? child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (child == null) return const SizedBox.shrink();
+    return Material(
+      child: Stack(
+        children: [
+          RepaintBoundary(child: child!),
+          const PwaInstallGuide(),
+        ],
+      ),
     );
   }
 }
