@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:yandex_mapkit/yandex_mapkit.dart';
 
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -16,6 +17,9 @@ class ParkingCardSheet extends ConsumerWidget {
     required this.zone,
     required this.onBuildRoute,
     required this.onClose,
+    this.onOpenExternal,
+    this.originLatitude,
+    this.originLongitude,
     this.candidate,
     this.onBack,
     this.onPrevious,
@@ -28,6 +32,9 @@ class ParkingCardSheet extends ConsumerWidget {
   final RouteCandidate? candidate;
   final VoidCallback onBuildRoute;
   final VoidCallback onClose;
+  final VoidCallback? onOpenExternal;
+  final double? originLatitude;
+  final double? originLongitude;
   final VoidCallback? onBack;
   final VoidCallback? onPrevious;
   final VoidCallback? onNext;
@@ -96,26 +103,23 @@ class ParkingCardSheet extends ConsumerWidget {
                     children: [
                       address.when(
                         data: (value) => Text(
-                          value ?? s.parkingZone,
+                          [
+                            '${s.parkingNumber}${currentZone.zoneId}',
+                            if (value != null && value.trim().isNotEmpty) value,
+                          ].join(' · '),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(fontWeight: FontWeight.w700),
                         ),
                         loading: () => Text(
-                          s.addressLoading,
+                          '${s.parkingNumber}${currentZone.zoneId} · ${s.addressLoading}',
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                         error: (_, _) => Text(
-                          s.parkingZone,
+                          '${s.parkingNumber}${currentZone.zoneId}',
                           style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                      Text(
-                        '${s.parkingNumber}${currentZone.zoneId}',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: colors.onSurfaceVariant,
                         ),
                       ),
                     ],
@@ -150,11 +154,22 @@ class ParkingCardSheet extends ConsumerWidget {
                   _Fact(icon: Icons.accessible, text: s.accessibleParking),
                 if (currentZone.isPrivate == true)
                   _Fact(icon: Icons.lock_outline, text: s.private),
+                _Fact(
+                  icon: Icons.verified_outlined,
+                  text:
+                      '${s.confidence}: ${(((candidate?.confidence ?? currentZone.confidence).clamp(0, 1)) * 100).round()}%',
+                ),
               ],
             ),
             if (candidate != null) ...[
               const SizedBox(height: 10),
-              _CandidateFacts(candidate: candidate!, s: s),
+              _CandidateFacts(
+                candidate: candidate!,
+                zone: currentZone,
+                originLatitude: originLatitude,
+                originLongitude: originLongitude,
+                s: s,
+              ),
             ],
             if (onPrevious != null || onNext != null) ...[
               const SizedBox(height: 10),
@@ -180,10 +195,29 @@ class ParkingCardSheet extends ConsumerWidget {
               ),
             ],
             const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: onBuildRoute,
-              icon: const Icon(Icons.directions),
-              label: Text(s.buildRoute),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: onBuildRoute,
+                    icon: const Icon(Icons.navigation_rounded),
+                    label: Text(s.buildRoute),
+                  ),
+                ),
+                if (onOpenExternal != null) ...[
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      onPressed: onOpenExternal,
+                      icon: const Icon(Icons.open_in_new_rounded),
+                      label: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(s.openInYandexMaps),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ],
         ),
@@ -193,10 +227,19 @@ class ParkingCardSheet extends ConsumerWidget {
 }
 
 class _CandidateFacts extends StatelessWidget {
-  const _CandidateFacts({required this.candidate, required this.s});
+  const _CandidateFacts({
+    required this.candidate,
+    required this.zone,
+    required this.s,
+    this.originLatitude,
+    this.originLongitude,
+  });
 
   final RouteCandidate candidate;
+  final Zone zone;
   final AppStrings s;
+  final double? originLatitude;
+  final double? originLongitude;
 
   @override
   Widget build(BuildContext context) {
@@ -205,8 +248,13 @@ class _CandidateFacts extends StatelessWidget {
       candidate.durationFromOriginSeconds,
       s,
     );
+    final origin = originLatitude == null || originLongitude == null
+        ? null
+        : Point(latitude: originLatitude!, longitude: originLongitude!);
+    final center = zone.geometry.isEmpty ? null : centroid(zone.geometry);
     final routeDistance = formatParkingDistance(
-      parkingPolylineLengthMeters(candidate.routePolyline),
+      parkingPolylineLengthMeters(candidate.routePolyline) ??
+          parkingPointDistanceMeters(origin, center),
       s,
     );
     final destinationDistance = formatParkingDistance(
@@ -264,7 +312,11 @@ class _AvailabilityFact extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final color = zone.freeCount > 0 ? AppColors.primary : colors.error;
+    final color = switch (zone.freeCount) {
+      <= 0 => colors.error,
+      1 => const Color(0xFFB48409),
+      _ => AppColors.primary,
+    };
     final spaces = formatParkingSpaces(zone.freeCount, s) ?? s.noForecast;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),

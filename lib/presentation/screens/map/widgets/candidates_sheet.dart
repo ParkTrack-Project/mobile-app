@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
+import 'package:yandex_mapkit/yandex_mapkit.dart';
 
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -26,6 +27,8 @@ class CandidatesSheet extends ConsumerStatefulWidget {
     required this.onAction,
     required this.onScrollOffsetChanged,
     required this.onClose,
+    this.originLatitude,
+    this.originLongitude,
     this.hasDestination = false,
     this.onPanelHeightChanged,
     this.panelState = ParkingResultsPanelState.results,
@@ -44,6 +47,8 @@ class CandidatesSheet extends ConsumerStatefulWidget {
   onAction;
   final ValueChanged<double> onScrollOffsetChanged;
   final VoidCallback onClose;
+  final double? originLatitude;
+  final double? originLongitude;
   final bool hasDestination;
   final ValueChanged<double>? onPanelHeightChanged;
   final ParkingResultsPanelState panelState;
@@ -78,6 +83,10 @@ class _CandidatesSheetState extends ConsumerState<CandidatesSheet> {
   Widget build(BuildContext context) {
     final s = ref.watch(l10nProvider);
     final zonesById = {for (final zone in widget.zones) zone.zoneId: zone};
+    final resultTiers = relativeParkingResultTiers(
+      widget.candidates,
+      hasDestination: widget.hasDestination,
+    );
     final colors = Theme.of(context).colorScheme;
 
     return LayoutBuilder(
@@ -238,7 +247,10 @@ class _CandidatesSheetState extends ConsumerState<CandidatesSheet> {
                                     ),
                                     candidate: candidate,
                                     zone: zonesById[candidate.zoneId],
+                                    resultTier: resultTiers[index],
                                     hasDestination: widget.hasDestination,
+                                    originLatitude: widget.originLatitude,
+                                    originLongitude: widget.originLongitude,
                                     isLastViewed:
                                         candidate.zoneId ==
                                         widget.lastViewedZoneId,
@@ -275,16 +287,22 @@ class _CandidateTile extends ConsumerWidget {
     super.key,
     required this.candidate,
     required this.zone,
+    required this.resultTier,
     required this.hasDestination,
     required this.isLastViewed,
     required this.s,
     required this.onTap,
     required this.onAction,
+    this.originLatitude,
+    this.originLongitude,
   });
 
   final RouteCandidate candidate;
   final Zone? zone;
+  final ParkingResultTier resultTier;
   final bool hasDestination;
+  final double? originLatitude;
+  final double? originLongitude;
   final bool isLastViewed;
   final AppStrings s;
   final VoidCallback onTap;
@@ -301,18 +319,25 @@ class _CandidateTile extends ConsumerWidget {
       candidate.distanceToDestinationMeters,
       s,
     );
+    final origin = originLatitude == null || originLongitude == null
+        ? null
+        : Point(latitude: originLatitude!, longitude: originLongitude!);
+    final zoneCenter = zone == null || zone!.geometry.isEmpty
+        ? null
+        : centroid(zone!.geometry);
     final drivingDistanceText = formatParkingDistance(
-      parkingPolylineLengthMeters(candidate.routePolyline),
+      parkingPolylineLengthMeters(candidate.routePolyline) ??
+          parkingPointDistanceMeters(origin, zoneCenter),
       s,
     );
     final walkingText = formatParkingWalkingDuration(
       candidate.distanceToDestinationMeters,
       s,
     );
-    final spacesText = formatParkingSpaces(
-      zone?.hasForecast == true ? zone?.freeCount : candidate.freeCount,
-      s,
-    );
+    final displayedFreeCount = zone?.hasForecast == true
+        ? zone?.freeCount
+        : candidate.freeCount;
+    final spacesText = formatParkingSpaces(displayedFreeCount, s);
     final priceText = formatParkingPrice(zone?.pay ?? candidate.pay, s);
     final predictedSpacesText = formatParkingSpaces(
       candidate.predictedFreeCount,
@@ -330,11 +355,10 @@ class _CandidateTile extends ConsumerWidget {
               longitude: centroid(zone!.geometry).longitude,
             )),
           );
-    final timeColor = switch (candidate.durationFromOriginSeconds) {
-      null => colors.onSurfaceVariant,
-      < 300 => AppColors.primary,
-      < 600 => Colors.orange.shade700,
-      _ => colors.error,
+    final timeColor = switch (resultTier) {
+      ParkingResultTier.good => AppColors.primary,
+      ParkingResultTier.average => const Color(0xFFB48409),
+      ParkingResultTier.poor => colors.error,
     };
 
     return InkWell(
@@ -344,7 +368,7 @@ class _CandidateTile extends ConsumerWidget {
         color: isLastViewed
             ? colors.primaryContainer.withValues(alpha: 0.35)
             : Colors.transparent,
-        padding: const EdgeInsets.fromLTRB(20, 12, 8, 12),
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -393,7 +417,10 @@ class _CandidateTile extends ConsumerWidget {
                 children: [
                   address.when(
                     data: (value) => Text(
-                      value ?? s.parkingZone,
+                      [
+                        '${s.parkingNumber}${candidate.zoneId}',
+                        if (value != null && value.trim().isNotEmpty) value,
+                      ].join(' · '),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -402,21 +429,14 @@ class _CandidateTile extends ConsumerWidget {
                       ),
                     ),
                     loading: () => Text(
-                      s.addressLoading,
+                      '${s.parkingNumber}${candidate.zoneId} · ${s.addressLoading}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(color: colors.onSurfaceVariant),
                     ),
                     error: (_, _) => Text(
-                      s.parkingZone,
+                      '${s.parkingNumber}${candidate.zoneId}',
                       style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                  Text(
-                    '${s.parkingNumber}${candidate.zoneId}',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: colors.onSurfaceVariant,
                     ),
                   ),
                   const SizedBox(height: 5),
@@ -429,9 +449,12 @@ class _CandidateTile extends ConsumerWidget {
                         _Fact(
                           icon: Icons.local_parking,
                           text: spacesText,
-                          color: candidate.freeCount > 0
-                              ? AppColors.primary
-                              : colors.error,
+                          color: switch (displayedFreeCount) {
+                            null => colors.onSurfaceVariant,
+                            <= 0 => colors.error,
+                            1 => const Color(0xFFB48409),
+                            _ => AppColors.primary,
+                          },
                         ),
                       if (priceText != null)
                         _Fact(icon: Icons.payments_outlined, text: priceText),
@@ -489,7 +512,7 @@ class _CandidateTile extends ConsumerWidget {
                       ? () => onAction(CandidateAction.openExternal)
                       : null,
                   icon: const Icon(
-                    Icons.map_outlined,
+                    Icons.open_in_new_rounded,
                     color: Color(0xFFE53935),
                   ),
                 ),
@@ -500,6 +523,40 @@ class _CandidateTile extends ConsumerWidget {
       ),
     );
   }
+}
+
+enum ParkingResultTier { good, average, poor }
+
+List<ParkingResultTier> relativeParkingResultTiers(
+  List<RouteCandidate> candidates, {
+  required bool hasDestination,
+}) {
+  if (candidates.isEmpty) return const [];
+  if (candidates.length == 1) return const [ParkingResultTier.good];
+  final ranked = candidates.indexed.toList()
+    ..sort((left, right) {
+      final leftMetric = hasDestination
+          ? left.$2.distanceToDestinationMeters
+          : left.$2.durationFromOriginSeconds;
+      final rightMetric = hasDestination
+          ? right.$2.distanceToDestinationMeters
+          : right.$2.durationFromOriginSeconds;
+      if (leftMetric == null && rightMetric == null) return left.$1 - right.$1;
+      if (leftMetric == null) return 1;
+      if (rightMetric == null) return -1;
+      final metricOrder = leftMetric.compareTo(rightMetric);
+      return metricOrder == 0 ? left.$1 - right.$1 : metricOrder;
+    });
+  final result = List.filled(candidates.length, ParkingResultTier.average);
+  for (var position = 0; position < ranked.length; position++) {
+    final fraction = position / (ranked.length - 1);
+    result[ranked[position].$1] = fraction <= 0.33
+        ? ParkingResultTier.good
+        : fraction >= 0.67
+        ? ParkingResultTier.poor
+        : ParkingResultTier.average;
+  }
+  return result;
 }
 
 class _PanelMessage extends StatelessWidget {

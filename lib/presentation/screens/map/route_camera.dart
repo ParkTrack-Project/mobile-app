@@ -75,17 +75,18 @@ RouteMapBounds padRouteBoundsForPanel(
 
 RouteMapBounds ensureLocalContextBounds(
   RouteMapBounds bounds, {
-  double minimumLatitudeSpan = 0.0025,
-  double minimumLongitudeSpan = 0.004,
+  double minimumLatitudeSpan = 0.0012,
+  double minimumLongitudeSpan = 0.002,
+  double geometryScale = 1.35,
 }) {
   final latitudeCenter = (bounds.south + bounds.north) / 2;
   final longitudeCenter = (bounds.west + bounds.east) / 2;
   final latitudeSpan = math.max(
-    bounds.north - bounds.south,
+    (bounds.north - bounds.south) * geometryScale,
     minimumLatitudeSpan,
   );
   final longitudeSpan = math.max(
-    bounds.east - bounds.west,
+    (bounds.east - bounds.west) * geometryScale,
     minimumLongitudeSpan,
   );
   return RouteMapBounds(
@@ -100,18 +101,22 @@ ScreenRect routeFocusRect({
   required Size viewport,
   required EdgeInsets safePadding,
   required double bottomPanelHeight,
+  double devicePixelRatio = 1,
 }) {
-  const horizontalPadding = 24.0;
-  const topControlsHeight = 88.0;
+  const horizontalPadding = 32.0;
+  const topControlsHeight = 112.0;
   final left = safePadding.left + horizontalPadding;
   final top = safePadding.top + topControlsHeight;
-  final right = math.max(left + 1, viewport.width - safePadding.right - 24);
+  final right = math.max(left + 1, viewport.width - safePadding.right - 32);
   final bottom = math.max(
     top + 1,
-    viewport.height - safePadding.bottom - bottomPanelHeight - 20,
+    viewport.height - safePadding.bottom - bottomPanelHeight - 32,
   );
   return ScreenRect(
-    topLeft: ScreenPoint(x: left, y: top),
-    bottomRight: ScreenPoint(x: right, y: bottom),
+    topLeft: ScreenPoint(x: left * devicePixelRatio, y: top * devicePixelRatio),
+    bottomRight: ScreenPoint(
+      x: right * devicePixelRatio,
+      y: bottom * devicePixelRatio,
+    ),
   );
 }

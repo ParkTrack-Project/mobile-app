@@ -219,5 +219,5 @@ String formatNavDuration(num seconds, [AppStrings? s]) {
   if (seconds < 3600) return '${(seconds / 60).round()} $minSign';
   final h = seconds ~/ 3600;
   final m = (seconds % 3600) ~/ 60;
-  return m == 0 ? '$h$hourSign' : '$h$hourSign $m$minSign';
+  return m == 0 ? '$h $hourSign' : '$h $hourSign $m $minSign';
 }

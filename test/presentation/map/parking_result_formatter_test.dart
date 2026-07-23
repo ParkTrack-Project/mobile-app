@@ -8,6 +8,8 @@ void main() {
     expect(formatParkingDistance(150, AppStrings.en), '150 m');
     expect(formatParkingDistance(1400, AppStrings.en), '1.4 km');
     expect(formatParkingDuration(181, AppStrings.en), '4 min');
+    expect(formatParkingDuration(1727 * 60, AppStrings.en), '28 h 47 min');
+    expect(formatParkingDistance(172700, AppStrings.en), '173 km');
     expect(formatParkingSpaces(1, AppStrings.en), '1 space');
     expect(formatParkingSpaces(12, AppStrings.en), '12 spaces');
     expect(formatParkingPrice(60, AppStrings.en), '60 ₽/h');

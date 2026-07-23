@@ -62,6 +62,8 @@ void main() {
                 candidates: [candidate],
                 zones: [zone],
                 hasDestination: true,
+                originLatitude: 61.789,
+                originLongitude: 34.359,
                 lastViewedZoneId: 42,
                 initialScrollOffset: 0,
                 onSelect: (zoneId) => selectedZoneId = zoneId,
@@ -78,8 +80,7 @@ void main() {
 
     expect(find.text('Parking nearby'), findsOneWidget);
     expect(find.text('Ranked by time and distance'), findsOneWidget);
-    expect(find.text('42 Test Street'), findsOneWidget);
-    expect(find.text('Parking #42'), findsOneWidget);
+    expect(find.text('Parking #42 · 42 Test Street'), findsOneWidget);
     expect(find.text('450 m'), findsOneWidget);
     expect(find.textContaining('111 m (6 min) from you'), findsOneWidget);
     expect(find.text('Forecast: 5 spaces by 12:01'), findsOneWidget);
@@ -99,6 +100,41 @@ void main() {
     await tester.pumpAndSettle();
     expect(selectedAction, CandidateAction.go);
     expect(tester.takeException(), isNull);
+  });
+
+  test('assigns relative green, yellow, and red result tiers', () {
+    const candidates = [
+      RouteCandidate(
+        zoneId: 1,
+        rank: 1,
+        freeCount: 3,
+        confidence: 0.9,
+        pay: 0,
+        distanceToDestinationMeters: 100,
+      ),
+      RouteCandidate(
+        zoneId: 2,
+        rank: 2,
+        freeCount: 2,
+        confidence: 0.8,
+        pay: 0,
+        distanceToDestinationMeters: 400,
+      ),
+      RouteCandidate(
+        zoneId: 3,
+        rank: 3,
+        freeCount: 1,
+        confidence: 0.7,
+        pay: 0,
+        distanceToDestinationMeters: 900,
+      ),
+    ];
+
+    expect(relativeParkingResultTiers(candidates, hasDestination: true), [
+      ParkingResultTier.good,
+      ParkingResultTier.average,
+      ParkingResultTier.poor,
+    ]);
   });
 
   testWidgets('panel can collapse and expand without replacing results', (

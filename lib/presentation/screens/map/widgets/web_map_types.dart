@@ -26,6 +26,27 @@ class WebMapController {
   void Function(double zoom)? zoomHandler;
   void Function(double south, double west, double north, double east)?
   fitBoundsHandler;
+  void Function(
+    double south,
+    double west,
+    double north,
+    double east,
+    double top,
+    double right,
+    double bottom,
+    double left,
+  )?
+  fitBoundsWithInsetsHandler;
+  void Function(
+    double latitude,
+    double longitude,
+    double zoom,
+    double top,
+    double right,
+    double bottom,
+    double left,
+  )?
+  focusHandler;
   void Function()? resetNorthHandler;
   void Function()? retryHandler;
 
@@ -39,8 +60,33 @@ class WebMapController {
     if (current != null) zoomHandler?.call(current.zoom + delta);
   }
 
-  void fitBounds(double south, double west, double north, double east) =>
+  void fitBounds(
+    double south,
+    double west,
+    double north,
+    double east, {
+    double top = 0,
+    double right = 0,
+    double bottom = 0,
+    double left = 0,
+  }) {
+    final withInsets = fitBoundsWithInsetsHandler;
+    if (withInsets != null) {
+      withInsets(south, west, north, east, top, right, bottom, left);
+    } else {
       fitBoundsHandler?.call(south, west, north, east);
+    }
+  }
+
+  void focus(
+    double latitude,
+    double longitude,
+    double zoom, {
+    double top = 0,
+    double right = 0,
+    double bottom = 0,
+    double left = 0,
+  }) => focusHandler?.call(latitude, longitude, zoom, top, right, bottom, left);
 
   void resetNorth() => resetNorthHandler?.call();
 
@@ -51,6 +97,8 @@ class WebMapController {
     moveHandler = null;
     zoomHandler = null;
     fitBoundsHandler = null;
+    fitBoundsWithInsetsHandler = null;
+    focusHandler = null;
     resetNorthHandler = null;
     retryHandler = null;
   }

@@ -5,10 +5,28 @@ import 'package:flutter/material.dart';
 import 'package:yandex_mapkit/yandex_mapkit.dart';
 import '../../../../domain/models/zone.dart';
 import '../../../../core/constants.dart';
-import '../../../../core/theme/app_colors.dart';
 
-final Map<({int? totalFree, int clusterSize, int color}), Future<Uint8List>>
+final Map<
+  ({int totalFree, int clusterSize, int color, int textColor}),
+  Future<Uint8List>
+>
 _clusterBitmapCache = {};
+
+const double parkingCounterDimmedOpacity = 0.38;
+const int _dimmedFillAlpha = 0x2E;
+const int _dimmedStrokeAlpha = 0x5C;
+
+class ParkingZoneColors {
+  const ParkingZoneColors({required this.fill, required this.stroke});
+
+  final Color fill;
+  final Color stroke;
+
+  ParkingZoneColors dimmed() => ParkingZoneColors(
+    fill: fill.withAlpha(_dimmedFillAlpha),
+    stroke: stroke.withAlpha(_dimmedStrokeAlpha),
+  );
+}
 
 class ParkingMarkerState {
   const ParkingMarkerState({
@@ -51,19 +69,21 @@ ParkingMarkerState resolveParkingMarkerState({
 }
 
 Future<Uint8List> _cachedClusterBitmap(
-  int? totalFree,
+  int totalFree,
   int clusterSize,
   Color color,
+  Color textColor,
 ) {
   final key = (
     totalFree: totalFree,
     clusterSize: clusterSize,
     color: color.toARGB32(),
+    textColor: textColor.toARGB32(),
   );
   if (_clusterBitmapCache.length > 128) _clusterBitmapCache.clear();
   return _clusterBitmapCache.putIfAbsent(
     key,
-    () => buildClusterBitmap(totalFree, clusterSize, color),
+    () => buildClusterBitmap(totalFree, clusterSize, color, textColor),
   );
 }
 
@@ -82,28 +102,23 @@ List<MapObject> buildZoneMapObjects({
   );
   for (final zone in zones) {
     if (_isDegenerate(zone.geometry)) continue;
-    final color = zoneColor(zone, brightness: brightness);
+    final colors = parkingZoneColors(zone, brightness: brightness);
     final isSelected = selectedId == zone.zoneId;
-    final opacity = markerState.activeIds.contains(zone.zoneId) ? 1.0 : 0.22;
+    final displayedColors = markerState.activeIds.contains(zone.zoneId)
+        ? colors
+        : colors.dimmed();
     if (zone.zoneType == ZoneType.parallel) {
       result.add(
         _buildParallelLine(
           zone,
-          color,
+          displayedColors,
           onTap,
           highlighted: isSelected,
-          opacity: opacity,
         ),
       );
     } else {
       result.add(
-        _buildPolygon(
-          zone,
-          color,
-          onTap,
-          highlighted: isSelected,
-          opacity: opacity,
-        ),
+        _buildPolygon(zone, displayedColors, onTap, highlighted: isSelected),
       );
     }
   }
@@ -120,7 +135,7 @@ List<MapObject> buildHighlightZone(
   );
   if (matches.isEmpty) return [];
   final zone = matches.first;
-  final color = zoneColor(zone, brightness: brightness);
+  final colors = parkingZoneColors(zone, brightness: brightness);
   if (zone.zoneType == ZoneType.parallel) {
     final points = zone.geometry;
     if (points.length < 4) return [];
@@ -138,8 +153,8 @@ List<MapObject> buildHighlightZone(
       PolylineMapObject(
         mapId: MapObjectId('zone_highlight_${zone.zoneId}'),
         polyline: Polyline(points: [mid1, mid2]),
-        strokeColor: color,
-        strokeWidth: 12,
+        strokeColor: colors.stroke,
+        strokeWidth: 8,
       ),
     ];
   } else {
@@ -150,9 +165,9 @@ List<MapObject> buildHighlightZone(
           outerRing: LinearRing(points: zone.geometry),
           innerRings: [],
         ),
-        fillColor: color.withValues(alpha: 0.5),
-        strokeColor: color,
-        strokeWidth: 4,
+        fillColor: colors.fill,
+        strokeColor: colors.stroke,
+        strokeWidth: 3,
       ),
     ];
   }
@@ -209,34 +224,29 @@ MapObject buildZoneLabels({
       final opacity = zoneIds.contains(selectedId)
           ? 1.0
           : selectedId != null
-          ? 0.22
+          ? parkingCounterDimmedOpacity
           : resultIds.isNotEmpty &&
                 !zoneIds.any((zoneId) => resultIds.contains(zoneId))
-          ? 0.22
+          ? parkingCounterDimmedOpacity
           : 1.0;
-      final hasForecast = zoneIds.any(
-        (id) => zonesById[id]?.hasForecast == true,
+      final totalFree = zoneIds
+          .map((id) => zonesById[id])
+          .whereType<Zone>()
+          .where((zone) => zone.isActive)
+          .map((zone) => math.max(0, zone.freeCount))
+          .fold<int>(0, (a, b) => a + b);
+      final clusterColor = parkingClusterColor(
+        totalFree,
+        brightness: brightness,
       );
-      final int? totalFree = hasForecast
-          ? zoneIds
-                .where((id) => zonesById[id]?.hasForecast == true)
-                .map((id) => zonesById[id]?.freeCount ?? 0)
-                .fold<int>(0, (a, b) => a + b)
-          : null;
-      final Color clusterColor;
-      if (totalFree == null) {
-        clusterColor = AppColors.parkingUnknown;
-      } else if (totalFree == 0) {
-        clusterColor = AppColors.parkingFull;
-      } else {
-        clusterColor = brightness == Brightness.dark
-            ? const Color(0xFF00C968)
-            : AppColors.primary;
-      }
+      final textColor = brightness == Brightness.dark
+          ? const Color(0xFF09090B)
+          : Colors.white;
       final bytes = await _cachedClusterBitmap(
         totalFree,
         cluster.placemarks.length,
         clusterColor,
+        textColor,
       );
       return cluster.copyWith(
         appearance: cluster.appearance.copyWith(
@@ -253,70 +263,83 @@ MapObject buildZoneLabels({
   );
 }
 
-Future<Uint8List> buildCountBitmap(int? count, Color color) async {
-  const size = 72.0;
-  final center = Offset(size / 2, size / 2);
+Future<Uint8List> buildCountBitmap(
+  int? count,
+  Color color, {
+  Color textColor = Colors.white,
+}) async {
+  const height = 40.0;
+  final label = count == null ? '' : '$count';
+  final textPainter = TextPainter(
+    text: TextSpan(
+      text: label,
+      style: TextStyle(
+        color: textColor,
+        fontSize: 24,
+        fontWeight: FontWeight.w600,
+      ),
+    ),
+    textDirection: TextDirection.ltr,
+  )..layout();
+  final width = math.max(height, textPainter.width + 24);
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder);
-  canvas.drawCircle(center, size / 2 - 1, Paint()..color = Colors.white);
-  canvas.drawCircle(center, size / 2 - 3, Paint()..color = color);
-  if (count != null) {
-    final textPainter = TextPainter(
-      text: TextSpan(
-        text: '$count',
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 28,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
+  canvas.drawRRect(
+    RRect.fromRectAndRadius(
+      Rect.fromLTWH(0, 0, width, height),
+      const Radius.circular(height / 2),
+    ),
+    Paint()..color = color,
+  );
+  if (label.isNotEmpty) {
     textPainter.paint(
       canvas,
-      Offset((size - textPainter.width) / 2, (size - textPainter.height) / 2),
+      Offset(
+        (width - textPainter.width) / 2,
+        (height - textPainter.height) / 2,
+      ),
     );
   }
   final picture = recorder.endRecording();
-  final image = await picture.toImage(size.toInt(), size.toInt());
+  final image = await picture.toImage(width.ceil(), height.toInt());
   final data = await image.toByteData(format: ui.ImageByteFormat.png);
   return data!.buffer.asUint8List();
 }
 
 Future<Uint8List> buildClusterBitmap(
-  int? totalFree,
+  int totalFree,
   int clusterSize,
   Color color,
+  Color textColor,
 ) async {
-  const size = 84.0;
+  final logicalSize = parkingClusterSize(clusterSize);
+  final size = logicalSize * 2;
   final center = Offset(size / 2, size / 2);
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder);
+  canvas.drawCircle(center, size / 2 - 4, Paint()..color = color);
   canvas.drawCircle(
     center,
-    size / 2 - 1,
-    Paint()..color = Colors.white.withValues(alpha: 0.82),
+    size / 2 - 3,
+    Paint()
+      ..color = Colors.white.withValues(alpha: 0.7)
+      ..style = ui.PaintingStyle.stroke
+      ..strokeWidth = 4,
   );
-  canvas.drawCircle(center, size / 2 - 8, Paint()..color = color);
-  final String label;
-  if (totalFree == null) {
-    label = '$clusterSize';
-  } else {
-    label = '$totalFree';
-  }
+  final label = '$totalFree';
   final textPainter = TextPainter(
     text: TextSpan(
       text: label,
-      style: const TextStyle(
-        color: Colors.white,
-        fontSize: 24,
-        fontWeight: FontWeight.bold,
+      style: TextStyle(
+        color: textColor,
+        fontSize: logicalSize >= 38 ? 26 : 22,
+        fontWeight: FontWeight.w600,
         height: 1.2,
       ),
     ),
     textDirection: TextDirection.ltr,
     textAlign: TextAlign.center,
-  )..layout(maxWidth: size - 10);
+  )..layout(maxWidth: size - 12);
   textPainter.paint(
     canvas,
     Offset((size - textPainter.width) / 2, (size - textPainter.height) / 2),
@@ -334,28 +357,169 @@ bool _isDegenerate(List<Point> points) {
   return points.every((p) => p.latitude == lat0 && p.longitude == lon0);
 }
 
-Color zoneColor(Zone zone, {Brightness brightness = Brightness.light}) {
-  if (!zone.isActive || zone.geometry.isEmpty) return AppColors.parkingUnknown;
-  if (!zone.hasForecast) return AppColors.parkingUnknown;
+ParkingZoneColors parkingZoneColors(
+  Zone zone, {
+  Brightness brightness = Brightness.light,
+}) {
   final isDark = brightness == Brightness.dark;
+  if (!zone.isActive) {
+    return isDark
+        ? const ParkingZoneColors(
+            fill: Color(0xD9E4E4E7),
+            stroke: Color(0xFFD4D4D8),
+          )
+        : const ParkingZoneColors(
+            fill: Color(0x8C9CA3AF),
+            stroke: Color(0xFF4B5563),
+          );
+  }
   if (zone.freeCount == 0) {
-    return isDark ? const Color(0xFFFF5D52) : AppColors.parkingFull;
+    return isDark
+        ? const ParkingZoneColors(
+            fill: Color(0xE6FF5252),
+            stroke: Color(0xFFFF5252),
+          )
+        : const ParkingZoneColors(
+            fill: Color(0x96D81616),
+            stroke: Color(0xFFCD2B2B),
+          );
   }
   if (zone.freeCount == 1) {
-    return isDark ? const Color(0xFFFFC400) : const Color(0xFFC68A00);
+    return isDark
+        ? const ParkingZoneColors(
+            fill: Color(0xEBFFC107),
+            stroke: Color(0xFFFFC107),
+          )
+        : const ParkingZoneColors(
+            fill: Color(0x96F5AB0B),
+            stroke: Color(0xFFB48409),
+          );
   }
   if (zone.confidence >= kConfidenceThreshold) {
-    return isDark ? const Color(0xFF00C968) : AppColors.parkingFewHigh;
+    return isDark
+        ? const ParkingZoneColors(
+            fill: Color(0xEB00E676),
+            stroke: Color(0xFF00E676),
+          )
+        : const ParkingZoneColors(
+            fill: Color(0xAA16A34A),
+            stroke: Color(0xFF155E2A),
+          );
   }
-  return isDark ? const Color(0xFF48D986) : AppColors.parkingFewLow;
+  return isDark
+      ? const ParkingZoneColors(
+          fill: Color(0xE04ADE80),
+          stroke: Color(0xFF4ADE80),
+        )
+      : const ParkingZoneColors(
+          fill: Color(0x9686EFAC),
+          stroke: Color(0xFF2D8714),
+        );
+}
+
+Color zoneColor(Zone zone, {Brightness brightness = Brightness.light}) =>
+    parkingZoneColors(zone, brightness: brightness).stroke;
+
+Color parkingClusterColor(
+  int freeCount, {
+  Brightness brightness = Brightness.light,
+}) {
+  if (brightness == Brightness.dark) {
+    if (freeCount == 0) return const Color(0xFFFF5252);
+    if (freeCount <= 2) return const Color(0xFFFFC107);
+    return const Color(0xFF00E676);
+  }
+  if (freeCount == 0) return const Color(0xFFCD2B2B);
+  if (freeCount <= 2) return const Color(0xFFB48409);
+  return const Color(0xFF155E2A);
+}
+
+double parkingClusterSize(int zoneCount) =>
+    math.min(28 + (zoneCount ~/ 4) * 4, 44).toDouble();
+
+double parkingClusterExpansionZoom(
+  List<Point> points,
+  double currentZoom, {
+  double radius = 60,
+  double maxZoom = 21,
+}) {
+  if (points.length < 2) return math.min(maxZoom, currentZoom + 0.5);
+  var zoom = ((currentZoom + 0.5) * 2).ceil() / 2;
+  while (zoom < maxZoom &&
+      _parkingClusterComponentCount(points, zoom, radius) < 2) {
+    zoom += 0.5;
+  }
+  return zoom.clamp(currentZoom + 0.5, maxZoom);
+}
+
+double parkingIsolationZoom(
+  Point selected,
+  Iterable<Point> others, {
+  double minimumZoom = 17.5,
+  double maximumZoom = 20,
+  double radius = 60,
+}) {
+  var zoom = minimumZoom;
+  final otherPoints = others.toList(growable: false);
+  while (zoom < maximumZoom) {
+    final selectedPixel = _worldPixel(selected, zoom);
+    final isolated = otherPoints.every((point) {
+      final pixel = _worldPixel(point, zoom);
+      return (pixel - selectedPixel).distance > radius;
+    });
+    if (isolated) return zoom;
+    zoom += 0.5;
+  }
+  return maximumZoom;
+}
+
+int _parkingClusterComponentCount(
+  List<Point> points,
+  double zoom,
+  double radius,
+) {
+  final parents = List<int>.generate(points.length, (index) => index);
+  int root(int index) {
+    while (parents[index] != index) {
+      parents[index] = parents[parents[index]];
+      index = parents[index];
+    }
+    return index;
+  }
+
+  void union(int left, int right) {
+    final leftRoot = root(left);
+    final rightRoot = root(right);
+    if (leftRoot != rightRoot) parents[rightRoot] = leftRoot;
+  }
+
+  final pixels = points.map((point) => _worldPixel(point, zoom)).toList();
+  for (var left = 0; left < pixels.length; left++) {
+    for (var right = left + 1; right < pixels.length; right++) {
+      if ((pixels[left] - pixels[right]).distance <= radius) {
+        union(left, right);
+      }
+    }
+  }
+  return List<int>.generate(points.length, root).toSet().length;
+}
+
+Offset _worldPixel(Point point, double zoom) {
+  final scale = 256 * math.pow(2, zoom);
+  final latitude = point.latitude.clamp(-85.05112878, 85.05112878);
+  final sinLatitude = math.sin(latitude * math.pi / 180);
+  return Offset(
+    ((point.longitude + 180) / 360) * scale,
+    (0.5 - math.log((1 + sinLatitude) / (1 - sinLatitude)) / (4 * math.pi)) *
+        scale,
+  );
 }
 
 MapObject _buildPolygon(
   Zone zone,
-  Color color,
+  ParkingZoneColors colors,
   void Function(Zone) onTap, {
   bool highlighted = false,
-  double opacity = 1,
 }) {
   return PolygonMapObject(
     mapId: MapObjectId('zone_polygon_${zone.zoneId}'),
@@ -363,23 +527,22 @@ MapObject _buildPolygon(
       outerRing: LinearRing(points: zone.geometry),
       innerRings: [],
     ),
-    fillColor: color.withValues(alpha: 0.5 * opacity),
-    strokeColor: color.withValues(alpha: opacity),
-    strokeWidth: highlighted ? 4 : 2,
+    fillColor: colors.fill,
+    strokeColor: colors.stroke,
+    strokeWidth: highlighted ? 3 : 1,
     onTap: (_, _) => onTap(zone),
   );
 }
 
 MapObject _buildParallelLine(
   Zone zone,
-  Color color,
+  ParkingZoneColors colors,
   void Function(Zone) onTap, {
   bool highlighted = false,
-  double opacity = 1,
 }) {
   final points = zone.geometry;
   if (points.length < 4) {
-    return _buildPolygon(zone, color, onTap, opacity: opacity);
+    return _buildPolygon(zone, colors, onTap);
   }
 
   final len01 = _distance(points[0], points[1]);
@@ -399,8 +562,8 @@ MapObject _buildParallelLine(
   return PolylineMapObject(
     mapId: MapObjectId('zone_line_${zone.zoneId}'),
     polyline: Polyline(points: [mid1, mid2]),
-    strokeColor: color.withValues(alpha: opacity),
-    strokeWidth: highlighted ? 12 : 6,
+    strokeColor: colors.stroke,
+    strokeWidth: highlighted ? 8 : 6,
     onTap: (_, _) => onTap(zone),
   );
 }
@@ -408,9 +571,11 @@ MapObject _buildParallelLine(
 double _zoneOpacity(int zoneId, Set<int> resultIds, int? selectedId) {
   if (selectedId != null) {
     if (zoneId == selectedId) return 1;
-    return 0.22;
+    return parkingCounterDimmedOpacity;
   }
-  if (resultIds.isNotEmpty && !resultIds.contains(zoneId)) return 0.22;
+  if (resultIds.isNotEmpty && !resultIds.contains(zoneId)) {
+    return parkingCounterDimmedOpacity;
+  }
   return 1;
 }
 

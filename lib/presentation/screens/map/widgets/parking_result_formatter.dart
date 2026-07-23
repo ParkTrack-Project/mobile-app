@@ -5,7 +5,7 @@ import 'dart:math' as math;
 String? formatParkingDistance(int? meters, AppStrings strings) {
   if (meters == null || meters < 0) return null;
   if (meters < 1000) return '$meters ${strings.metersSign}';
-  final value = (meters / 1000).toStringAsFixed(1);
+  final value = (meters / 1000).toStringAsFixed(meters >= 100000 ? 0 : 1);
   final localizedValue = strings.kmSign == 'км'
       ? value.replaceAll('.', ',')
       : value;
@@ -15,6 +15,13 @@ String? formatParkingDistance(int? meters, AppStrings strings) {
 String? formatParkingDuration(int? seconds, AppStrings strings) {
   if (seconds == null || seconds <= 0) return null;
   final minutes = (seconds / 60).ceil();
+  if (minutes >= 60) {
+    final hours = minutes ~/ 60;
+    final remainingMinutes = minutes % 60;
+    return remainingMinutes == 0
+        ? '$hours ${strings.hourSign}'
+        : '$hours ${strings.hourSign} $remainingMinutes ${strings.minutesSign}';
+  }
   return '$minutes ${strings.minutesSign}';
 }
 
@@ -84,6 +91,12 @@ int? parkingPolylineLengthMeters(List<Point>? points) {
     total += _haversineMeters(points[index - 1], points[index]);
   }
   return total.isFinite ? total.round() : null;
+}
+
+int? parkingPointDistanceMeters(Point? from, Point? to) {
+  if (from == null || to == null) return null;
+  final distance = _haversineMeters(from, to);
+  return distance.isFinite ? distance.round() : null;
 }
 
 double _haversineMeters(Point from, Point to) {

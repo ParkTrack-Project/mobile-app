@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import 'package:web/web.dart' as web;
 import 'package:yandex_mapkit/yandex_mapkit.dart';
 
-import '../../../../core/theme/app_colors.dart';
 import '../../../../domain/models/zone.dart';
 import 'parking_zone_layer.dart';
 import 'web_map_types.dart';
@@ -19,6 +18,7 @@ external void _createYandexMap(
   JSString theme,
   JSFunction cameraCallback,
   JSFunction zoneTapCallback,
+  JSFunction mapTapCallback,
   JSFunction errorCallback,
 );
 
@@ -46,6 +46,22 @@ external void _fitYandexMapBounds(
   JSNumber west,
   JSNumber north,
   JSNumber east,
+  JSNumber top,
+  JSNumber right,
+  JSNumber bottom,
+  JSNumber left,
+);
+
+@JS('parkTrackYandexMaps.focus')
+external void _focusYandexMap(
+  JSString elementId,
+  JSNumber latitude,
+  JSNumber longitude,
+  JSNumber zoom,
+  JSNumber top,
+  JSNumber right,
+  JSNumber bottom,
+  JSNumber left,
 );
 
 @JS('parkTrackYandexMaps.resetNorth')
@@ -62,6 +78,7 @@ class WebMapView extends StatefulWidget {
     required this.candidateIds,
     this.selectedZoneId,
     required this.onZoneTap,
+    required this.onMapTap,
     required this.onCameraChanged,
     required this.onMapReady,
     required this.onError,
@@ -82,6 +99,7 @@ class WebMapView extends StatefulWidget {
   final Set<int> candidateIds;
   final int? selectedZoneId;
   final void Function(Zone zone) onZoneTap;
+  final VoidCallback onMapTap;
   final void Function(WebMapCamera camera) onCameraChanged;
   final VoidCallback onMapReady;
   final void Function(Object error) onError;
@@ -162,15 +180,33 @@ class _WebMapViewState extends State<WebMapView> {
     widget.controller.zoomHandler = (zoom) {
       _setYandexMapZoom(_elementId.toJS, zoom.toJS);
     };
-    widget.controller.fitBoundsHandler = (south, west, north, east) {
-      _fitYandexMapBounds(
-        _elementId.toJS,
-        south.toJS,
-        west.toJS,
-        north.toJS,
-        east.toJS,
-      );
-    };
+    widget.controller.fitBoundsWithInsetsHandler =
+        (south, west, north, east, top, right, bottom, left) {
+          _fitYandexMapBounds(
+            _elementId.toJS,
+            south.toJS,
+            west.toJS,
+            north.toJS,
+            east.toJS,
+            top.toJS,
+            right.toJS,
+            bottom.toJS,
+            left.toJS,
+          );
+        };
+    widget.controller.focusHandler =
+        (latitude, longitude, zoom, top, right, bottom, left) {
+          _focusYandexMap(
+            _elementId.toJS,
+            latitude.toJS,
+            longitude.toJS,
+            zoom.toJS,
+            top.toJS,
+            right.toJS,
+            bottom.toJS,
+            left.toJS,
+          );
+        };
     widget.controller.resetNorthHandler = () {
       _resetYandexMapNorth(_elementId.toJS);
     };
@@ -208,6 +244,7 @@ class _WebMapViewState extends State<WebMapView> {
         final zone = _zonesById[zoneId.toDartInt];
         if (zone != null) widget.onZoneTap(zone);
       }).toJS,
+      (() => widget.onMapTap()).toJS,
       ((JSString error) {
         debugPrint('Yandex Maps Error: ${error.toDart}');
         widget.onError(error.toDart);
@@ -271,35 +308,59 @@ class _WebMapViewState extends State<WebMapView> {
     );
     _serializedZones = widget.zones
         .map((zone) {
-          final color = zoneColor(
+          final colors = parkingZoneColors(
             zone,
             brightness: Theme.of(context).brightness,
           );
           final center = centroid(zone.geometry);
           final isCandidate = widget.candidateIds.contains(zone.zoneId);
           final isSelected = widget.selectedZoneId == zone.zoneId;
-          final opacity = markerState.activeIds.contains(zone.zoneId)
-              ? 1.0
-              : 0.22;
+          final isDimmed = !markerState.activeIds.contains(zone.zoneId);
+          final displayedColors = isDimmed ? colors.dimmed() : colors;
+          final clusterFull = parkingClusterColor(
+            0,
+            brightness: Theme.of(context).brightness,
+          );
+          final clusterOne = parkingClusterColor(
+            1,
+            brightness: Theme.of(context).brightness,
+          );
+          final clusterFree = parkingClusterColor(
+            3,
+            brightness: Theme.of(context).brightness,
+          );
           return <String, Object?>{
             'id': zone.zoneId,
             'type': zone.zoneType == ZoneType.parallel ? 'line' : 'polygon',
             'points': zone.geometry
                 .map((point) => [point.latitude, point.longitude])
                 .toList(growable: false),
-            'color':
-                '#${color.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}',
+            'fill': _cssColor(displayedColors.fill),
+            'stroke': _cssColor(displayedColors.stroke),
             'freeCount': zone.freeCount,
-            'label': color == AppColors.parkingUnknown ? null : zone.freeCount,
-            'hasForecast': zone.hasForecast,
+            'label': zone.freeCount,
+            'isActive': zone.isActive,
             'candidate': isCandidate,
             'active': widget.activeRouteZoneId == zone.zoneId || isSelected,
-            'opacity': opacity,
+            'markerOpacity': isDimmed ? parkingCounterDimmedOpacity : 1.0,
+            'markerTextColor': Theme.of(context).brightness == Brightness.dark
+                ? '#09090b'
+                : '#ffffff',
+            'clusterFull': _cssColor(clusterFull),
+            'clusterOne': _cssColor(clusterOne),
+            'clusterFree': _cssColor(clusterFree),
             'center': [center.latitude, center.longitude],
           };
         })
         .toList(growable: false);
     return _serializedZones;
+  }
+
+  String _cssColor(Color color) {
+    final value = color.toARGB32();
+    final alpha = (value >>> 24).toRadixString(16).padLeft(2, '0');
+    final rgb = (value & 0xFFFFFF).toRadixString(16).padLeft(6, '0');
+    return '#$rgb$alpha';
   }
 
   List<List<double>>? _routeState() {
