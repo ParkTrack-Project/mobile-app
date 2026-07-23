@@ -165,6 +165,9 @@ class AppStrings {
   final String parkingNearby;
   final String rankingPrinciple;
   final String availablePlaces;
+  final String parkingSpaceOne;
+  final String parkingSpaceFew;
+  final String parkingSpaceMany;
   final String freeStatus;
   final String goAction;
   final String openInYandexMaps;
@@ -334,6 +337,9 @@ class AppStrings {
     required this.parkingNearby,
     required this.rankingPrinciple,
     required this.availablePlaces,
+    required this.parkingSpaceOne,
+    required this.parkingSpaceFew,
+    required this.parkingSpaceMany,
     required this.freeStatus,
     required this.goAction,
     required this.openInYandexMaps,
@@ -520,8 +526,11 @@ class AppStrings {
     save: 'Сохранить',
     profileUpdated: 'Профиль обновлен',
     parkingNearby: 'Парковки рядом',
-    rankingPrinciple: 'Сначала быстрее и с большей доступностью',
+    rankingPrinciple: 'Подобраны по времени и расстоянию',
     availablePlaces: 'свободных мест',
+    parkingSpaceOne: 'место',
+    parkingSpaceFew: 'места',
+    parkingSpaceMany: 'мест',
     freeStatus: 'Бесплатно',
     goAction: 'В путь',
     openInYandexMaps: 'Открыть в Яндекс Картах',
@@ -707,8 +716,11 @@ class AppStrings {
     save: 'Save',
     profileUpdated: 'Profile updated',
     parkingNearby: 'Parking nearby',
-    rankingPrinciple: 'Fastest and most available options first',
+    rankingPrinciple: 'Ranked by time and distance',
     availablePlaces: 'spaces available',
+    parkingSpaceOne: 'space',
+    parkingSpaceFew: 'spaces',
+    parkingSpaceMany: 'spaces',
     freeStatus: 'Free',
     goAction: 'Go',
     openInYandexMaps: 'Open in Yandex Maps',

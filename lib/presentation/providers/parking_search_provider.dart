@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/models/route_result.dart';
 
-enum ParkingSearchView { hidden, results, details }
+enum ParkingSearchView { hidden, loading, results, details, error }
 
 class ParkingSearchState {
   const ParkingSearchState({
@@ -42,6 +42,10 @@ class ParkingSearchState {
 
 class ParkingSearchNotifier extends StateNotifier<ParkingSearchState> {
   ParkingSearchNotifier() : super(const ParkingSearchState());
+
+  void startSearch() {
+    state = const ParkingSearchState(view: ParkingSearchView.loading);
+  }
 
   void showResults(List<RouteCandidate> candidates) {
     final previousIds = state.candidates
@@ -86,6 +90,10 @@ class ParkingSearchNotifier extends StateNotifier<ParkingSearchState> {
       selectedZoneId: zoneId,
       lastViewedZoneId: zoneId,
     );
+  }
+
+  void showSearchError() {
+    state = const ParkingSearchState(view: ParkingSearchView.error);
   }
 
   void saveScrollOffset(double offset) {

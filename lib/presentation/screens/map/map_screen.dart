@@ -691,6 +691,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Future<void> _findParking() async {
     final origin = await _routingOrigin();
     if (origin == null) return;
+    setState(() {
+      _routePolyline = null;
+      _routeDurationSeconds = 0;
+      _activeRouteZoneId = null;
+    });
     await ref
         .read(routingProvider.notifier)
         .searchParking(originLat: origin.latitude, originLon: origin.longitude);
@@ -1104,9 +1109,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final searchResultsVisible =
-        parkingSearchState.view == ParkingSearchView.results &&
-        parkingSearchState.candidates.isNotEmpty &&
+        {
+          ParkingSearchView.loading,
+          ParkingSearchView.results,
+          ParkingSearchView.error,
+        }.contains(parkingSearchState.view) &&
         !isNavigating;
+    final resultsPanelState = switch (parkingSearchState.view) {
+      ParkingSearchView.loading => ParkingResultsPanelState.loading,
+      ParkingSearchView.error => ParkingResultsPanelState.error,
+      _ => ParkingResultsPanelState.results,
+    };
     final searchPanelHeight = (MediaQuery.sizeOf(context).height * 0.56).clamp(
       240.0,
       480.0,
@@ -1189,6 +1202,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   child: CandidatesSheet(
                     candidates: parkingSearchState.candidates,
                     zones: zones,
+                    panelState: resultsPanelState,
                     lastViewedZoneId: parkingSearchState.lastViewedZoneId,
                     initialScrollOffset: parkingSearchState.scrollOffset,
                     onSelect: _openCandidateById,

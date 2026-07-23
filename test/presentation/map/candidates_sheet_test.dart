@@ -4,7 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/core/localization/app_localizations.dart';
 import 'package:mobile/domain/models/route_result.dart';
 import 'package:mobile/domain/models/zone.dart';
-import 'package:mobile/presentation/providers/parking_address_provider.dart';
 import 'package:mobile/presentation/screens/map/widgets/candidates_sheet.dart';
 import 'package:yandex_mapkit/yandex_mapkit.dart';
 
@@ -45,10 +44,7 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [
-          l10nProvider.overrideWithValue(AppStrings.en),
-          parkingAddressProvider.overrideWith((_, _) async => '42 Main Street'),
-        ],
+        overrides: [l10nProvider.overrideWithValue(AppStrings.en)],
         child: MaterialApp(
           home: Scaffold(
             body: SizedBox(
@@ -68,11 +64,12 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await tester.pump();
 
     expect(find.text('Parking nearby'), findsOneWidget);
-    expect(find.text('42 Main Street'), findsOneWidget);
-    expect(find.text('7 spaces available'), findsOneWidget);
+    expect(find.text('Ranked by time and distance'), findsOneWidget);
+    expect(find.text('Parking'), findsOneWidget);
+    expect(find.text('7 spaces'), findsOneWidget);
     expect(find.text('Free'), findsOneWidget);
     expect(find.text('Accessible parking'), findsOneWidget);
 
@@ -88,5 +85,42 @@ void main() {
     await tester.pumpAndSettle();
     expect(selectedAction, CandidateAction.go);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('renders explicit loading, empty, and error states', (
+    tester,
+  ) async {
+    Future<void> pump(ParkingResultsPanelState state) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [l10nProvider.overrideWithValue(AppStrings.en)],
+          child: MaterialApp(
+            home: SizedBox(
+              height: 420,
+              child: CandidatesSheet(
+                candidates: const [],
+                zones: const [],
+                lastViewedZoneId: null,
+                initialScrollOffset: 0,
+                panelState: state,
+                onSelect: (_) {},
+                onAction: (_, _, _) {},
+                onScrollOffsetChanged: (_) {},
+                onClose: () {},
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    await pump(ParkingResultsPanelState.loading);
+    expect(find.byKey(const Key('parking_search_loading')), findsOneWidget);
+
+    await pump(ParkingResultsPanelState.results);
+    expect(find.byKey(const Key('parking_search_empty')), findsOneWidget);
+
+    await pump(ParkingResultsPanelState.error);
+    expect(find.byKey(const Key('parking_search_error')), findsOneWidget);
   });
 }
