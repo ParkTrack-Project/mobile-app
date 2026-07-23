@@ -1,5 +1,4 @@
-• Faster maps with fewer redraws, DOM scans, and duplicate camera updates.
-• Parallel parking is now shown as lines; zero availability is visible on markers.
-• Fixed Android place search with managed sessions and reliable fallback geocoding.
-• Added App Links, language selection on authentication screens, and an iOS PWA installation guide.
-• Improved offline resilience, navigation stability, and release build optimization.
+• Added App Links for opening m.parktrack.live URLs in the app.
+• Added language selection to sign-in, registration, and password reset screens.
+• Kept parking data visible during temporary network failures and improved error messages.
+• Improved map and navigation stability and optimized release builds.

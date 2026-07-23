@@ -1,24 +1,19 @@
-# Release 1.3.0
+# ParkTrack 1.3.0
 
-## Что нового
+This release brings the ParkTrack experience to the web and improves reliability across the Android and web apps.
 
-### Карты и парковки
+## What's new
 
-• Веб-карта приведена к внешнему виду Android: параллельные парковки отображаются полосами, а маркеры показывают `0`, когда свободных мест нет.
-• Снижена нагрузка веб-карты: обновляются только изменившиеся слои, ограничена частота событий камеры и устранены повторные обходы DOM.
-• Синхронизированы тема и язык карт, отключены случайные нажатия на POI базовой карты.
-• Улучшены построение маршрута, выбор зоны и расчёт области показа маршрута.
+- Added full Yandex Maps support to the web app, including parking details, place search, route building, and navigation.
+- Added Android App Links for opening `m.parktrack.live` URLs directly in the app.
+- Added language selection to the sign-in, registration, and password reset screens.
+- Added a guide for installing the web app on an iPhone.
 
-### Android и поиск
+## Fixes and improvements
 
-• Исправлен поиск мест, который мог завершаться сообщением «Поиск занял слишком много времени».
-• Добавлено управляемое завершение поисковых сессий и резервное геокодирование.
-• Добавлена поддержка App Links для `m.parktrack.live`.
-• Оптимизированы release-сборки: включены минификация кода и удаление неиспользуемых ресурсов.
-
-### Интерфейс и надёжность
-
-• Добавлен переключатель языка на экранах авторизации.
-• Добавлена инструкция по установке PWA на iOS.
-• Данные парковок сохраняются при временных сетевых ошибках; сообщения об ошибках стали понятнее.
-• Снижено количество лишних перерисовок, операций с хранилищем и фоновых вычислений.
+- Preserved cached parking data during recoverable network failures and added clearer, localized error messages with retry actions.
+- Synchronized the web map theme and language with the app and disabled unintended interactions with base-map POIs.
+- Improved web map rendering, camera updates, route display, zone selection, and zero-availability markers.
+- Improved map and navigation stability while reducing unnecessary redraws, storage operations, and background work.
+- Optimized Android release builds with code minification and unused-resource removal.
+- Improved the Android release workflow.
