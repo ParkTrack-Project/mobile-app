@@ -61,6 +61,22 @@ String? formatParkingArrival(String? value) {
       : '${match.group(1)!.padLeft(2, '0')}:${match.group(2)}';
 }
 
+String? formatParkingArrivalEstimate(
+  String? value,
+  int? durationSeconds, {
+  DateTime? now,
+}) {
+  final apiValue = formatParkingArrival(value);
+  if (apiValue != null) return apiValue;
+  if (durationSeconds == null || durationSeconds <= 0) return null;
+  final arrival = (now ?? DateTime.now()).add(
+    Duration(seconds: durationSeconds),
+  );
+  final hour = arrival.hour.toString().padLeft(2, '0');
+  final minute = arrival.minute.toString().padLeft(2, '0');
+  return '$hour:$minute';
+}
+
 int? parkingPolylineLengthMeters(List<Point>? points) {
   if (points == null || points.length < 2) return null;
   var total = 0.0;

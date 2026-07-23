@@ -205,23 +205,16 @@ class _NavBottomBar extends ConsumerWidget {
       child: Row(
         children: [
           Expanded(
-            child: _StatCell(
-              value: formatNavDuration(nav.remainingSeconds, s),
-              label: s.timeLabel,
-            ),
+            child: _StatCell(value: formatNavDuration(nav.remainingSeconds, s)),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: _StatCell(value: formatNavDistance(nav.remainingMeters, s)),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: _StatCell(
-              value: formatNavDistance(nav.remainingMeters, s),
-              label: s.distanceLabel,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _StatCell(
-              value: '${nav.speedKmh.round()}',
-              label: s.speedLabel,
+              value: '${nav.speedKmh.round()} ${s.speedLabel}',
               valueColor: speedColor,
             ),
           ),
@@ -239,10 +232,9 @@ class _NavBottomBar extends ConsumerWidget {
 }
 
 class _StatCell extends StatelessWidget {
-  const _StatCell({required this.value, required this.label, this.valueColor});
+  const _StatCell({required this.value, this.valueColor});
 
   final String value;
-  final String label;
   final Color? valueColor;
 
   @override
@@ -261,14 +253,6 @@ class _StatCell extends StatelessWidget {
             fontWeight: FontWeight.bold,
             color: valueColor ?? Theme.of(context).colorScheme.onSurface,
             height: 1,
-          ),
-        ),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: Theme.of(context).hintColor,
-            height: 1.2,
           ),
         ),
       ],

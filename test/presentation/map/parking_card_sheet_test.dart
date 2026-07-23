@@ -22,6 +22,8 @@ void main() {
       confidence: 0.9,
       pay: 60,
       geometry: [],
+      isPrivate: true,
+      isAccessible: true,
     );
     const candidate = RouteCandidate(
       zoneId: 42,
@@ -61,8 +63,13 @@ void main() {
       ),
     );
 
-    expect(find.text('Parking #42'), findsWidgets);
-    expect(find.text('4 spaces by 13:23'), findsOneWidget);
+    expect(find.text('Parking'), findsOneWidget);
+    expect(find.text('Parking #42'), findsOneWidget);
+    expect(find.text('5 spaces'), findsOneWidget);
+    expect(find.text('/ 10'), findsOneWidget);
+    expect(find.text('Private'), findsOneWidget);
+    expect(find.text('Accessible parking'), findsOneWidget);
+    expect(find.text('Forecast: 4 spaces by 13:23'), findsOneWidget);
     expect(
       find.descendant(
         of: find.byType(ParkingCardSheet),
@@ -72,10 +79,10 @@ void main() {
     );
 
     await tester.tap(find.byTooltip('Back to results'));
-    await tester.ensureVisible(find.text('Previous parking'));
-    await tester.tap(find.text('Previous parking'));
-    await tester.ensureVisible(find.text('Next parking'));
-    await tester.tap(find.text('Next parking'));
+    await tester.ensureVisible(find.text('Previous'));
+    await tester.tap(find.text('Previous'));
+    await tester.ensureVisible(find.text('Next'));
+    await tester.tap(find.text('Next'));
     await tester.ensureVisible(find.text('Build Route'));
     await tester.tap(find.text('Build Route'));
 

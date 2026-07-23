@@ -5,6 +5,7 @@ import '../../../../core/utils/navigation_deeplink.dart';
 import '../../../../domain/models/route_result.dart';
 import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/utils/nav_math.dart';
+import 'parking_result_formatter.dart';
 
 class RoutePreviewSheet extends ConsumerStatefulWidget {
   const RoutePreviewSheet({
@@ -79,6 +80,13 @@ class _RoutePreviewSheetState extends ConsumerState<RoutePreviewSheet> {
     );
     final candidate =
         selectedCandidates.firstOrNull ?? widget.route.candidates.firstOrNull;
+    final routeDistance =
+        widget.route.routeDistanceMeters ??
+        parkingPolylineLengthMeters(candidate?.routePolyline);
+    final routeDuration =
+        widget.route.routeDurationSeconds ??
+        candidate?.durationFromOriginSeconds;
+    final destinationDistance = candidate?.distanceToDestinationMeters;
     return Material(
       color: Colors.transparent,
       child: Container(
@@ -87,7 +95,12 @@ class _RoutePreviewSheetState extends ConsumerState<RoutePreviewSheet> {
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          padding: EdgeInsets.fromLTRB(
+            20,
+            10,
+            20,
+            12 + MediaQuery.paddingOf(context).bottom,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -101,7 +114,7 @@ class _RoutePreviewSheetState extends ConsumerState<RoutePreviewSheet> {
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 10),
               Text(
                 s.routeReady,
                 style: const TextStyle(
@@ -109,57 +122,40 @@ class _RoutePreviewSheetState extends ConsumerState<RoutePreviewSheet> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               if (widget.route.arrivalTime != null)
-                Text(
-                  '${s.arrival}: ${_formatArrival(widget.route.arrivalTime!, s)}',
+                _RouteFact(
+                  icon: Icons.schedule,
+                  label: s.arrival,
+                  value: _formatArrival(widget.route.arrivalTime!, s),
                 ),
-              if (candidate != null) ...[
-                Builder(
-                  builder: (_) {
-                    final parts = <String>[];
-                    if (candidate.distanceToDestinationMeters != null) {
-                      parts.add(
-                        formatNavDistance(
-                          candidate.distanceToDestinationMeters!,
-                          s,
-                        ),
-                      );
-                    }
-                    if (candidate.durationFromOriginSeconds != null) {
-                      parts.add(
-                        formatNavDuration(
-                          candidate.durationFromOriginSeconds!,
-                          s,
-                        ),
-                      );
-                    }
-                    if (parts.isEmpty) return const SizedBox.shrink();
-                    return Text(
-                      parts.join(' • '),
-                      style: TextStyle(color: Theme.of(context).hintColor),
-                    );
-                  },
-                ),
-              ],
-              if (widget.route.routeDistanceMeters != null ||
-                  widget.route.routeDurationSeconds != null)
-                Text(
-                  [
-                    if (widget.route.routeDistanceMeters != null)
-                      formatNavDistance(widget.route.routeDistanceMeters!, s),
-                    if (widget.route.routeDurationSeconds != null)
-                      formatNavDuration(widget.route.routeDurationSeconds!, s),
+              if (routeDistance != null || routeDuration != null)
+                _RouteFact(
+                  icon: Icons.directions_car_outlined,
+                  label: s.fromYou,
+                  value: [
+                    if (routeDistance != null)
+                      formatNavDistance(routeDistance, s),
+                    if (routeDuration != null)
+                      formatNavDuration(routeDuration, s),
                   ].join(' • '),
-                  style: TextStyle(color: Theme.of(context).hintColor),
                 ),
-              const SizedBox(height: 18),
+              if (destinationDistance != null)
+                _RouteFact(
+                  icon: Icons.directions_walk,
+                  label: s.toDestination,
+                  value: [
+                    formatNavDistance(destinationDistance, s),
+                    ?formatParkingWalkingDuration(destinationDistance, s),
+                  ].join(' • '),
+                ),
+              const SizedBox(height: 12),
               if (widget.onNavigateInApp != null)
                 FilledButton.icon(
                   onPressed: () {
                     widget.onNavigateInApp!();
                   },
-                  icon: const Icon(Icons.map_outlined),
+                  icon: const Icon(Icons.navigation_rounded),
                   label: Text(s.goAction),
                 ),
               const SizedBox(height: 8),
@@ -190,6 +186,45 @@ class _RoutePreviewSheetState extends ConsumerState<RoutePreviewSheet> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _RouteFact extends StatelessWidget {
+  const _RouteFact({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 5),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: colors.primary),
+          const SizedBox(width: 8),
+          Text(
+            '$label:',
+            style: TextStyle(color: colors.onSurfaceVariant, fontSize: 13),
+          ),
+          const SizedBox(width: 5),
+          Expanded(
+            child: Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
       ),
     );
   }

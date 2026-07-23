@@ -53,9 +53,10 @@ void main() {
 
     expect(_alpha(objects[1]), greaterThan(_alpha(objects[0])));
     expect(objects[1].strokeWidth, 4);
+    expect(objects[1].strokeColor, zoneColor(_zone(2)));
   });
 
-  test('keeps other results more visible than context after selection', () {
+  test('mutes result and context zones equally after selection', () {
     final objects = buildZoneMapObjects(
       zones: [_zone(1), _zone(2), _zone(3)],
       resultIds: {1, 2},
@@ -64,7 +65,19 @@ void main() {
     ).cast<PolygonMapObject>();
 
     expect(_alpha(objects[1]), greaterThan(_alpha(objects[0])));
-    expect(_alpha(objects[0]), greaterThan(_alpha(objects[2])));
+    expect(_alpha(objects[0]), _alpha(objects[2]));
+  });
+
+  test('direct map selection mutes every other zone', () {
+    final objects = buildZoneMapObjects(
+      zones: [_zone(1), _zone(2), _zone(3)],
+      selectedId: 2,
+      onTap: (_) {},
+    ).cast<PolygonMapObject>();
+
+    expect(_alpha(objects[1]), greaterThan(_alpha(objects[0])));
+    expect(_alpha(objects[0]), _alpha(objects[2]));
+    expect(objects[1].strokeWidth, objects[0].strokeWidth * 2);
   });
 
   test('uses a brighter parking palette on the dark map theme', () {

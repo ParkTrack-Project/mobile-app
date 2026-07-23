@@ -564,8 +564,8 @@ class AppStrings {
     fromYou: 'от вас',
     toDestination: 'до места',
     expectedAvailability: 'к',
-    previousParking: 'Предыдущая парковка',
-    nextParking: 'Следующая парковка',
+    previousParking: 'Предыдущая',
+    nextParking: 'Следующая',
   );
 
   static AppStrings en = AppStrings(
@@ -764,8 +764,8 @@ class AppStrings {
     fromYou: 'from you',
     toDestination: 'to destination',
     expectedAvailability: 'by',
-    previousParking: 'Previous parking',
-    nextParking: 'Next parking',
+    previousParking: 'Previous',
+    nextParking: 'Next',
   );
 }
 
