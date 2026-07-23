@@ -28,6 +28,8 @@ class ActiveRoute with _$ActiveRoute {
     String? arrivalTime,
     String? deeplinkUrl,
     List<Point>? routePolyline,
+    int? routeDistanceMeters,
+    int? routeDurationSeconds,
     required List<RouteCandidate> candidates,
   }) = _ActiveRoute;
 }

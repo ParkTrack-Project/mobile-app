@@ -1,4 +1,6 @@
 import '../../../../core/localization/app_localizations.dart';
+import 'package:yandex_mapkit/yandex_mapkit.dart';
+import 'dart:math' as math;
 
 String? formatParkingDistance(int? meters, AppStrings strings) {
   if (meters == null || meters < 0) return null;
@@ -37,4 +39,45 @@ String? formatParkingPrice(int? pricePerHour, AppStrings strings) {
   if (pricePerHour == null || pricePerHour < 0) return null;
   if (pricePerHour == 0) return strings.freeStatus;
   return '$pricePerHour ₽/${strings.hourSign}';
+}
+
+String? formatParkingWalkingDuration(int? meters, AppStrings strings) {
+  if (meters == null || meters < 0) return null;
+  final minutes = math.max(1, (meters / 80).ceil());
+  return '~$minutes ${strings.minutesSign}';
+}
+
+String? formatParkingArrival(String? value) {
+  if (value == null || value.trim().isEmpty) return null;
+  final parsed = DateTime.tryParse(value)?.toLocal();
+  if (parsed != null) {
+    final hour = parsed.hour.toString().padLeft(2, '0');
+    final minute = parsed.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
+  }
+  final match = RegExp(r'(\d{1,2}):(\d{2})').firstMatch(value);
+  return match == null
+      ? null
+      : '${match.group(1)!.padLeft(2, '0')}:${match.group(2)}';
+}
+
+int? parkingPolylineLengthMeters(List<Point>? points) {
+  if (points == null || points.length < 2) return null;
+  var total = 0.0;
+  for (var index = 1; index < points.length; index++) {
+    total += _haversineMeters(points[index - 1], points[index]);
+  }
+  return total.isFinite ? total.round() : null;
+}
+
+double _haversineMeters(Point from, Point to) {
+  const earthRadius = 6371000.0;
+  final lat1 = from.latitude * math.pi / 180;
+  final lat2 = to.latitude * math.pi / 180;
+  final dLat = (to.latitude - from.latitude) * math.pi / 180;
+  final dLon = (to.longitude - from.longitude) * math.pi / 180;
+  final a =
+      math.sin(dLat / 2) * math.sin(dLat / 2) +
+      math.cos(lat1) * math.cos(lat2) * math.sin(dLon / 2) * math.sin(dLon / 2);
+  return earthRadius * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
 }

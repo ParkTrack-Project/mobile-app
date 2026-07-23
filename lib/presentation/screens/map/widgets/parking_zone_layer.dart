@@ -70,6 +70,7 @@ List<MapObject> buildZoneMapObjects({
   required void Function(Zone) onTap,
   Set<int> resultIds = const {},
   int? selectedId,
+  Brightness brightness = Brightness.light,
 }) {
   final result = <MapObject>[];
   final markerState = resolveParkingMarkerState(
@@ -79,7 +80,7 @@ List<MapObject> buildZoneMapObjects({
   );
   for (final zone in zones) {
     if (_isDegenerate(zone.geometry)) continue;
-    final color = zoneColor(zone);
+    final color = zoneColor(zone, brightness: brightness);
     final isSelected = selectedId == zone.zoneId;
     final opacity = markerState.activeIds.contains(zone.zoneId)
         ? 1.0
@@ -111,13 +112,17 @@ List<MapObject> buildZoneMapObjects({
   return result;
 }
 
-List<MapObject> buildHighlightZone(List<Zone> zones, int zoneId) {
+List<MapObject> buildHighlightZone(
+  List<Zone> zones,
+  int zoneId, {
+  Brightness brightness = Brightness.light,
+}) {
   final matches = zones.where(
     (z) => z.zoneId == zoneId && !_isDegenerate(z.geometry),
   );
   if (matches.isEmpty) return [];
   final zone = matches.first;
-  final color = zoneColor(zone);
+  final color = zoneColor(zone, brightness: brightness);
   if (zone.zoneType == ZoneType.parallel) {
     final points = zone.geometry;
     if (points.length < 4) return [];
@@ -169,6 +174,7 @@ MapObject buildZoneLabels({
   int? selectedId,
   ClusterTapCallback? onClusterTap,
   void Function(Zone)? onZoneTap,
+  Brightness brightness = Brightness.light,
 }) {
   final placemarks = zones
       .where(
@@ -183,6 +189,11 @@ MapObject buildZoneLabels({
             PlacemarkIconStyle(
               image: BitmapDescriptor.fromBytes(bitmapCache[zone.zoneId]!),
               scale: 1.0,
+              zIndex: zone.zoneId == selectedId
+                  ? 20
+                  : resultIds.contains(zone.zoneId)
+                  ? 10
+                  : 0,
             ),
           ),
           onTap: onZoneTap != null ? (_, _) => onZoneTap(zone) : null,
@@ -227,7 +238,9 @@ MapObject buildZoneLabels({
       } else if (totalFree == 0) {
         clusterColor = AppColors.parkingFull;
       } else {
-        clusterColor = AppColors.primary;
+        clusterColor = brightness == Brightness.dark
+            ? const Color(0xFF00C968)
+            : AppColors.primary;
       }
       final bytes = await _cachedClusterBitmap(
         totalFree,
@@ -292,11 +305,9 @@ Future<Uint8List> buildClusterBitmap(
   canvas.drawCircle(center, size / 2 - 4, Paint()..color = color);
   final String label;
   if (totalFree == null) {
-    label = '($clusterSize)';
-  } else if (clusterSize <= 1) {
-    label = '$totalFree';
+    label = '$clusterSize';
   } else {
-    label = '$totalFree\n($clusterSize)';
+    label = '$totalFree';
   }
   final textPainter = TextPainter(
     text: TextSpan(
@@ -328,13 +339,20 @@ bool _isDegenerate(List<Point> points) {
   return points.every((p) => p.latitude == lat0 && p.longitude == lon0);
 }
 
-Color zoneColor(Zone zone) {
+Color zoneColor(Zone zone, {Brightness brightness = Brightness.light}) {
   if (!zone.isActive || zone.geometry.isEmpty) return AppColors.parkingUnknown;
   if (!zone.hasForecast) return AppColors.parkingUnknown;
-  if (zone.freeCount == 0) return AppColors.parkingFull;
-  if (zone.freeCount == 1) return AppColors.parkingOne;
-  if (zone.confidence >= kConfidenceThreshold) return AppColors.parkingFewHigh;
-  return AppColors.parkingFewLow;
+  final isDark = brightness == Brightness.dark;
+  if (zone.freeCount == 0) {
+    return isDark ? const Color(0xFFFF5D52) : AppColors.parkingFull;
+  }
+  if (zone.freeCount == 1) {
+    return isDark ? const Color(0xFFFFC400) : const Color(0xFFC68A00);
+  }
+  if (zone.confidence >= kConfidenceThreshold) {
+    return isDark ? const Color(0xFF00C968) : AppColors.parkingFewHigh;
+  }
+  return isDark ? const Color(0xFF48D986) : AppColors.parkingFewLow;
 }
 
 MapObject _buildPolygon(

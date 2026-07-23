@@ -15,6 +15,8 @@ void main() {
       routeId: 1,
       status: 'ready',
       selectedZoneId: 2,
+      routeDistanceMeters: 1400,
+      routeDurationSeconds: 360,
       candidates: [],
     );
 
@@ -44,6 +46,7 @@ void main() {
     expect(find.text('Route Ready'), findsOneWidget);
     expect(find.text('Go'), findsOneWidget);
     expect(find.text('Open in Yandex Maps'), findsOneWidget);
+    expect(find.text('1.4 km • 6 min'), findsOneWidget);
     expect(
       find.descendant(
         of: find.byType(RoutePreviewSheet),

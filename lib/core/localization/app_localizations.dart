@@ -174,6 +174,15 @@ class AppStrings {
   final String externalMapOpenError;
   final String backToResults;
   final String accessibleParking;
+  final String parkingNumber;
+  final String addressLoading;
+  final String drivingTime;
+  final String walkingTime;
+  final String fromYou;
+  final String toDestination;
+  final String expectedAvailability;
+  final String previousParking;
+  final String nextParking;
 
   AppStrings({
     required this.appTitle,
@@ -347,6 +356,15 @@ class AppStrings {
     required this.externalMapOpenError,
     required this.backToResults,
     required this.accessibleParking,
+    required this.parkingNumber,
+    required this.addressLoading,
+    required this.drivingTime,
+    required this.walkingTime,
+    required this.fromYou,
+    required this.toDestination,
+    required this.expectedAvailability,
+    required this.previousParking,
+    required this.nextParking,
   });
 
   static AppStrings ru = AppStrings(
@@ -539,6 +557,15 @@ class AppStrings {
     externalMapOpenError: 'Не удалось открыть Яндекс Карты',
     backToResults: 'Назад к результатам',
     accessibleParking: 'Доступная парковка',
+    parkingNumber: 'Парковка №',
+    addressLoading: 'Определяем адрес…',
+    drivingTime: 'на машине',
+    walkingTime: 'пешком',
+    fromYou: 'от вас',
+    toDestination: 'до места',
+    expectedAvailability: 'к',
+    previousParking: 'Предыдущая парковка',
+    nextParking: 'Следующая парковка',
   );
 
   static AppStrings en = AppStrings(
@@ -730,6 +757,15 @@ class AppStrings {
     externalMapOpenError: 'Could not open Yandex Maps',
     backToResults: 'Back to results',
     accessibleParking: 'Accessible parking',
+    parkingNumber: 'Parking #',
+    addressLoading: 'Finding address…',
+    drivingTime: 'by car',
+    walkingTime: 'walk',
+    fromYou: 'from you',
+    toDestination: 'to destination',
+    expectedAvailability: 'by',
+    previousParking: 'Previous parking',
+    nextParking: 'Next parking',
   );
 }
 

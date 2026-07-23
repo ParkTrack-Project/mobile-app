@@ -142,6 +142,17 @@ class _RoutePreviewSheetState extends ConsumerState<RoutePreviewSheet> {
                   },
                 ),
               ],
+              if (widget.route.routeDistanceMeters != null ||
+                  widget.route.routeDurationSeconds != null)
+                Text(
+                  [
+                    if (widget.route.routeDistanceMeters != null)
+                      formatNavDistance(widget.route.routeDistanceMeters!, s),
+                    if (widget.route.routeDurationSeconds != null)
+                      formatNavDuration(widget.route.routeDurationSeconds!, s),
+                  ].join(' • '),
+                  style: TextStyle(color: Theme.of(context).hintColor),
+                ),
               const SizedBox(height: 18),
               if (widget.onNavigateInApp != null)
                 FilledButton.icon(

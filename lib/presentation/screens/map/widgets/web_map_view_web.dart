@@ -48,6 +48,9 @@ external void _fitYandexMapBounds(
   JSNumber east,
 );
 
+@JS('parkTrackYandexMaps.resetNorth')
+external void _resetYandexMapNorth(JSString elementId);
+
 @JS('parkTrackYandexMaps.destroy')
 external void _destroyYandexMap(JSString elementId);
 
@@ -166,6 +169,9 @@ class _WebMapViewState extends State<WebMapView> {
         east.toJS,
       );
     };
+    widget.controller.resetNorthHandler = () {
+      _resetYandexMapNorth(_elementId.toJS);
+    };
     widget.controller.retryHandler = () {
       _retryYandexMap(_elementId.toJS);
     };
@@ -189,6 +195,7 @@ class _WebMapViewState extends State<WebMapView> {
           south: (data['south'] as num).toDouble(),
           east: (data['east'] as num).toDouble(),
           north: (data['north'] as num).toDouble(),
+          azimuth: (data['azimuth'] as num?)?.toDouble() ?? 0,
         );
         final firstCamera = !widget.controller.isReady;
         widget.controller.camera = camera;
@@ -262,7 +269,10 @@ class _WebMapViewState extends State<WebMapView> {
     );
     _serializedZones = widget.zones
         .map((zone) {
-          final color = zoneColor(zone);
+          final color = zoneColor(
+            zone,
+            brightness: Theme.of(context).brightness,
+          );
           final center = centroid(zone.geometry);
           final isCandidate = widget.candidateIds.contains(zone.zoneId);
           final isSelected = widget.selectedZoneId == zone.zoneId;

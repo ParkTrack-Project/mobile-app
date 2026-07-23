@@ -7,6 +7,7 @@ class WebMapCamera {
     required this.south,
     required this.east,
     required this.north,
+    this.azimuth = 0,
   });
 
   final double latitude;
@@ -16,6 +17,7 @@ class WebMapCamera {
   final double south;
   final double east;
   final double north;
+  final double azimuth;
 }
 
 class WebMapController {
@@ -24,6 +26,7 @@ class WebMapController {
   void Function(double zoom)? zoomHandler;
   void Function(double south, double west, double north, double east)?
   fitBoundsHandler;
+  void Function()? resetNorthHandler;
   void Function()? retryHandler;
 
   bool get isReady => camera != null;
@@ -39,6 +42,8 @@ class WebMapController {
   void fitBounds(double south, double west, double north, double east) =>
       fitBoundsHandler?.call(south, west, north, east);
 
+  void resetNorth() => resetNorthHandler?.call();
+
   void retry() => retryHandler?.call();
 
   void clear() {
@@ -46,6 +51,7 @@ class WebMapController {
     moveHandler = null;
     zoomHandler = null;
     fitBoundsHandler = null;
+    resetNorthHandler = null;
     retryHandler = null;
   }
 }

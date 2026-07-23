@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/core/localization/app_localizations.dart';
 import 'package:mobile/domain/models/route_result.dart';
 import 'package:mobile/domain/models/zone.dart';
+import 'package:mobile/presentation/providers/parking_address_provider.dart';
 import 'package:mobile/presentation/screens/map/widgets/candidates_sheet.dart';
 import 'package:yandex_mapkit/yandex_mapkit.dart';
 
@@ -44,7 +45,10 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [l10nProvider.overrideWithValue(AppStrings.en)],
+        overrides: [
+          l10nProvider.overrideWithValue(AppStrings.en),
+          parkingAddressProvider.overrideWith((_, _) async => '42 Test Street'),
+        ],
         child: MaterialApp(
           home: Scaffold(
             body: SizedBox(
@@ -68,7 +72,7 @@ void main() {
 
     expect(find.text('Parking nearby'), findsOneWidget);
     expect(find.text('Ranked by time and distance'), findsOneWidget);
-    expect(find.text('Parking'), findsOneWidget);
+    expect(find.text('Parking #42'), findsWidgets);
     expect(find.text('7 spaces'), findsOneWidget);
     expect(find.text('Free'), findsOneWidget);
     expect(find.text('Accessible parking'), findsOneWidget);
@@ -76,15 +80,65 @@ void main() {
     await tester.tap(find.byKey(const Key('parking_candidate_42')));
     expect(selectedZoneId, 42);
 
-    await tester.tap(find.byKey(const Key('parking_candidate_action_42')));
-    await tester.pumpAndSettle();
-    expect(find.text('Go'), findsOneWidget);
-    expect(find.text('Open in Yandex Maps'), findsOneWidget);
-
-    await tester.tap(find.text('Go'));
+    expect(find.byKey(const Key('parking_candidate_go_42')), findsOneWidget);
+    expect(
+      find.byKey(const Key('parking_candidate_yandex_42')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('parking_candidate_go_42')));
     await tester.pumpAndSettle();
     expect(selectedAction, CandidateAction.go);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('panel can collapse and expand without replacing results', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(340, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final heights = <double>[];
+    final candidate = RouteCandidate(
+      zoneId: 1,
+      rank: 1,
+      freeCount: 3,
+      confidence: 0.8,
+      pay: 0,
+      durationFromOriginSeconds: 300,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [l10nProvider.overrideWithValue(AppStrings.en)],
+        child: MaterialApp(
+          home: Scaffold(
+            body: CandidatesSheet(
+              candidates: [candidate],
+              zones: const [],
+              lastViewedZoneId: null,
+              initialScrollOffset: 0,
+              onSelect: (_) {},
+              onAction: (_, _, _) {},
+              onPanelHeightChanged: heights.add,
+              onScrollOffsetChanged: (_) {},
+              onClose: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    final initialHeight = heights.last;
+
+    await tester.drag(
+      find.byKey(const Key('parking_results_drag_handle')),
+      const Offset(0, 180),
+    );
+    await tester.pumpAndSettle();
+
+    expect(heights.last, lessThan(initialHeight));
+    expect(find.byKey(const Key('parking_candidate_1')), findsOneWidget);
   });
 
   testWidgets('renders explicit loading, empty, and error states', (
