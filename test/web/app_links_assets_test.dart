@@ -29,13 +29,27 @@ void main() {
     expect(manifest, isNot(contains('android:host="*.parktrack.live"')));
   });
 
-  test('asset links placeholder stays valid and never uses a debug key', () {
-    final assetLinks = jsonDecode(
-      File('web/.well-known/assetlinks.json').readAsStringSync(),
+  test('asset links contains the production Android app identity', () {
+    final assetLinks =
+        jsonDecode(File('web/.well-known/assetlinks.json').readAsStringSync())
+            as List<dynamic>;
+
+    expect(assetLinks, hasLength(1));
+    final entry = assetLinks.single as Map<String, dynamic>;
+    expect(
+      entry['relation'],
+      contains('delegate_permission/common.handle_all_urls'),
     );
 
-    expect(assetLinks, isA<List<dynamic>>());
-    expect(assetLinks, isEmpty);
+    final target = entry['target'] as Map<String, dynamic>;
+    expect(target['namespace'], 'android_app');
+    expect(target['package_name'], 'com.parktrack.mobile');
+    expect(
+      target['sha256_cert_fingerprints'],
+      contains(
+        'B8:0A:91:ED:3C:71:8F:0B:21:53:82:9D:85:41:AA:93:CB:A0:54:1F:AF:E2:ED:4E:F4:61:4A:F9:75:A6:ED:D0',
+      ),
+    );
   });
 
   test('web deployment provides a direct-path fallback', () {

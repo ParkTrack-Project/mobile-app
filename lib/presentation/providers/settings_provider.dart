@@ -26,6 +26,7 @@ class SettingsState {
 class SettingsNotifier extends StateNotifier<SettingsState> {
   final SettingsStorage _storage;
   static const _channel = MethodChannel('com.parktrack.mobile/mapkit');
+  int _languageGeneration = 0;
 
   SettingsNotifier(this._storage)
     : super(SettingsState(themeMode: ThemeMode.system)) {
@@ -33,6 +34,7 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
   }
 
   Future<void> _loadSettings() async {
+    final languageGeneration = _languageGeneration;
     final themeFuture = _storage.getThemeMode();
     final languageFuture = _storage.getLanguage();
     final theme = await themeFuture;
@@ -49,6 +51,10 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
       }
     }
 
+    if (languageGeneration != _languageGeneration) {
+      state = state.copyWith(themeMode: theme);
+      return;
+    }
     if (lang != null) {
       _setMapKitLocale(lang);
     }
@@ -64,14 +70,15 @@ class SettingsNotifier extends StateNotifier<SettingsState> {
   }
 
   Future<void> setLanguage(String? languageCode) async {
-    await _storage.saveLanguage(languageCode);
-    if (languageCode != null) {
-      _setMapKitLocale(languageCode);
-    }
+    _languageGeneration++;
     state = state.copyWith(
       locale: languageCode != null ? Locale(languageCode) : null,
       clearLocale: languageCode == null,
     );
+    await _storage.saveLanguage(languageCode);
+    if (languageCode != null) {
+      _setMapKitLocale(languageCode);
+    }
   }
 
   Future<void> setLocale(Locale locale) => setLanguage(locale.languageCode);

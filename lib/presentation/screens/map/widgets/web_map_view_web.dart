@@ -60,6 +60,7 @@ class WebMapView extends StatefulWidget {
     required this.onZoneTap,
     required this.onCameraChanged,
     required this.onMapReady,
+    required this.onError,
     this.route,
     this.activeRouteZoneId,
     this.userLatitude,
@@ -77,6 +78,7 @@ class WebMapView extends StatefulWidget {
   final void Function(Zone zone) onZoneTap;
   final void Function(WebMapCamera camera) onCameraChanged;
   final VoidCallback onMapReady;
+  final void Function(Object error) onError;
   final List<Point>? route;
   final int? activeRouteZoneId;
   final double? userLatitude;
@@ -196,6 +198,7 @@ class _WebMapViewState extends State<WebMapView> {
       }).toJS,
       ((JSString error) {
         debugPrint('Yandex Maps Error: ${error.toDart}');
+        widget.onError(error.toDart);
       }).toJS,
     );
     _updateMap();
