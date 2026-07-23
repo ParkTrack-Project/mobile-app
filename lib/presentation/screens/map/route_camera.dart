@@ -73,6 +73,29 @@ RouteMapBounds padRouteBoundsForPanel(
   );
 }
 
+RouteMapBounds ensureLocalContextBounds(
+  RouteMapBounds bounds, {
+  double minimumLatitudeSpan = 0.0025,
+  double minimumLongitudeSpan = 0.004,
+}) {
+  final latitudeCenter = (bounds.south + bounds.north) / 2;
+  final longitudeCenter = (bounds.west + bounds.east) / 2;
+  final latitudeSpan = math.max(
+    bounds.north - bounds.south,
+    minimumLatitudeSpan,
+  );
+  final longitudeSpan = math.max(
+    bounds.east - bounds.west,
+    minimumLongitudeSpan,
+  );
+  return RouteMapBounds(
+    south: (latitudeCenter - latitudeSpan / 2).clamp(-90, 90),
+    west: (longitudeCenter - longitudeSpan / 2).clamp(-180, 180),
+    north: (latitudeCenter + latitudeSpan / 2).clamp(-90, 90),
+    east: (longitudeCenter + longitudeSpan / 2).clamp(-180, 180),
+  );
+}
+
 ScreenRect routeFocusRect({
   required Size viewport,
   required EdgeInsets safePadding,

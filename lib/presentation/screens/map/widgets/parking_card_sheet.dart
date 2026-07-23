@@ -96,7 +96,7 @@ class ParkingCardSheet extends ConsumerWidget {
                     children: [
                       address.when(
                         data: (value) => Text(
-                          value ?? '${s.parkingNumber}${currentZone.zoneId}',
+                          value ?? s.parkingZone,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.titleMedium
@@ -107,7 +107,7 @@ class ParkingCardSheet extends ConsumerWidget {
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                         error: (_, _) => Text(
-                          '${s.parkingNumber}${currentZone.zoneId}',
+                          s.parkingZone,
                           style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(fontWeight: FontWeight.w700),
                         ),
@@ -138,15 +138,7 @@ class ParkingCardSheet extends ConsumerWidget {
               spacing: 8,
               runSpacing: 6,
               children: [
-                _Fact(
-                  icon: Icons.local_parking,
-                  text:
-                      formatParkingSpaces(currentZone.freeCount, s) ??
-                      s.noForecast,
-                  color: currentZone.freeCount > 0
-                      ? AppColors.primary
-                      : colors.error,
-                ),
+                _AvailabilityFact(zone: currentZone, s: s),
                 if (formatParkingPrice(currentZone.pay, s) case final price?)
                   _Fact(icon: Icons.payments_outlined, text: price),
                 if (currentZone.locationType != null)
@@ -222,7 +214,10 @@ class _CandidateFacts extends StatelessWidget {
       s,
     );
     final predicted = formatParkingSpaces(candidate.predictedFreeCount, s);
-    final eta = formatParkingArrival(candidate.eta);
+    final eta = formatParkingArrivalEstimate(
+      candidate.eta,
+      candidate.durationFromOriginSeconds,
+    );
     if (routeDistance != null || duration != null) {
       facts.add(
         _Fact(
@@ -252,7 +247,7 @@ class _CandidateFacts extends StatelessWidget {
           icon: Icons.auto_graph,
           text: eta == null
               ? '${s.forecast}: $predicted'
-              : '$predicted ${s.expectedAvailability} $eta',
+              : '${s.forecast}: $predicted ${s.expectedAvailability} $eta',
         ),
       );
     }
@@ -260,17 +255,54 @@ class _CandidateFacts extends StatelessWidget {
   }
 }
 
-class _Fact extends StatelessWidget {
-  const _Fact({required this.icon, required this.text, this.color});
+class _AvailabilityFact extends StatelessWidget {
+  const _AvailabilityFact({required this.zone, required this.s});
 
-  final IconData icon;
-  final String text;
-  final Color? color;
+  final Zone zone;
+  final AppStrings s;
 
   @override
   Widget build(BuildContext context) {
-    final effectiveColor =
-        color ?? Theme.of(context).colorScheme.onSurfaceVariant;
+    final colors = Theme.of(context).colorScheme;
+    final color = zone.freeCount > 0 ? AppColors.primary : colors.error;
+    final spaces = formatParkingSpaces(zone.freeCount, s) ?? s.noForecast;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.local_parking, size: 16, color: color),
+          const SizedBox(width: 5),
+          Text(spaces, style: TextStyle(fontSize: 12, color: color)),
+          if (zone.capacity > 0) ...[
+            const SizedBox(width: 3),
+            Text(
+              '/ ${zone.capacity}',
+              style: TextStyle(
+                fontSize: 10,
+                color: color.withValues(alpha: 0.72),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _Fact extends StatelessWidget {
+  const _Fact({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final effectiveColor = Theme.of(context).colorScheme.onSurfaceVariant;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(

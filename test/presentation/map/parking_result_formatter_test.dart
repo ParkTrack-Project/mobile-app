@@ -36,6 +36,14 @@ void main() {
     () {
       expect(formatParkingWalkingDuration(160, AppStrings.en), '~2 min');
       expect(formatParkingArrival('2026-07-23T13:23:00+03:00'), '13:23');
+      expect(
+        formatParkingArrivalEstimate(
+          null,
+          360,
+          now: DateTime(2026, 7, 23, 11, 55),
+        ),
+        '12:01',
+      );
       final distance = parkingPolylineLengthMeters(const [
         Point(latitude: 61.789, longitude: 34.359),
         Point(latitude: 61.790, longitude: 34.359),

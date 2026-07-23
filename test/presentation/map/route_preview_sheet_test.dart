@@ -46,7 +46,9 @@ void main() {
     expect(find.text('Route Ready'), findsOneWidget);
     expect(find.text('Go'), findsOneWidget);
     expect(find.text('Open in Yandex Maps'), findsOneWidget);
+    expect(find.text('from you:'), findsOneWidget);
     expect(find.text('1.4 km • 6 min'), findsOneWidget);
+    expect(find.byIcon(Icons.navigation_rounded), findsOneWidget);
     expect(
       find.descendant(
         of: find.byType(RoutePreviewSheet),

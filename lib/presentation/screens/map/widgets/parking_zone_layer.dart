@@ -27,18 +27,20 @@ ParkingMarkerState resolveParkingMarkerState({
   required Set<int> resultIds,
   int? selectedId,
 }) {
+  if (selectedId != null && allIds.contains(selectedId)) {
+    return ParkingMarkerState(
+      activeIds: Set.unmodifiable({selectedId}),
+      mutedResultIds: Set.unmodifiable(resultIds.difference({selectedId})),
+      contextIds: Set.unmodifiable(
+        allIds.difference({selectedId}).difference(resultIds),
+      ),
+    );
+  }
   if (resultIds.isEmpty) {
     return ParkingMarkerState(
       activeIds: Set.unmodifiable(allIds),
       mutedResultIds: const {},
       contextIds: const {},
-    );
-  }
-  if (selectedId != null && resultIds.contains(selectedId)) {
-    return ParkingMarkerState(
-      activeIds: Set.unmodifiable({selectedId}),
-      mutedResultIds: Set.unmodifiable(resultIds.difference({selectedId})),
-      contextIds: Set.unmodifiable(allIds.difference(resultIds)),
     );
   }
   return ParkingMarkerState(
@@ -82,11 +84,7 @@ List<MapObject> buildZoneMapObjects({
     if (_isDegenerate(zone.geometry)) continue;
     final color = zoneColor(zone, brightness: brightness);
     final isSelected = selectedId == zone.zoneId;
-    final opacity = markerState.activeIds.contains(zone.zoneId)
-        ? 1.0
-        : markerState.mutedResultIds.contains(zone.zoneId)
-        ? 0.35
-        : 0.18;
+    final opacity = markerState.activeIds.contains(zone.zoneId) ? 1.0 : 0.22;
     if (zone.zoneType == ZoneType.parallel) {
       result.add(
         _buildParallelLine(
@@ -140,14 +138,8 @@ List<MapObject> buildHighlightZone(
       PolylineMapObject(
         mapId: MapObjectId('zone_highlight_${zone.zoneId}'),
         polyline: Polyline(points: [mid1, mid2]),
-        strokeColor: Colors.white,
-        strokeWidth: 10,
-      ),
-      PolylineMapObject(
-        mapId: MapObjectId('zone_highlight_inner_${zone.zoneId}'),
-        polyline: Polyline(points: [mid1, mid2]),
         strokeColor: color,
-        strokeWidth: 6,
+        strokeWidth: 12,
       ),
     ];
   } else {
@@ -158,8 +150,8 @@ List<MapObject> buildHighlightZone(
           outerRing: LinearRing(points: zone.geometry),
           innerRings: [],
         ),
-        fillColor: color.withValues(alpha: 0.6),
-        strokeColor: Colors.white,
+        fillColor: color.withValues(alpha: 0.5),
+        strokeColor: color,
         strokeWidth: 4,
       ),
     ];
@@ -216,12 +208,11 @@ MapObject buildZoneLabels({
           .toList();
       final opacity = zoneIds.contains(selectedId)
           ? 1.0
-          : selectedId != null &&
-                zoneIds.any((zoneId) => resultIds.contains(zoneId))
-          ? 0.35
+          : selectedId != null
+          ? 0.22
           : resultIds.isNotEmpty &&
                 !zoneIds.any((zoneId) => resultIds.contains(zoneId))
-          ? 0.18
+          ? 0.22
           : 1.0;
       final hasForecast = zoneIds.any(
         (id) => zonesById[id]?.hasForecast == true,
@@ -301,8 +292,12 @@ Future<Uint8List> buildClusterBitmap(
   final center = Offset(size / 2, size / 2);
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder);
-  canvas.drawCircle(center, size / 2 - 1, Paint()..color = Colors.white);
-  canvas.drawCircle(center, size / 2 - 4, Paint()..color = color);
+  canvas.drawCircle(
+    center,
+    size / 2 - 1,
+    Paint()..color = Colors.white.withValues(alpha: 0.82),
+  );
+  canvas.drawCircle(center, size / 2 - 8, Paint()..color = color);
   final String label;
   if (totalFree == null) {
     label = '$clusterSize';
@@ -369,9 +364,7 @@ MapObject _buildPolygon(
       innerRings: [],
     ),
     fillColor: color.withValues(alpha: 0.5 * opacity),
-    strokeColor: (highlighted ? Colors.white : color).withValues(
-      alpha: opacity,
-    ),
+    strokeColor: color.withValues(alpha: opacity),
     strokeWidth: highlighted ? 4 : 2,
     onTap: (_, _) => onTap(zone),
   );
@@ -406,10 +399,8 @@ MapObject _buildParallelLine(
   return PolylineMapObject(
     mapId: MapObjectId('zone_line_${zone.zoneId}'),
     polyline: Polyline(points: [mid1, mid2]),
-    strokeColor: (highlighted ? Colors.white : color).withValues(
-      alpha: opacity,
-    ),
-    strokeWidth: highlighted ? 9 : 6,
+    strokeColor: color.withValues(alpha: opacity),
+    strokeWidth: highlighted ? 12 : 6,
     onTap: (_, _) => onTap(zone),
   );
 }
@@ -417,9 +408,9 @@ MapObject _buildParallelLine(
 double _zoneOpacity(int zoneId, Set<int> resultIds, int? selectedId) {
   if (selectedId != null) {
     if (zoneId == selectedId) return 1;
-    return resultIds.contains(zoneId) ? 0.35 : 0.18;
+    return 0.22;
   }
-  if (resultIds.isNotEmpty && !resultIds.contains(zoneId)) return 0.18;
+  if (resultIds.isNotEmpty && !resultIds.contains(zoneId)) return 0.22;
   return 1;
 }
 

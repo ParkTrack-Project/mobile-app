@@ -69,6 +69,7 @@ class WebMapView extends StatefulWidget {
     this.activeRouteZoneId,
     this.userLatitude,
     this.userLongitude,
+    this.userHeading,
     this.navigationLatitude,
     this.navigationLongitude,
     this.navigationHeading,
@@ -88,6 +89,7 @@ class WebMapView extends StatefulWidget {
   final int? activeRouteZoneId;
   final double? userLatitude;
   final double? userLongitude;
+  final double? userHeading;
   final double? navigationLatitude;
   final double? navigationLongitude;
   final double? navigationHeading;
@@ -226,7 +228,7 @@ class _WebMapViewState extends State<WebMapView> {
       'zones': _zoneState(),
       'route': _routeState(),
       'user': widget.userLatitude != null && widget.userLongitude != null
-          ? [widget.userLatitude, widget.userLongitude]
+          ? [widget.userLatitude, widget.userLongitude, widget.userHeading ?? 0]
           : null,
       'navigation':
           widget.navigationLatitude != null &&
@@ -278,9 +280,7 @@ class _WebMapViewState extends State<WebMapView> {
           final isSelected = widget.selectedZoneId == zone.zoneId;
           final opacity = markerState.activeIds.contains(zone.zoneId)
               ? 1.0
-              : markerState.mutedResultIds.contains(zone.zoneId)
-              ? 0.35
-              : 0.18;
+              : 0.22;
           return <String, Object?>{
             'id': zone.zoneId,
             'type': zone.zoneType == ZoneType.parallel ? 'line' : 'polygon',

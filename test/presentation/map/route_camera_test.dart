@@ -45,6 +45,21 @@ void main() {
     expect(rect.bottomRight.x, lessThan(320));
   });
 
+  test('selected parking bounds preserve enough local map context', () {
+    const tiny = RouteMapBounds(
+      south: 61.70000,
+      west: 34.20000,
+      north: 61.70010,
+      east: 34.20010,
+    );
+    final contextual = ensureLocalContextBounds(tiny);
+
+    expect(contextual.north - contextual.south, closeTo(0.0025, 1e-10));
+    expect(contextual.east - contextual.west, closeTo(0.004, 1e-10));
+    expect((contextual.north + contextual.south) / 2, closeTo(61.70005, 1e-8));
+    expect((contextual.east + contextual.west) / 2, closeTo(34.20005, 1e-8));
+  });
+
   test('rejects an incomplete or invalid route', () {
     expect(calculateRouteBounds(const []), isNull);
     expect(

@@ -318,7 +318,10 @@ class _CandidateTile extends ConsumerWidget {
       candidate.predictedFreeCount,
       s,
     );
-    final arrivalText = formatParkingArrival(candidate.eta);
+    final arrivalText = formatParkingArrivalEstimate(
+      candidate.eta,
+      candidate.durationFromOriginSeconds,
+    );
     final address = zone == null || zone!.geometry.isEmpty
         ? const AsyncValue<String?>.data(null)
         : ref.watch(
@@ -390,7 +393,7 @@ class _CandidateTile extends ConsumerWidget {
                 children: [
                   address.when(
                     data: (value) => Text(
-                      value ?? '${s.parkingNumber}${candidate.zoneId}',
+                      value ?? s.parkingZone,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -405,7 +408,7 @@ class _CandidateTile extends ConsumerWidget {
                       style: TextStyle(color: colors.onSurfaceVariant),
                     ),
                     error: (_, _) => Text(
-                      '${s.parkingNumber}${candidate.zoneId}',
+                      s.parkingZone,
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                   ),
@@ -437,7 +440,7 @@ class _CandidateTile extends ConsumerWidget {
                           icon: Icons.auto_graph,
                           text: arrivalText == null
                               ? '${s.forecast}: $predictedSpacesText'
-                              : '$predictedSpacesText '
+                              : '${s.forecast}: $predictedSpacesText '
                                     '${s.expectedAvailability} $arrivalText',
                         ),
                       if (drivingDistanceText != null || durationText != null)
@@ -448,11 +451,6 @@ class _CandidateTile extends ConsumerWidget {
                             if (durationText != null) '($durationText)',
                             s.fromYou,
                           ].join(' '),
-                        ),
-                      if (hasDestination && destinationDistanceText != null)
-                        _Fact(
-                          icon: Icons.flag_outlined,
-                          text: '$destinationDistanceText ${s.toDestination}',
                         ),
                       if (zone?.isPrivate == true)
                         _Fact(icon: Icons.lock_outline, text: s.private),

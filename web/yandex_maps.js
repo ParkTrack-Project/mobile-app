@@ -322,7 +322,13 @@
       : null;
     const el = document.createElement('div');
     el.className = 'parktrack-cluster';
-    el.style.cssText = `position:absolute;left:-14px;top:-14px;width:28px;height:28px;box-sizing:border-box;border:1px solid #fff;border-radius:50%;background:${freeCount === null ? '#757575' : freeCount > 0 ? '#2e7d32' : '#d32f2f'};display:flex;align-items:center;justify-content:center;text-align:center;white-space:pre-line;color:#fff;font:700 8px/1.2 Roboto,Arial,sans-serif;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.4);z-index:2050`;
+    const opacity = Math.max(...zones.map(zone => Number(zone.opacity ?? 1)));
+    const color = freeCount === null
+      ? '#757575'
+      : freeCount > 0
+        ? (zones.find(zone => Number(zone.freeCount ?? 0) > 0)?.color || '#2e7d32')
+        : '#d32f2f';
+    el.style.cssText = `position:absolute;left:-16px;top:-16px;width:32px;height:32px;box-sizing:border-box;border:3px solid rgba(255,255,255,.82);border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;text-align:center;white-space:pre-line;color:#fff;font:700 10px/1.2 Roboto,Arial,sans-serif;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.4);opacity:${opacity};z-index:2050`;
     el.textContent =
       freeCount === null
         ? String(features.length)
@@ -356,13 +362,10 @@
           ? parkingLinePoints(zone.points)
           : zone.points;
         const coords = geometryPoints.map(p => [p[1], p[0]]);
-        const highlighted = zone.active || zone.candidate;
-        const stroke = highlighted
-          ? [
-              { color: '#ffffff', width: zone.active ? 10 : 9 },
-              { color: zone.color, width: 6 },
-            ]
-          : [{ color: zone.color, width: isLine ? 6 : 2 }];
+        const stroke = [{
+          color: zone.color,
+          width: zone.active ? (isLine ? 12 : 4) : (isLine ? 6 : 2),
+        }];
         addObject(entry, new YMapFeature({
           geometry: isLine
             ? { type: 'LineString', coordinates: coords }
@@ -399,7 +402,7 @@
             { coordinates },
             clusterMarkerElement(clusterFeatures, () => entry.map.setLocation({
               center: coordinates,
-              zoom: Math.min(entry.map.zoom + 2, 17),
+              zoom: Math.min(entry.map.zoom + 2, 21),
               duration: 300,
             }))
           )
@@ -446,7 +449,9 @@
       }
       if (state.user) {
         const el = document.createElement('div');
-        el.style.cssText = `position:absolute;left:-8px;top:-8px;width:16px;height:16px;border:1.5px solid #fff;border-radius:50%;background:#007aff;box-shadow:0 1px 4px rgba(0,0,0,.4);z-index:2300`;
+        const angle = Number(state.user[2] || 0);
+        el.style.cssText = 'position:absolute;left:-16px;top:-16px;width:32px;height:32px;z-index:2300';
+        el.innerHTML = `<svg viewBox="0 0 64 64" width="32" height="32" style="transform-origin:50% 50%;transform:rotate(${angle}deg);filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))"><path d="M32 2 L42 28 Q32 23 22 28 Z" fill="#e53935" stroke="#fff" stroke-width="5" stroke-linejoin="round"/><circle cx="32" cy="32" r="15" fill="#fff"/><circle cx="32" cy="32" r="11" fill="#e53935"/></svg>`;
         addObject(entry, new YMapMarker({
           coordinates: [state.user[1], state.user[0]]
         }, el), 'positionObjects');

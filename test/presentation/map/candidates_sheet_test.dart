@@ -27,6 +27,11 @@ void main() {
       distanceToDestinationMeters: 450,
       durationFromOriginSeconds: 360,
       predictedFreeCount: 5,
+      eta: '2026-07-23T12:01:00+03:00',
+      routePolyline: const [
+        Point(latitude: 61.789, longitude: 34.359),
+        Point(latitude: 61.790, longitude: 34.359),
+      ],
     );
     final zone = Zone(
       zoneId: 42,
@@ -56,6 +61,7 @@ void main() {
               child: CandidatesSheet(
                 candidates: [candidate],
                 zones: [zone],
+                hasDestination: true,
                 lastViewedZoneId: 42,
                 initialScrollOffset: 0,
                 onSelect: (zoneId) => selectedZoneId = zoneId,
@@ -68,11 +74,15 @@ void main() {
         ),
       ),
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(find.text('Parking nearby'), findsOneWidget);
     expect(find.text('Ranked by time and distance'), findsOneWidget);
-    expect(find.text('Parking #42'), findsWidgets);
+    expect(find.text('42 Test Street'), findsOneWidget);
+    expect(find.text('Parking #42'), findsOneWidget);
+    expect(find.text('450 m'), findsOneWidget);
+    expect(find.textContaining('111 m (6 min) from you'), findsOneWidget);
+    expect(find.text('Forecast: 5 spaces by 12:01'), findsOneWidget);
     expect(find.text('7 spaces'), findsOneWidget);
     expect(find.text('Free'), findsOneWidget);
     expect(find.text('Accessible parking'), findsOneWidget);

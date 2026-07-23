@@ -55,6 +55,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Position? _userPosition;
   Point? _lastCameraTarget;
   double _currentAzimuth = 0;
+  bool _isUserCentered = false;
   Uint8List? _destinationPinBytes;
   Uint8List? _userLocationBytes;
   Uint8List? _navArrowBytes;
@@ -64,6 +65,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   final Map<int, Zone> _resultZonesById = {};
   String? _preparedResultSignature;
   double _searchPanelHeight = 360;
+  double _detailsPanelHeight = 300;
+  double _routePreviewPanelHeight = 260;
   Brightness? _markerBrightness;
 
   Map<int, Uint8List> _zoneLabelCache = {};
@@ -199,16 +202,27 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   Future<Uint8List> _buildUserLocationBitmap() async {
-    const size = 48.0;
+    const size = 64.0;
     const center = Offset(size / 2, size / 2);
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
-    canvas.drawCircle(center, size / 2 - 1, Paint()..color = Colors.white);
-    canvas.drawCircle(
-      center,
-      size / 2 - 5,
-      Paint()..color = const Color(0xFF007AFF),
+
+    final direction = Path()
+      ..moveTo(size / 2, 2)
+      ..lineTo(size * 0.66, size * 0.43)
+      ..quadraticBezierTo(size / 2, size * 0.36, size * 0.34, size * 0.43)
+      ..close();
+    canvas.drawPath(
+      direction,
+      Paint()
+        ..color = Colors.white
+        ..style = ui.PaintingStyle.stroke
+        ..strokeWidth = 5
+        ..strokeJoin = ui.StrokeJoin.round,
     );
+    canvas.drawPath(direction, Paint()..color = const Color(0xFFE53935));
+    canvas.drawCircle(center, 15, Paint()..color = Colors.white);
+    canvas.drawCircle(center, 11, Paint()..color = const Color(0xFFE53935));
     final picture = recorder.endRecording();
     final image = await picture.toImage(size.toInt(), size.toInt());
     final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
@@ -260,12 +274,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   void _onCameraPositionChanged(
     CameraPosition position,
-    _,
+    CameraUpdateReason reason,
     bool cameraUpdateFinished,
   ) {
     _lastCameraTarget = position.target;
-    if ((position.azimuth - _currentAzimuth).abs() > 2) {
-      setState(() => _currentAzimuth = position.azimuth);
+    final centered = _isCameraCenteredOnUser(position.target);
+    if ((position.azimuth - _currentAzimuth).abs() > 0.5 ||
+        centered != _isUserCentered) {
+      setState(() {
+        _currentAzimuth = position.azimuth;
+        _isUserCentered = centered;
+      });
     }
     if (!cameraUpdateFinished) return;
     _debounce?.cancel();
@@ -350,14 +369,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               longitude: target.longitude + 0.0005,
             ),
           ];
-    final bounds = calculateRouteBounds(points);
+    final rawBounds = calculateRouteBounds(points);
+    final bounds = rawBounds == null
+        ? null
+        : ensureLocalContextBounds(rawBounds);
     if (kIsWeb) {
       if (bounds != null) {
         final padded = padRouteBoundsForPanel(
           bounds,
-          horizontalFraction: 0.8,
-          topFraction: 0.45,
-          bottomFraction: 2.2,
+          horizontalFraction: 0.25,
+          topFraction: 0.2,
+          bottomFraction: 0.9,
         );
         _webMapController.fitBounds(
           padded.south,
@@ -381,7 +403,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               focusRect: routeFocusRect(
                 viewport: mediaQuery.size,
                 safePadding: mediaQuery.padding,
-                bottomPanelHeight: 390,
+                bottomPanelHeight: _detailsPanelHeight,
               ),
             ),
       animation: const MapAnimation(duration: 0.65),
@@ -422,7 +444,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
   }
 
-  void _onClusterTap(_, Cluster cluster) {
+  Future<void> _onClusterTap(_, Cluster cluster) async {
     if (cluster.placemarks.isEmpty) return;
     final lats = cluster.placemarks.map((p) => p.point.latitude);
     final lons = cluster.placemarks.map((p) => p.point.longitude);
@@ -430,21 +452,19 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final latMax = lats.reduce(math.max);
     final lonMin = lons.reduce(math.min);
     final lonMax = lons.reduce(math.max);
-    final latPad = (latMax - latMin) * 0.6 + 0.003;
-    final lonPad = (lonMax - lonMin) * 0.6 + 0.003;
-    _mapController?.moveCamera(
-      CameraUpdate.newGeometry(
-        Geometry.fromBoundingBox(
-          BoundingBox(
-            southWest: Point(
-              latitude: latMin - latPad,
-              longitude: lonMin - lonPad,
-            ),
-            northEast: Point(
-              latitude: latMax + latPad,
-              longitude: lonMax + lonPad,
-            ),
+    final controller = _mapController;
+    if (controller == null) return;
+    final camera = await controller.getCameraPosition();
+    await controller.moveCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(
+          target: Point(
+            latitude: (latMin + latMax) / 2,
+            longitude: (lonMin + lonMax) / 2,
           ),
+          zoom: math.min(21, camera.zoom + 2),
+          azimuth: camera.azimuth,
+          tilt: camera.tilt,
         ),
       ),
       animation: const MapAnimation(duration: 0.5),
@@ -553,14 +573,28 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       latitude: camera.latitude,
       longitude: camera.longitude,
     );
-    if ((camera.azimuth - _currentAzimuth).abs() > 2) {
-      setState(() => _currentAzimuth = camera.azimuth);
+    final centered = _isCameraCenteredOnUser(
+      Point(latitude: camera.latitude, longitude: camera.longitude),
+    );
+    if ((camera.azimuth - _currentAzimuth).abs() > 0.5 ||
+        centered != _isUserCentered) {
+      setState(() {
+        _currentAzimuth = camera.azimuth;
+        _isUserCentered = centered;
+      });
     }
     _debounce?.cancel();
     _debounce = Timer(
       const Duration(milliseconds: 400),
       () => _fetchWebZones(camera),
     );
+  }
+
+  bool _isCameraCenteredOnUser(Point target) {
+    final user = _userPosition;
+    if (user == null) return false;
+    return (target.latitude - user.latitude).abs() < 0.00002 &&
+        (target.longitude - user.longitude).abs() < 0.00002;
   }
 
   Future<Position?> _getCurrentPosition({bool showDeniedDialog = true}) async {
@@ -621,7 +655,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Future<void> _goToMyLocation() async {
     final pos = await _getCurrentPosition();
     if (pos == null) return;
-    if (mounted) setState(() {});
+    if (mounted) setState(() => _isUserCentered = true);
     if (kIsWeb) {
       _webMapController.move(pos.latitude, pos.longitude, 16);
       return;
@@ -872,6 +906,38 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           viewport: mediaQuery.size,
           safePadding: mediaQuery.padding,
           bottomPanelHeight: _searchPanelHeight,
+        ),
+      ),
+      animation: const MapAnimation(duration: 0.8),
+    );
+  }
+
+  Future<void> _fitRoutePreview(List<Point>? polyline) async {
+    final bounds = calculateRouteBounds(polyline);
+    if (bounds == null) return;
+    if (kIsWeb) {
+      final padded = padRouteBoundsForPanel(
+        bounds,
+        bottomFraction: 1.25,
+        topFraction: 0.18,
+        horizontalFraction: 0.18,
+      );
+      _webMapController.fitBounds(
+        padded.south,
+        padded.west,
+        padded.north,
+        padded.east,
+      );
+      return;
+    }
+    final mediaQuery = MediaQuery.of(context);
+    await _mapController?.moveCamera(
+      CameraUpdate.newGeometry(
+        Geometry.fromBoundingBox(bounds.boundingBox),
+        focusRect: routeFocusRect(
+          viewport: mediaQuery.size,
+          safePadding: mediaQuery.padding,
+          bottomPanelHeight: _routePreviewPanelHeight,
         ),
       ),
       animation: const MapAnimation(duration: 0.8),
@@ -1307,30 +1373,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             _standaloneSelectedZone = null;
           });
 
-          final bounds = calculateRouteBounds(polyline);
-          if (bounds != null) {
-            if (kIsWeb) {
-              final padded = padRouteBoundsForPanel(bounds);
-              _webMapController.fitBounds(
-                padded.south,
-                padded.west,
-                padded.north,
-                padded.east,
-              );
-            } else {
-              final mediaQuery = MediaQuery.of(context);
-              await _mapController?.moveCamera(
-                CameraUpdate.newGeometry(
-                  Geometry.fromBoundingBox(bounds.boundingBox),
-                  focusRect: routeFocusRect(
-                    viewport: mediaQuery.size,
-                    safePadding: mediaQuery.padding,
-                    bottomPanelHeight: 330,
-                  ),
-                ),
-                animation: const MapAnimation(duration: 0.8),
-              );
-            }
+          if (calculateRouteBounds(polyline) != null) {
+            await _fitRoutePreview(polyline);
           } else if (zoneLat != null && zoneLon != null) {
             final target = Point(latitude: zoneLat, longitude: zoneLon);
             if (kIsWeb) {
@@ -1357,17 +1401,19 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         : null;
     final selectedMapZoneId =
         selectedSearchZoneId ?? _standaloneSelectedZone?.zoneId;
+    final selectedMarkerZoneId =
+        selectedMapZoneId ?? (routePreview != null ? _activeRouteZoneId : null);
 
     final zoneObjects = _zoneObjectsFor(
       zones,
       candidateIds,
-      selectedMapZoneId,
+      selectedMarkerZoneId,
       Theme.of(context).brightness,
     );
     final zoneLabels = _zoneLabelsFor(
       zones,
       candidateIds,
-      selectedMapZoneId,
+      selectedMarkerZoneId,
       Theme.of(context).brightness,
     );
 
@@ -1380,16 +1426,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           strokeColor: Colors.blue,
           strokeWidth: 5,
         ),
-      if (_activeRouteZoneId != null)
+      if (_activeRouteZoneId != null &&
+          _activeRouteZoneId != selectedMarkerZoneId)
         ...buildHighlightZone(
           zones,
           _activeRouteZoneId!,
-          brightness: Theme.of(context).brightness,
-        ),
-      if (selectedMapZoneId != null && selectedMapZoneId != _activeRouteZoneId)
-        ...buildHighlightZone(
-          zones,
-          selectedMapZoneId,
           brightness: Theme.of(context).brightness,
         ),
       ?zoneLabels,
@@ -1400,9 +1441,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             latitude: _userPosition!.latitude,
             longitude: _userPosition!.longitude,
           ),
+          opacity: 1,
+          direction: _userPosition!.heading.isFinite
+              ? _userPosition!.heading
+              : 0,
           icon: PlacemarkIcon.single(
             PlacemarkIconStyle(
               image: BitmapDescriptor.fromBytes(_userLocationBytes!),
+              rotationType: RotationType.rotate,
               scale: 1.0,
             ),
           ),
@@ -1479,26 +1525,28 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       _ => ParkingResultsPanelState.results,
     };
     final viewportHeight = MediaQuery.sizeOf(context).height;
-    final double detailsPanelHeight = math
-        .min(
-          viewportHeight,
-          math.max(200, viewportHeight * 0.45).clamp(200.0, 410.0),
-        )
-        .toDouble();
+    final maxDetailsPanelHeight = math.min(viewportHeight * 0.62, 470.0);
     final routePreviewVisible = routePreview != null && !isNavigating;
-    final double routePreviewPanelHeight = math
-        .min(
-          viewportHeight,
-          math.max(200, viewportHeight * 0.42).clamp(200.0, 330.0),
-        )
-        .toDouble();
+    final maxRoutePreviewPanelHeight = math.min(viewportHeight * 0.56, 390.0);
+    final destinationCardVisible =
+        destination != null &&
+        !isNavigating &&
+        !routePreviewVisible &&
+        parkingSearchState.view == ParkingSearchView.hidden &&
+        !standaloneDetailsVisible;
     final double mapPanelHeight = searchResultsVisible
         ? _searchPanelHeight
         : searchDetailsVisible || standaloneDetailsVisible
-        ? detailsPanelHeight
+        ? _detailsPanelHeight
         : routePreviewVisible
-        ? routePreviewPanelHeight
+        ? _routePreviewPanelHeight
+        : isNavigating
+        ? 86.0 + MediaQuery.paddingOf(context).bottom
+        : destinationCardVisible
+        ? 168.0
         : 0.0;
+    final showZoomControls = viewportHeight - mapPanelHeight >= 420;
+    final showCompass = _currentAzimuth.abs() > 1.0;
 
     return Scaffold(
       body: SafeArea(
@@ -1509,12 +1557,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 controller: _webMapController,
                 zones: zones,
                 candidateIds: candidateIds,
-                selectedZoneId: selectedMapZoneId,
+                selectedZoneId: selectedMarkerZoneId,
                 onZoneTap: _onZoneTap,
                 route: _routePolyline,
                 activeRouteZoneId: _activeRouteZoneId,
                 userLatitude: isNavigating ? null : _userPosition?.latitude,
                 userLongitude: isNavigating ? null : _userPosition?.longitude,
+                userHeading: isNavigating ? null : _userPosition?.heading,
                 navigationLatitude: isNavigating
                     ? navState.currentPosition.latitude
                     : null,
@@ -1594,29 +1643,45 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 left: 0,
                 right: 0,
                 bottom: 0,
-                height: detailsPanelHeight,
-                child: PointerInterceptor(
-                  intercepting: kIsWeb,
-                  child: ParkingCardSheet(
-                    zone: selectedDetailZone,
-                    candidate: selectedCandidate,
-                    resultIndex: selectedCandidateIndex,
-                    resultCount: parkingSearchState.candidates.length,
-                    onBack: () {
-                      ref.read(parkingSearchProvider.notifier).backToResults();
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: maxDetailsPanelHeight),
+                  child: _PanelSizeReporter(
+                    onSizeChanged: (height) {
+                      if ((_detailsPanelHeight - height).abs() < 1 ||
+                          !mounted) {
+                        return;
+                      }
+                      setState(() => _detailsPanelHeight = height);
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) unawaited(_focusZone(selectedDetailZone));
+                      });
                     },
-                    onPrevious: selectedCandidateIndex > 0
-                        ? () => _openAdjacentCandidate(-1)
-                        : null,
-                    onNext:
-                        selectedCandidateIndex >= 0 &&
-                            selectedCandidateIndex <
-                                parkingSearchState.candidates.length - 1
-                        ? () => _openAdjacentCandidate(1)
-                        : null,
-                    onBuildRoute: () =>
-                        _buildRouteForZone(selectedDetailZone.zoneId),
-                    onClose: ref.read(routingProvider.notifier).reset,
+                    child: PointerInterceptor(
+                      intercepting: kIsWeb,
+                      child: ParkingCardSheet(
+                        zone: selectedDetailZone,
+                        candidate: selectedCandidate,
+                        resultIndex: selectedCandidateIndex,
+                        resultCount: parkingSearchState.candidates.length,
+                        onBack: () {
+                          ref
+                              .read(parkingSearchProvider.notifier)
+                              .backToResults();
+                        },
+                        onPrevious: selectedCandidateIndex > 0
+                            ? () => _openAdjacentCandidate(-1)
+                            : null,
+                        onNext:
+                            selectedCandidateIndex >= 0 &&
+                                selectedCandidateIndex <
+                                    parkingSearchState.candidates.length - 1
+                            ? () => _openAdjacentCandidate(1)
+                            : null,
+                        onBuildRoute: () =>
+                            _buildRouteForZone(selectedDetailZone.zoneId),
+                        onClose: ref.read(routingProvider.notifier).reset,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -1625,15 +1690,32 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 left: 0,
                 right: 0,
                 bottom: 0,
-                height: detailsPanelHeight,
-                child: PointerInterceptor(
-                  intercepting: kIsWeb,
-                  child: ParkingCardSheet(
-                    zone: _standaloneSelectedZone!,
-                    onBuildRoute: () =>
-                        _buildRouteForZone(_standaloneSelectedZone!.zoneId),
-                    onClose: () =>
-                        setState(() => _standaloneSelectedZone = null),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: maxDetailsPanelHeight),
+                  child: _PanelSizeReporter(
+                    onSizeChanged: (height) {
+                      if ((_detailsPanelHeight - height).abs() < 1 ||
+                          !mounted) {
+                        return;
+                      }
+                      setState(() => _detailsPanelHeight = height);
+                      final zone = _standaloneSelectedZone;
+                      if (zone != null) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted) unawaited(_focusZone(zone));
+                        });
+                      }
+                    },
+                    child: PointerInterceptor(
+                      intercepting: kIsWeb,
+                      child: ParkingCardSheet(
+                        zone: _standaloneSelectedZone!,
+                        onBuildRoute: () =>
+                            _buildRouteForZone(_standaloneSelectedZone!.zoneId),
+                        onClose: () =>
+                            setState(() => _standaloneSelectedZone = null),
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -1642,21 +1724,39 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 left: 0,
                 right: 0,
                 bottom: 0,
-                height: routePreviewPanelHeight,
-                child: PointerInterceptor(
-                  intercepting: kIsWeb,
-                  child: RoutePreviewSheet(
-                    route: routePreview,
-                    zoneLat: routePreviewTarget?.latitude,
-                    zoneLon: routePreviewTarget?.longitude,
-                    onNavigateInApp: routePreviewTarget == null
-                        ? null
-                        : () => _startInAppNavigation(
-                            zoneId: routePreview.selectedZoneId,
-                            toLat: routePreviewTarget!.latitude,
-                            toLon: routePreviewTarget.longitude,
-                          ),
-                    onClose: ref.read(routingProvider.notifier).reset,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: maxRoutePreviewPanelHeight,
+                  ),
+                  child: _PanelSizeReporter(
+                    onSizeChanged: (height) {
+                      if ((_routePreviewPanelHeight - height).abs() < 1 ||
+                          !mounted) {
+                        return;
+                      }
+                      setState(() => _routePreviewPanelHeight = height);
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) {
+                          unawaited(_fitRoutePreview(_routePolyline));
+                        }
+                      });
+                    },
+                    child: PointerInterceptor(
+                      intercepting: kIsWeb,
+                      child: RoutePreviewSheet(
+                        route: routePreview,
+                        zoneLat: routePreviewTarget?.latitude,
+                        zoneLon: routePreviewTarget?.longitude,
+                        onNavigateInApp: routePreviewTarget == null
+                            ? null
+                            : () => _startInAppNavigation(
+                                zoneId: routePreview.selectedZoneId,
+                                toLat: routePreviewTarget!.latitude,
+                                toLon: routePreviewTarget.longitude,
+                              ),
+                        onClose: ref.read(routingProvider.notifier).reset,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -1726,63 +1826,87 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   ),
                 ),
               ),
-            Positioned(
+            AnimatedPositioned(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
               right: 12,
-              top: 0,
-              bottom: mapPanelHeight,
-              child: Align(
-                alignment: Alignment.center,
-                child: PointerInterceptor(
-                  intercepting: kIsWeb,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _MapButton(
-                        onTap: _resetNorth,
-                        tooltip: s.map,
-                        child: Transform.rotate(
-                          angle: -_currentAzimuth * math.pi / 180,
-                          child: Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              Icon(
-                                Icons.explore_outlined,
-                                size: 28,
-                                color: Theme.of(context).colorScheme.onSurface,
-                              ),
-                              const Align(
-                                alignment: Alignment.topCenter,
-                                child: Icon(
-                                  Icons.arrow_drop_up,
-                                  size: 15,
-                                  color: Colors.red,
+              bottom: mapPanelHeight + 12,
+              child: PointerInterceptor(
+                intercepting: kIsWeb,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 180),
+                      child: showZoomControls
+                          ? _ZoomControlGroup(
+                              key: const ValueKey('zoom_controls'),
+                              onZoomIn: _zoomIn,
+                              onZoomOut: _zoomOut,
+                            )
+                          : const SizedBox.shrink(
+                              key: ValueKey('zoom_controls_hidden'),
+                            ),
+                    ),
+                    if (showZoomControls) const SizedBox(height: 10),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 180),
+                          child: showCompass
+                              ? Padding(
+                                  key: const ValueKey('compass_visible'),
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: _RoundMapControl(
+                                    onTap: _resetNorth,
+                                    tooltip: s.map,
+                                    child: Transform.rotate(
+                                      angle: -_currentAzimuth * math.pi / 180,
+                                      child: Stack(
+                                        alignment: Alignment.center,
+                                        children: [
+                                          Icon(
+                                            Icons.navigation_rounded,
+                                            size: 28,
+                                            color: Theme.of(
+                                              context,
+                                            ).colorScheme.onSurface,
+                                          ),
+                                          const Positioned(
+                                            top: 5,
+                                            child: Icon(
+                                              Icons.arrow_drop_up,
+                                              size: 14,
+                                              color: Colors.red,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              : const SizedBox.shrink(
+                                  key: ValueKey('compass_hidden'),
                                 ),
-                              ),
-                            ],
+                        ),
+                        _RoundMapControl(
+                          onTap: _goToMyLocation,
+                          tooltip: s.myLocation,
+                          child: Icon(
+                            Icons.navigation_rounded,
+                            size: 26,
+                            color: _isUserCentered
+                                ? const Color(0xFF1967D2)
+                                : Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      _MapButton(
-                        icon: Icons.add_rounded,
-                        tooltip: '+',
-                        onTap: _zoomIn,
-                      ),
-                      const SizedBox(height: 4),
-                      _MapButton(
-                        icon: Icons.remove_rounded,
-                        tooltip: '−',
-                        onTap: _zoomOut,
-                      ),
-                      const SizedBox(height: 4),
-                      _MapButton(
-                        icon: Icons.near_me_rounded,
-                        iconColor: const Color(0xFF1967D2),
-                        tooltip: s.myLocation,
-                        onTap: _goToMyLocation,
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -1824,13 +1948,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 ),
               ),
             // ─── Карточка назначения ────────────────────────────────────
-            if (destination != null &&
-                !isNavigating &&
-                !routePreviewVisible &&
-                parkingSearchState.view == ParkingSearchView.hidden &&
-                !standaloneDetailsVisible)
+            if (destinationCardVisible)
               Positioned(
-                bottom: bottomInset + 76,
+                bottom: bottomInset + 12,
                 left: 12,
                 right: 12,
                 child: PointerInterceptor(
@@ -2086,7 +2206,7 @@ class _DestinationCard extends ConsumerWidget {
               Expanded(
                 child: FilledButton.icon(
                   onPressed: onNavigateInApp,
-                  icon: const Icon(Icons.map_outlined, size: 16),
+                  icon: const Icon(Icons.navigation_rounded, size: 16),
                   label: Text(s.goAction),
                   style: FilledButton.styleFrom(
                     textStyle: const TextStyle(fontSize: 13),
@@ -2115,20 +2235,58 @@ class _DestinationCard extends ConsumerWidget {
 
 // ───────────────────────────────────────────────────────────────────────────
 
+class _PanelSizeReporter extends StatefulWidget {
+  const _PanelSizeReporter({required this.child, required this.onSizeChanged});
+
+  final Widget child;
+  final ValueChanged<double> onSizeChanged;
+
+  @override
+  State<_PanelSizeReporter> createState() => _PanelSizeReporterState();
+}
+
+class _PanelSizeReporterState extends State<_PanelSizeReporter> {
+  double? _lastHeight;
+  bool _scheduled = false;
+
+  void _reportSize() {
+    if (_scheduled) return;
+    _scheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scheduled = false;
+      if (!mounted) return;
+      final height = context.size?.height;
+      if (height == null || height <= 0 || height == _lastHeight) return;
+      _lastHeight = height;
+      widget.onSizeChanged(height);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    _reportSize();
+    return NotificationListener<SizeChangedLayoutNotification>(
+      onNotification: (_) {
+        _reportSize();
+        return false;
+      },
+      child: SizeChangedLayoutNotifier(child: widget.child),
+    );
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+
 class _MapButton extends StatelessWidget {
   const _MapButton({
-    this.icon,
+    required this.icon,
     required this.onTap,
-    this.child,
-    this.tooltip,
-    this.iconColor,
+    required this.tooltip,
   });
 
-  final IconData? icon;
+  final IconData icon;
   final VoidCallback onTap;
-  final Widget? child;
-  final String? tooltip;
-  final Color? iconColor;
+  final String tooltip;
 
   @override
   Widget build(BuildContext context) {
@@ -2143,13 +2301,11 @@ class _MapButton extends StatelessWidget {
         child: SizedBox.square(
           dimension: 48,
           child: Center(
-            child:
-                child ??
-                Icon(
-                  icon!,
-                  size: 25,
-                  color: iconColor ?? Theme.of(context).colorScheme.onSurface,
-                ),
+            child: Icon(
+              icon,
+              size: 25,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
           ),
         ),
       ),
@@ -2157,11 +2313,114 @@ class _MapButton extends StatelessWidget {
     return Semantics(
       button: true,
       label: tooltip,
-      child: tooltip == null
-          ? button
-          : Tooltip(message: tooltip!, child: button),
+      child: Tooltip(message: tooltip, child: button),
     );
   }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+
+class _ZoomControlGroup extends StatelessWidget {
+  const _ZoomControlGroup({
+    super.key,
+    required this.onZoomIn,
+    required this.onZoomOut,
+  });
+
+  final VoidCallback onZoomIn;
+  final VoidCallback onZoomOut;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Material(
+      color: colors.surface,
+      elevation: 3,
+      shadowColor: Colors.black.withValues(alpha: 0.22),
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: SizedBox(
+        width: 52,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _ZoomButton(icon: Icons.add_rounded, tooltip: '+', onTap: onZoomIn),
+            Divider(height: 1, indent: 10, endIndent: 10),
+            _ZoomButton(
+              icon: Icons.remove_rounded,
+              tooltip: '−',
+              onTap: onZoomOut,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ZoomButton extends StatelessWidget {
+  const _ZoomButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: tooltip,
+    child: Semantics(
+      button: true,
+      label: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        child: SizedBox(
+          width: 52,
+          height: 48,
+          child: Icon(
+            icon,
+            size: 27,
+            color: Theme.of(context).colorScheme.onSurface,
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class _RoundMapControl extends StatelessWidget {
+  const _RoundMapControl({
+    required this.onTap,
+    required this.tooltip,
+    required this.child,
+  });
+
+  final VoidCallback onTap;
+  final String tooltip;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: tooltip,
+    child: Semantics(
+      button: true,
+      label: tooltip,
+      child: Material(
+        color: Theme.of(context).colorScheme.surface,
+        elevation: 3,
+        shadowColor: Colors.black.withValues(alpha: 0.22),
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: SizedBox.square(dimension: 52, child: Center(child: child)),
+        ),
+      ),
+    ),
+  );
 }
 
 // ───────────────────────────────────────────────────────────────────────────

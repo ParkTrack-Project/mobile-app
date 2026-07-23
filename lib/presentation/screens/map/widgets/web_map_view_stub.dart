@@ -19,6 +19,7 @@ class WebMapView extends StatelessWidget {
     this.activeRouteZoneId,
     this.userLatitude,
     this.userLongitude,
+    this.userHeading,
     this.navigationLatitude,
     this.navigationLongitude,
     this.navigationHeading,
@@ -38,6 +39,7 @@ class WebMapView extends StatelessWidget {
   final int? activeRouteZoneId;
   final double? userLatitude;
   final double? userLongitude;
+  final double? userHeading;
   final double? navigationLatitude;
   final double? navigationLongitude;
   final double? navigationHeading;
