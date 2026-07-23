@@ -27,11 +27,15 @@ void main() {
     expect(bridge, isNot(contains('filter: invert')));
     expect(bridge, isNot(contains('grayscale(')));
     expect(bridge, isNot(contains('YMapOpenMapsButton')));
-    expect(bridge, contains(r'opacity:${zone.opacity ?? 1}'));
-    expect(bridge, contains('opacity: zone.opacity ?? 1'));
+    expect(bridge, contains('zone.fill'));
+    expect(bridge, contains('zone.stroke'));
+    expect(bridge, contains(r'opacity:${zone.markerOpacity ?? 1}'));
+    expect(bridge, contains('clusterExpansionZoom'));
+    expect(bridge, contains('gridSize: 22'));
     expect(bridge, contains('azimuth: 0, tilt: 0'));
     expect(bridge, contains('const azimuth = Number(entry.map.azimuth || 0)'));
     expect(bridge, contains("left:-16px;top:-40px"));
     expect(bridge, contains('M16 39C13 32'));
+    expect(bridge, contains('viewBox="0 0 48 48" width="24" height="24"'));
   });
 }

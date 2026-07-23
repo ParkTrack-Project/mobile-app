@@ -184,10 +184,14 @@
     }
     entry.map = null;
     entry.schemeLayer = null;
-    entry.zoneObjects = [];
+    entry.zoneGeometryObjects = [];
+    entry.zoneMarkerObjects = [];
+    entry.zoneFeatures = new Map();
     entry.routeObjects = [];
     entry.positionObjects = [];
-    entry.zoneSignature = null;
+    entry.zoneGeometrySignature = null;
+    entry.zoneStyleSignature = null;
+    entry.zoneMarkerSignature = null;
     entry.routeSignature = null;
     entry.positionSignature = null;
     entry.lastCameraKey = null;
@@ -305,36 +309,97 @@
     const el = document.createElement('div');
     el.className = 'parktrack-marker';
     const zIndex = zone.active ? 2300 : zone.candidate ? 2200 : 2100;
-    el.style.cssText = `position:absolute;left:-12px;top:-12px;width:24px;height:24px;box-sizing:border-box;border:1px solid #fff;border-radius:50%;background:${zone.color};display:flex;align-items:center;justify-content:center;color:#fff;font:700 9.5px/1 Roboto,Arial,sans-serif;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.35);opacity:${zone.opacity ?? 1};z-index:${zIndex}`;
+    el.style.cssText = `position:absolute;left:0;top:0;transform:translate(-50%,-50%);min-width:20px;height:20px;box-sizing:border-box;border:0;border-radius:9999px;padding:2px 6px;background:${zone.stroke};display:flex;align-items:center;justify-content:center;color:${zone.markerTextColor};font:600 12px/16px Roboto,Arial,sans-serif;white-space:nowrap;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.1),0 1px 2px rgba(0,0,0,.1);opacity:${zone.markerOpacity ?? 1};z-index:${zIndex}`;
     el.textContent = zone.label == null ? '' : String(zone.label);
     el.onclick = (e) => { e.stopPropagation(); onTap(); };
     return el;
   }
 
+  function clusterSize(zoneCount) {
+    return Math.min(28 + Math.floor(zoneCount / 4) * 4, 44);
+  }
+
   function clusterMarkerElement(features, onTap) {
     const zones = features.map(f => f.properties.zone);
-    const forecastZones = zones.filter((zone) => zone.hasForecast);
-    const freeCount = forecastZones.length
-      ? forecastZones.reduce(
-          (sum, zone) => sum + Number(zone.freeCount ?? 0),
-          0
-        )
-      : null;
+    const freeCount = zones.reduce(
+      (sum, zone) =>
+        sum + (zone.isActive ? Math.max(0, Number(zone.freeCount ?? 0)) : 0),
+      0
+    );
     const el = document.createElement('div');
     el.className = 'parktrack-cluster';
-    const opacity = Math.max(...zones.map(zone => Number(zone.opacity ?? 1)));
-    const color = freeCount === null
-      ? '#757575'
-      : freeCount > 0
-        ? (zones.find(zone => Number(zone.freeCount ?? 0) > 0)?.color || '#2e7d32')
-        : '#d32f2f';
-    el.style.cssText = `position:absolute;left:-16px;top:-16px;width:32px;height:32px;box-sizing:border-box;border:3px solid rgba(255,255,255,.82);border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;text-align:center;white-space:pre-line;color:#fff;font:700 10px/1.2 Roboto,Arial,sans-serif;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.4);opacity:${opacity};z-index:2050`;
-    el.textContent =
-      freeCount === null
-        ? String(features.length)
-        : String(freeCount);
+    const opacity = Math.max(
+      ...zones.map(zone => Number(zone.markerOpacity ?? 1))
+    );
+    const color = freeCount === 0
+      ? zones[0].clusterFull
+      : freeCount <= 2
+        ? zones[0].clusterOne
+        : zones[0].clusterFree;
+    const size = clusterSize(zones.length);
+    const fontSize = size >= 38 ? 13 : 11;
+    el.style.cssText = `position:absolute;left:0;top:0;transform:translate(-50%,-50%);width:${size}px;height:${size}px;box-sizing:border-box;border:0;border-radius:9999px;background:${color};display:flex;align-items:center;justify-content:center;text-align:center;color:${zones[0].markerTextColor};font:600 ${fontSize}px/1 Roboto,Arial,sans-serif;cursor:pointer;box-shadow:0 4px 6px -1px rgba(0,0,0,.1),0 2px 4px -2px rgba(0,0,0,.1),0 0 0 2px rgba(255,255,255,.7);opacity:${opacity};z-index:2100`;
+    el.textContent = String(freeCount);
     el.onclick = (e) => { e.stopPropagation(); onTap(); };
     return el;
+  }
+
+  function worldPixel(coordinates, zoom) {
+    const longitude = coordinates[0];
+    const latitude = Math.max(-85.05112878, Math.min(85.05112878, coordinates[1]));
+    const scale = 256 * Math.pow(2, zoom);
+    const sinLatitude = Math.sin(latitude * Math.PI / 180);
+    return [
+      ((longitude + 180) / 360) * scale,
+      (0.5 -
+        Math.log((1 + sinLatitude) / (1 - sinLatitude)) /
+          (4 * Math.PI)) * scale,
+    ];
+  }
+
+  function clusterComponentCount(features, zoom, radius = 22) {
+    const parents = features.map((_, index) => index);
+    const root = (index) => {
+      while (parents[index] !== index) {
+        parents[index] = parents[parents[index]];
+        index = parents[index];
+      }
+      return index;
+    };
+    const pixels = features.map(feature =>
+      worldPixel(feature.geometry.coordinates, zoom)
+    );
+    for (let left = 0; left < pixels.length; left++) {
+      for (let right = left + 1; right < pixels.length; right++) {
+        const dx = pixels[left][0] - pixels[right][0];
+        const dy = pixels[left][1] - pixels[right][1];
+        if (Math.hypot(dx, dy) <= radius) {
+          const leftRoot = root(left);
+          const rightRoot = root(right);
+          if (leftRoot !== rightRoot) parents[rightRoot] = leftRoot;
+        }
+      }
+    }
+    return new Set(features.map((_, index) => root(index))).size;
+  }
+
+  function clusterExpansionZoom(features, currentZoom) {
+    let zoom = Math.ceil((currentZoom + 0.5) * 2) / 2;
+    while (zoom < 21 && clusterComponentCount(features, zoom) < 2) {
+      zoom += 0.5;
+    }
+    return Math.min(21, Math.max(currentZoom + 0.5, zoom));
+  }
+
+  function zoneFeatureStyle(zone) {
+    const isLine = zone.type === 'line' || zone.points.length < 3;
+    return {
+      stroke: [{
+        color: zone.stroke,
+        width: zone.active ? (isLine ? 8 : 3) : (isLine ? 6 : 1),
+      }],
+      fill: isLine ? undefined : zone.fill,
+    };
   }
 
   function render(entry, state) {
@@ -350,11 +415,13 @@
     const zones = state.zones || [];
     const { YMapFeature, YMapMarker } = renderingApi;
 
-    const zoneSignature = JSON.stringify(zones);
-    if (zoneSignature !== entry.zoneSignature) {
-      entry.zoneSignature = zoneSignature;
-      clearObjectGroup(entry, 'zoneObjects');
-
+    const zoneGeometrySignature = JSON.stringify(
+      zones.map(zone => [zone.id, zone.type, zone.points])
+    );
+    if (zoneGeometrySignature !== entry.zoneGeometrySignature) {
+      entry.zoneGeometrySignature = zoneGeometrySignature;
+      clearObjectGroup(entry, 'zoneGeometryObjects');
+      entry.zoneFeatures.clear();
       for (const zone of zones) {
         if (!zone.points || zone.points.length < 2) continue;
         const isLine = zone.type === 'line' || zone.points.length < 3;
@@ -362,23 +429,49 @@
           ? parkingLinePoints(zone.points)
           : zone.points;
         const coords = geometryPoints.map(p => [p[1], p[0]]);
-        const stroke = [{
-          color: zone.color,
-          width: zone.active ? (isLine ? 12 : 4) : (isLine ? 6 : 2),
-        }];
-        addObject(entry, new YMapFeature({
+        const feature = new YMapFeature({
           geometry: isLine
             ? { type: 'LineString', coordinates: coords }
             : { type: 'Polygon', coordinates: [coords] },
-          style: {
-            stroke,
-            fill: isLine ? undefined : `${zone.color}80`,
-            opacity: zone.opacity ?? 1,
-          },
-          onClick: () => entry.onZoneTap(zone.id)
-        }), 'zoneObjects');
+          style: zoneFeatureStyle(zone),
+          onClick: () => {
+            entry.zoneTapAt = performance.now();
+            entry.onZoneTap(zone.id);
+          }
+        });
+        entry.zoneFeatures.set(zone.id, feature);
+        addObject(entry, feature, 'zoneGeometryObjects');
       }
+    }
 
+    const zoneStyleSignature = JSON.stringify(
+      zones.map(zone => [zone.id, zone.fill, zone.stroke, zone.active])
+    );
+    if (zoneStyleSignature !== entry.zoneStyleSignature) {
+      entry.zoneStyleSignature = zoneStyleSignature;
+      for (const zone of zones) {
+        entry.zoneFeatures.get(zone.id)?.update({
+          style: zoneFeatureStyle(zone)
+        });
+      }
+    }
+
+    const zoneMarkerSignature = JSON.stringify(
+      zones.map(zone => [
+        zone.id,
+        zone.center,
+        zone.freeCount,
+        zone.isActive,
+        zone.markerOpacity,
+        zone.stroke,
+        zone.markerTextColor,
+        zone.active,
+        zone.candidate,
+      ])
+    );
+    if (zoneMarkerSignature !== entry.zoneMarkerSignature) {
+      entry.zoneMarkerSignature = zoneMarkerSignature;
+      clearObjectGroup(entry, 'zoneMarkerObjects');
       if (clusterModule && zones.length >= 2) {
         const features = zones.map(zone => ({
           type: 'Feature', id: String(zone.id),
@@ -389,30 +482,36 @@
           properties: { zone }
         }));
         addObject(entry, new clusterModule.YMapClusterer({
-          method: clusterModule.clusterByGrid({ gridSize: 64 }),
+          method: clusterModule.clusterByGrid({ gridSize: 22 }),
           features,
           marker: (feature) => new YMapMarker(
             { coordinates: feature.geometry.coordinates },
             parkingMarkerElement(
               feature.properties.zone,
-              () => entry.onZoneTap(feature.properties.zone.id)
+              () => {
+                entry.zoneTapAt = performance.now();
+                entry.onZoneTap(feature.properties.zone.id);
+              }
             )
           ),
           cluster: (coordinates, clusterFeatures) => new YMapMarker(
             { coordinates },
             clusterMarkerElement(clusterFeatures, () => entry.map.setLocation({
               center: coordinates,
-              zoom: Math.min(entry.map.zoom + 2, 21),
+              zoom: clusterExpansionZoom(clusterFeatures, entry.map.zoom),
               duration: 300,
             }))
           )
-        }), 'zoneObjects');
+        }), 'zoneMarkerObjects');
       } else {
         for (const zone of zones) {
           addObject(entry, new YMapMarker(
             { coordinates: [zone.center[1], zone.center[0]] },
-            parkingMarkerElement(zone, () => entry.onZoneTap(zone.id))
-          ), 'zoneObjects');
+            parkingMarkerElement(zone, () => {
+              entry.zoneTapAt = performance.now();
+              entry.onZoneTap(zone.id);
+            })
+          ), 'zoneMarkerObjects');
         }
       }
     }
@@ -450,8 +549,8 @@
       if (state.user) {
         const el = document.createElement('div');
         const angle = Number(state.user[2] || 0);
-        el.style.cssText = 'position:absolute;left:-16px;top:-16px;width:32px;height:32px;z-index:2300';
-        el.innerHTML = `<svg viewBox="0 0 64 64" width="32" height="32" style="transform-origin:50% 50%;transform:rotate(${angle}deg);filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))"><path d="M32 2 L42 28 Q32 23 22 28 Z" fill="#e53935" stroke="#fff" stroke-width="5" stroke-linejoin="round"/><circle cx="32" cy="32" r="15" fill="#fff"/><circle cx="32" cy="32" r="11" fill="#e53935"/></svg>`;
+        el.style.cssText = 'position:absolute;left:-12px;top:-12px;width:24px;height:24px;z-index:2300';
+        el.innerHTML = `<svg viewBox="0 0 48 48" width="24" height="24" style="transform-origin:50% 50%;transform:rotate(${angle}deg);filter:drop-shadow(0 1px 1px rgba(0,0,0,.28))"><path d="M24 3 L29.3 18.7 Q24 16.8 18.7 18.7 Z" fill="#e53935" stroke="#fff" stroke-width="3" stroke-linejoin="round"/><circle cx="24" cy="24" r="10" fill="#fff"/><circle cx="24" cy="24" r="7" fill="#e53935"/></svg>`;
         addObject(entry, new YMapMarker({
           coordinates: [state.user[1], state.user[0]]
         }, el), 'positionObjects');
@@ -483,6 +582,11 @@
       entry.map.addChild(new api.YMapDefaultFeaturesLayer());
       entry.map.addChild(new api.YMapListener({
         onUpdate: () => scheduleCameraEmit(entry),
+        onClick: () => {
+          if (performance.now() - (entry.zoneTapAt || 0) > 80) {
+            entry.onMapTap();
+          }
+        },
       }));
       if (entry.latestState) render(entry, entry.latestState);
 
@@ -503,13 +607,15 @@
   }
 
   window.parkTrackYandexMaps = {
-    create(element, locale, theme, onCamera, onZoneTap, onError) {
+    create(element, locale, theme, onCamera, onZoneTap, onMapTap, onError) {
       const elementId = element.id;
       const entry = {
         element, locale: normalizeLocale(locale), theme,
-        onCamera, onZoneTap, onError,
+        onCamera, onZoneTap, onMapTap, onError,
         map: null,
-        zoneObjects: [],
+        zoneGeometryObjects: [],
+        zoneMarkerObjects: [],
+        zoneFeatures: new Map(),
         routeObjects: [],
         positionObjects: [],
         center: [...defaultCenter],
@@ -517,6 +623,7 @@
         pendingPromoRoots: new Set(),
         cameraTimer: null,
         promoFrame: null,
+        zoneTapAt: 0,
         latestStateJson: null,
         destroyed: false,
       };
@@ -557,12 +664,28 @@
         entry.map.setLocation({ azimuth: 0, tilt: 0, duration: 300 });
       }
     },
-    fitBounds(id, south, west, north, east) {
+    fitBounds(id, south, west, north, east, top, right, bottom, left) {
       const entry = entries.get(id);
       if (entry && entry.map) {
+        entry.map.update({
+          margin: [top || 0, right || 0, bottom || 0, left || 0]
+        });
         entry.map.setLocation({
           bounds: [[west, south], [east, north]],
           duration: 600
+        });
+      }
+    },
+    focus(id, lat, lon, zoom, top, right, bottom, left) {
+      const entry = entries.get(id);
+      if (entry && entry.map) {
+        entry.map.update({
+          margin: [top || 0, right || 0, bottom || 0, left || 0]
+        });
+        entry.map.setLocation({
+          center: [lon, lat],
+          zoom,
+          duration: 300
         });
       }
     },

@@ -12,6 +12,7 @@ class WebMapView extends StatelessWidget {
     required this.candidateIds,
     this.selectedZoneId,
     required this.onZoneTap,
+    required this.onMapTap,
     required this.onCameraChanged,
     required this.onMapReady,
     required this.onError,
@@ -32,6 +33,7 @@ class WebMapView extends StatelessWidget {
   final Set<int> candidateIds;
   final int? selectedZoneId;
   final void Function(Zone zone) onZoneTap;
+  final VoidCallback onMapTap;
   final void Function(WebMapCamera camera) onCameraChanged;
   final VoidCallback onMapReady;
   final void Function(Object error) onError;

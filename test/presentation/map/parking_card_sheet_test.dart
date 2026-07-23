@@ -14,6 +14,7 @@ void main() {
     var previous = false;
     var next = false;
     var route = false;
+    var external = false;
     const zone = Zone(
       zoneId: 42,
       zoneType: ZoneType.standard,
@@ -54,6 +55,7 @@ void main() {
                   onPrevious: () => previous = true,
                   onNext: () => next = true,
                   onBuildRoute: () => route = true,
+                  onOpenExternal: () => external = true,
                   onClose: () {},
                 ),
               ),
@@ -63,12 +65,12 @@ void main() {
       ),
     );
 
-    expect(find.text('Parking'), findsOneWidget);
     expect(find.text('Parking #42'), findsOneWidget);
     expect(find.text('5 spaces'), findsOneWidget);
     expect(find.text('/ 10'), findsOneWidget);
     expect(find.text('Private'), findsOneWidget);
     expect(find.text('Accessible parking'), findsOneWidget);
+    expect(find.text('Confidence: 90%'), findsOneWidget);
     expect(find.text('Forecast: 4 spaces by 13:23'), findsOneWidget);
     expect(
       find.descendant(
@@ -85,11 +87,14 @@ void main() {
     await tester.tap(find.text('Next'));
     await tester.ensureVisible(find.text('Build Route'));
     await tester.tap(find.text('Build Route'));
+    await tester.ensureVisible(find.text('Open in Yandex Maps'));
+    await tester.tap(find.text('Open in Yandex Maps'));
 
     expect(back, isTrue);
     expect(previous, isTrue);
     expect(next, isTrue);
     expect(route, isTrue);
+    expect(external, isTrue);
     expect(tester.takeException(), isNull);
   });
 }

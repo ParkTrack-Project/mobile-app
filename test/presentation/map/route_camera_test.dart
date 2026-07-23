@@ -45,6 +45,20 @@ void main() {
     expect(rect.bottomRight.x, lessThan(320));
   });
 
+  test('scales native focus rect to physical map pixels', () {
+    final rect = routeFocusRect(
+      viewport: const Size(360, 800),
+      safePadding: const EdgeInsets.only(top: 24, bottom: 16),
+      bottomPanelHeight: 300,
+      devicePixelRatio: 3,
+    );
+
+    expect(rect.topLeft.x, 96);
+    expect(rect.topLeft.y, 408);
+    expect(rect.bottomRight.x, 984);
+    expect(rect.bottomRight.y, 1356);
+  });
+
   test('selected parking bounds preserve enough local map context', () {
     const tiny = RouteMapBounds(
       south: 61.70000,
@@ -54,10 +68,23 @@ void main() {
     );
     final contextual = ensureLocalContextBounds(tiny);
 
-    expect(contextual.north - contextual.south, closeTo(0.0025, 1e-10));
-    expect(contextual.east - contextual.west, closeTo(0.004, 1e-10));
+    expect(contextual.north - contextual.south, closeTo(0.0012, 1e-10));
+    expect(contextual.east - contextual.west, closeTo(0.002, 1e-10));
     expect((contextual.north + contextual.south) / 2, closeTo(61.70005, 1e-8));
     expect((contextual.east + contextual.west) / 2, closeTo(34.20005, 1e-8));
+  });
+
+  test('selected parking bounds keep landmarks around larger geometry', () {
+    const bounds = RouteMapBounds(
+      south: 61.700,
+      west: 34.200,
+      north: 61.704,
+      east: 34.206,
+    );
+    final contextual = ensureLocalContextBounds(bounds);
+
+    expect(contextual.north - contextual.south, closeTo(0.0054, 1e-10));
+    expect(contextual.east - contextual.west, closeTo(0.0081, 1e-10));
   });
 
   test('rejects an incomplete or invalid route', () {

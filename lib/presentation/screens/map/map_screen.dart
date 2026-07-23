@@ -71,8 +71,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   Map<int, Uint8List> _zoneLabelCache = {};
   Map<int, Zone> _zonesById = {};
-  final Map<({int? count, int color}), Uint8List> _zoneBitmapCache = {};
-  Map<int, ({int? count, int color})> _zoneStylesById = {};
+  final Map<({int? count, int color, int textColor}), Uint8List>
+  _zoneBitmapCache = {};
+  Map<int, ({int? count, int color, int textColor})> _zoneStylesById = {};
   int _bitmapGeneration = 0;
   List<Point>? _routePolyline;
   double _routeDurationSeconds = 0;
@@ -157,12 +158,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     List<Zone> zones, {
     Brightness brightness = Brightness.light,
   }) async {
-    final styles = <int, ({int? count, int color})>{};
+    final styles = <int, ({int? count, int color, int textColor})>{};
+    final textColor = brightness == Brightness.dark
+        ? const Color(0xFF09090B)
+        : Colors.white;
     for (final zone in zones) {
       final color = zoneColor(zone, brightness: brightness);
       styles[zone.zoneId] = (
-        count: color == AppColors.parkingUnknown ? null : zone.freeCount,
+        count: zone.freeCount,
         color: color.toARGB32(),
+        textColor: textColor.toARGB32(),
       );
     }
     final same =
@@ -174,7 +179,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final generation = ++_bitmapGeneration;
     final newCache = <int, Uint8List>{};
     final newById = <int, Zone>{};
-    final usedStyles = <({int? count, int color})>{};
+    final usedStyles = <({int? count, int color, int textColor})>{};
     for (final zone in zones) {
       if (_bitmapGeneration != generation) return;
       if (zone.geometry.length < 3) continue;
@@ -182,7 +187,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       usedStyles.add(style);
       var bitmap = _zoneBitmapCache[style];
       if (bitmap == null) {
-        bitmap = await buildCountBitmap(style.count, Color(style.color));
+        bitmap = await buildCountBitmap(
+          style.count,
+          Color(style.color),
+          textColor: Color(style.textColor),
+        );
         if (_bitmapGeneration != generation) return;
         _zoneBitmapCache[style] = bitmap;
       }
@@ -202,27 +211,27 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   Future<Uint8List> _buildUserLocationBitmap() async {
-    const size = 64.0;
+    const size = 48.0;
     const center = Offset(size / 2, size / 2);
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
 
     final direction = Path()
-      ..moveTo(size / 2, 2)
-      ..lineTo(size * 0.66, size * 0.43)
-      ..quadraticBezierTo(size / 2, size * 0.36, size * 0.34, size * 0.43)
+      ..moveTo(size / 2, 3)
+      ..lineTo(size * 0.61, size * 0.39)
+      ..quadraticBezierTo(size / 2, size * 0.35, size * 0.39, size * 0.39)
       ..close();
     canvas.drawPath(
       direction,
       Paint()
         ..color = Colors.white
         ..style = ui.PaintingStyle.stroke
-        ..strokeWidth = 5
+        ..strokeWidth = 3
         ..strokeJoin = ui.StrokeJoin.round,
     );
     canvas.drawPath(direction, Paint()..color = const Color(0xFFE53935));
-    canvas.drawCircle(center, 15, Paint()..color = Colors.white);
-    canvas.drawCircle(center, 11, Paint()..color = const Color(0xFFE53935));
+    canvas.drawCircle(center, 10, Paint()..color = Colors.white);
+    canvas.drawCircle(center, 7, Paint()..color = const Color(0xFFE53935));
     final picture = recorder.endRecording();
     final image = await picture.toImage(size.toInt(), size.toInt());
     final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
@@ -303,6 +312,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     _openParkingDetails(zone);
   }
 
+  void _onMapBackgroundTap() {
+    final search = ref.read(parkingSearchProvider);
+    if (search.view == ParkingSearchView.details) {
+      ref.read(parkingSearchProvider.notifier).backToResults();
+      return;
+    }
+    if (_standaloneSelectedZone != null) {
+      setState(() => _standaloneSelectedZone = null);
+    }
+  }
+
   Future<void> _openParkingDetails(Zone zone) async {
     setState(() => _standaloneSelectedZone = zone);
     await _focusZone(zone);
@@ -357,6 +377,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Future<void> _focusZone(Zone zone) async {
     if (zone.geometry.isEmpty) return;
     final target = centroid(zone.geometry);
+    final isolationZoom = parkingIsolationZoom(
+      target,
+      _zonesById.values
+          .where((other) => other.zoneId != zone.zoneId)
+          .where((other) => other.geometry.isNotEmpty)
+          .map((other) => centroid(other.geometry)),
+    );
     final points = zone.geometry.length >= 2
         ? zone.geometry
         : [
@@ -374,22 +401,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         ? null
         : ensureLocalContextBounds(rawBounds);
     if (kIsWeb) {
-      if (bounds != null) {
-        final padded = padRouteBoundsForPanel(
-          bounds,
-          horizontalFraction: 0.25,
-          topFraction: 0.2,
-          bottomFraction: 0.9,
-        );
-        _webMapController.fitBounds(
-          padded.south,
-          padded.west,
-          padded.north,
-          padded.east,
-        );
-      } else {
-        _webMapController.move(target.latitude, target.longitude, 17);
-      }
+      _webMapController.focus(
+        target.latitude,
+        target.longitude,
+        isolationZoom,
+        top: 88,
+        right: 24,
+        bottom: _detailsPanelHeight + 20,
+        left: 24,
+      );
       return;
     }
     final mediaQuery = MediaQuery.of(context);
@@ -404,6 +424,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 viewport: mediaQuery.size,
                 safePadding: mediaQuery.padding,
                 bottomPanelHeight: _detailsPanelHeight,
+                devicePixelRatio: mediaQuery.devicePixelRatio,
               ),
             ),
       animation: const MapAnimation(duration: 0.65),
@@ -455,6 +476,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final controller = _mapController;
     if (controller == null) return;
     final camera = await controller.getCameraPosition();
+    final targetZoom = parkingClusterExpansionZoom(
+      cluster.placemarks.map((placemark) => placemark.point).toList(),
+      camera.zoom,
+    );
     await controller.moveCamera(
       CameraUpdate.newCameraPosition(
         CameraPosition(
@@ -462,7 +487,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             latitude: (latMin + latMax) / 2,
             longitude: (lonMin + lonMax) / 2,
           ),
-          zoom: math.min(21, camera.zoom + 2),
+          zoom: targetZoom,
           azimuth: camera.azimuth,
           tilt: camera.tilt,
         ),
@@ -885,16 +910,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final bounds = calculateRouteBounds(points);
     if (bounds == null) return;
     if (kIsWeb) {
-      final padded = padRouteBoundsForPanel(
-        bounds,
-        bottomFraction: 1.15,
-        topFraction: 0.2,
-      );
       _webMapController.fitBounds(
-        padded.south,
-        padded.west,
-        padded.north,
-        padded.east,
+        bounds.south,
+        bounds.west,
+        bounds.north,
+        bounds.east,
+        top: 88,
+        right: 24,
+        bottom: _searchPanelHeight + 20,
+        left: 24,
       );
       return;
     }
@@ -906,6 +930,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           viewport: mediaQuery.size,
           safePadding: mediaQuery.padding,
           bottomPanelHeight: _searchPanelHeight,
+          devicePixelRatio: mediaQuery.devicePixelRatio,
         ),
       ),
       animation: const MapAnimation(duration: 0.8),
@@ -916,17 +941,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final bounds = calculateRouteBounds(polyline);
     if (bounds == null) return;
     if (kIsWeb) {
-      final padded = padRouteBoundsForPanel(
-        bounds,
-        bottomFraction: 1.25,
-        topFraction: 0.18,
-        horizontalFraction: 0.18,
-      );
       _webMapController.fitBounds(
-        padded.south,
-        padded.west,
-        padded.north,
-        padded.east,
+        bounds.south,
+        bounds.west,
+        bounds.north,
+        bounds.east,
+        top: 112,
+        right: 32,
+        bottom: _routePreviewPanelHeight + 32,
+        left: 32,
       );
       return;
     }
@@ -938,6 +961,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           viewport: mediaQuery.size,
           safePadding: mediaQuery.padding,
           bottomPanelHeight: _routePreviewPanelHeight,
+          devicePixelRatio: mediaQuery.devicePixelRatio,
         ),
       ),
       animation: const MapAnimation(duration: 0.8),
@@ -1252,7 +1276,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     });
 
     ref.listen(navigationProvider, (prev, nav) {
-      if (nav == null) return;
+      if (nav == null) {
+        if (prev != null && mounted) {
+          setState(() {
+            _routePolyline = null;
+            _routeDurationSeconds = 0;
+            _routeDistanceMeters = 0;
+            _activeRouteZoneId = null;
+          });
+        }
+        return;
+      }
       if (prev?.route != nav.route) {
         setState(() => _routePolyline = nav.route);
       }
@@ -1534,6 +1568,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         !routePreviewVisible &&
         parkingSearchState.view == ParkingSearchView.hidden &&
         !standaloneDetailsVisible;
+    final parkingFabVisible =
+        destination == null &&
+        !isNavigating &&
+        !routePreviewVisible &&
+        parkingSearchState.view == ParkingSearchView.hidden &&
+        !standaloneDetailsVisible;
     final double mapPanelHeight = searchResultsVisible
         ? _searchPanelHeight
         : searchDetailsVisible || standaloneDetailsVisible
@@ -1545,7 +1585,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         : destinationCardVisible
         ? 168.0
         : 0.0;
-    final showZoomControls = viewportHeight - mapPanelHeight >= 420;
+    final mapControlsBottom =
+        mapPanelHeight + (parkingFabVisible ? 82.0 : 0.0) + 12;
+    final showZoomControls = viewportHeight - mapControlsBottom >= 280;
     final showCompass = _currentAzimuth.abs() > 1.0;
 
     return Scaffold(
@@ -1559,6 +1601,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 candidateIds: candidateIds,
                 selectedZoneId: selectedMarkerZoneId,
                 onZoneTap: _onZoneTap,
+                onMapTap: _onMapBackgroundTap,
                 route: _routePolyline,
                 activeRouteZoneId: _activeRouteZoneId,
                 userLatitude: isNavigating ? null : _userPosition?.latitude,
@@ -1614,6 +1657,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   _fetchZones();
                 },
                 onCameraPositionChanged: _onCameraPositionChanged,
+                onMapTap: (_) => _onMapBackgroundTap(),
               ),
             if (searchResultsVisible)
               Positioned.fill(
@@ -1621,6 +1665,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   candidates: parkingSearchState.candidates,
                   zones: zones,
                   hasDestination: destination != null,
+                  originLatitude: _userPosition?.latitude,
+                  originLongitude: _userPosition?.longitude,
                   panelState: resultsPanelState,
                   lastViewedZoneId: parkingSearchState.lastViewedZoneId,
                   initialScrollOffset: parkingSearchState.scrollOffset,
@@ -1679,6 +1725,19 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                             : null,
                         onBuildRoute: () =>
                             _buildRouteForZone(selectedDetailZone.zoneId),
+                        onOpenExternal: selectedDetailZone.geometry.isEmpty
+                            ? null
+                            : () {
+                                final point = centroid(
+                                  selectedDetailZone.geometry,
+                                );
+                                _openExternalMap(
+                                  point.latitude,
+                                  point.longitude,
+                                );
+                              },
+                        originLatitude: _userPosition?.latitude,
+                        originLongitude: _userPosition?.longitude,
                         onClose: ref.read(routingProvider.notifier).reset,
                       ),
                     ),
@@ -1712,6 +1771,20 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         zone: _standaloneSelectedZone!,
                         onBuildRoute: () =>
                             _buildRouteForZone(_standaloneSelectedZone!.zoneId),
+                        onOpenExternal:
+                            _standaloneSelectedZone!.geometry.isEmpty
+                            ? null
+                            : () {
+                                final point = centroid(
+                                  _standaloneSelectedZone!.geometry,
+                                );
+                                _openExternalMap(
+                                  point.latitude,
+                                  point.longitude,
+                                );
+                              },
+                        originLatitude: _userPosition?.latitude,
+                        originLongitude: _userPosition?.longitude,
                         onClose: () =>
                             setState(() => _standaloneSelectedZone = null),
                       ),
@@ -1826,11 +1899,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   ),
                 ),
               ),
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutCubic,
+            Positioned(
               right: 12,
-              bottom: mapPanelHeight + 12,
+              bottom: mapControlsBottom,
               child: PointerInterceptor(
                 intercepting: kIsWeb,
                 child: Column(
@@ -1911,11 +1982,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               ),
             ),
             // ─── Селектор времени: всегда левый край ──────────────
-            if (destination == null &&
-                !isNavigating &&
-                !routePreviewVisible &&
-                parkingSearchState.view == ParkingSearchView.hidden &&
-                !standaloneDetailsVisible)
+            if (parkingFabVisible)
               Positioned(
                 bottom: bottomInset + 20,
                 left: 16,
@@ -1925,11 +1992,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 ),
               ),
             // ─── FAB: всегда правый край ───────────────────────────
-            if (destination == null &&
-                !isNavigating &&
-                !routePreviewVisible &&
-                parkingSearchState.view == ParkingSearchView.hidden &&
-                !standaloneDetailsVisible)
+            if (parkingFabVisible)
               Positioned(
                 bottom: bottomInset + 20,
                 right: 16,
@@ -2216,13 +2279,17 @@ class _DestinationCard extends ConsumerWidget {
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: FilledButton.tonal(
+                child: FilledButton.tonalIcon(
                   onPressed: onNavigate,
+                  icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                  label: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(s.openInYandexMaps),
+                  ),
                   style: FilledButton.styleFrom(
                     textStyle: const TextStyle(fontSize: 13),
                     padding: const EdgeInsets.symmetric(vertical: 10),
                   ),
-                  child: Text(s.openInYandexMaps),
                 ),
               ),
             ],
@@ -2370,21 +2437,18 @@ class _ZoomButton extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => Tooltip(
-    message: tooltip,
-    child: Semantics(
-      button: true,
-      label: tooltip,
-      child: InkWell(
-        onTap: onTap,
-        child: SizedBox(
-          width: 52,
-          height: 48,
-          child: Icon(
-            icon,
-            size: 27,
-            color: Theme.of(context).colorScheme.onSurface,
-          ),
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    label: tooltip,
+    child: InkWell(
+      onTap: onTap,
+      child: SizedBox(
+        width: 52,
+        height: 48,
+        child: Icon(
+          icon,
+          size: 27,
+          color: Theme.of(context).colorScheme.onSurface,
         ),
       ),
     ),
