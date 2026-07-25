@@ -1,5 +1,6 @@
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:yandex_mapkit/yandex_mapkit.dart';
@@ -15,6 +16,11 @@ import 'parking_result_formatter.dart';
 enum CandidateAction { go, openExternal }
 
 enum ParkingResultsPanelState { loading, results, error }
+
+const _resultsHeaderHeight = 114.0;
+const _androidCandidateAddressFontSize = 12.0;
+const _androidCandidateAddressMaxLines = 3;
+const _androidCandidateAddressLineHeight = 1.15;
 
 class CandidatesSheet extends ConsumerStatefulWidget {
   const CandidatesSheet({
@@ -70,6 +76,19 @@ class _CandidatesSheetState extends ConsumerState<CandidatesSheet> {
     widget.onPanelHeightChanged?.call(next);
   }
 
+  void _updatePanelHeightFromDrag({
+    required double deltaY,
+    required double fallbackHeight,
+    required double minHeight,
+    required double maxHeight,
+  }) {
+    _setPanelHeight(
+      (_panelHeight ?? fallbackHeight) - deltaY * 1.5,
+      minHeight,
+      maxHeight,
+    );
+  }
+
   @override
   void dispose() {
     if (_scrollController.hasClients) {
@@ -97,7 +116,7 @@ class _CandidatesSheetState extends ConsumerState<CandidatesSheet> {
                 240.0,
                 constraints.maxHeight,
               );
-        final minHeight = mathMin(108.0, maxHeight);
+        final minHeight = mathMin(_resultsHeaderHeight + 56.0, maxHeight);
         final initialHeight = (constraints.maxHeight * 0.54).clamp(
           minHeight,
           maxHeight,
@@ -135,57 +154,69 @@ class _CandidatesSheetState extends ConsumerState<CandidatesSheet> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       GestureDetector(
-                        key: const Key('parking_results_drag_handle'),
+                        key: const Key('parking_results_drag_header'),
                         behavior: HitTestBehavior.opaque,
-                        onVerticalDragUpdate: (details) => _setPanelHeight(
-                          panelHeight - details.delta.dy,
-                          minHeight,
-                          maxHeight,
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(0, 10, 0, 6),
-                          child: Center(
-                            child: Container(
-                              width: 42,
-                              height: 4,
-                              decoration: BoxDecoration(
-                                color: colors.outlineVariant,
-                                borderRadius: BorderRadius.circular(2),
-                              ),
+                        onVerticalDragUpdate: (details) =>
+                            _updatePanelHeightFromDrag(
+                              deltaY: details.delta.dy,
+                              fallbackHeight: panelHeight,
+                              minHeight: minHeight,
+                              maxHeight: maxHeight,
                             ),
-                          ),
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 4, 12, 10),
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    s.parkingNearby,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleLarge
-                                        ?.copyWith(fontWeight: FontWeight.w700),
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(0, 10, 0, 6),
+                              child: Center(
+                                child: Container(
+                                  key: const Key('parking_results_drag_handle'),
+                                  width: 42,
+                                  height: 4,
+                                  decoration: BoxDecoration(
+                                    color: colors.outlineVariant,
+                                    borderRadius: BorderRadius.circular(2),
                                   ),
                                 ),
-                                IconButton(
-                                  tooltip: s.close,
-                                  visualDensity: VisualDensity.compact,
-                                  onPressed: widget.onClose,
-                                  icon: const Icon(Icons.close),
-                                ),
-                              ],
+                              ),
                             ),
-                            Text(
-                              s.rankingPrinciple,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(color: colors.onSurfaceVariant),
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(20, 4, 12, 10),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          s.parkingNearby,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .titleLarge
+                                              ?.copyWith(
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                        ),
+                                      ),
+                                      IconButton(
+                                        tooltip: s.close,
+                                        visualDensity: VisualDensity.compact,
+                                        onPressed: widget.onClose,
+                                        icon: const Icon(Icons.close),
+                                      ),
+                                    ],
+                                  ),
+                                  Text(
+                                    s.rankingPrinciple,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Theme.of(context).textTheme.bodySmall
+                                        ?.copyWith(
+                                          color: colors.onSurfaceVariant,
+                                        ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ],
                         ),
@@ -226,42 +257,63 @@ class _CandidatesSheetState extends ConsumerState<CandidatesSheet> {
                                 }
                                 return false;
                               },
-                              child: ListView.separated(
-                                key: const Key('parking_search_results'),
-                                controller: _scrollController,
-                                padding: const EdgeInsets.only(bottom: 16),
-                                itemCount: widget.candidates.length,
-                                separatorBuilder: (_, _) => Divider(
-                                  height: 1,
-                                  indent: 20,
-                                  endIndent: 20,
-                                  color: colors.outlineVariant.withValues(
-                                    alpha: 0.6,
-                                  ),
-                                ),
-                                itemBuilder: (context, index) {
-                                  final candidate = widget.candidates[index];
-                                  return _CandidateTile(
-                                    key: Key(
-                                      'parking_candidate_${candidate.zoneId}',
+                              child: Builder(
+                                builder: (context) {
+                                  final hasLongDuration = widget.candidates.any(
+                                    (c) {
+                                      final text = formatParkingDuration(
+                                        c.durationFromOriginSeconds,
+                                        s,
+                                      );
+                                      return text?.contains(s.hourSign) ??
+                                          false;
+                                    },
+                                  );
+                                  final badgeWidth = hasLongDuration
+                                      ? 88.0
+                                      : 72.0;
+
+                                  return ListView.separated(
+                                    key: const Key('parking_search_results'),
+                                    controller: _scrollController,
+                                    padding: const EdgeInsets.only(bottom: 16),
+                                    itemCount: widget.candidates.length,
+                                    separatorBuilder: (_, _) => Divider(
+                                      height: 1,
+                                      indent: 20,
+                                      endIndent: 20,
+                                      color: colors.outlineVariant.withValues(
+                                        alpha: 0.6,
+                                      ),
                                     ),
-                                    candidate: candidate,
-                                    zone: zonesById[candidate.zoneId],
-                                    resultTier: resultTiers[index],
-                                    hasDestination: widget.hasDestination,
-                                    originLatitude: widget.originLatitude,
-                                    originLongitude: widget.originLongitude,
-                                    isLastViewed:
-                                        candidate.zoneId ==
-                                        widget.lastViewedZoneId,
-                                    s: s,
-                                    onTap: () =>
-                                        widget.onSelect(candidate.zoneId),
-                                    onAction: (action) => widget.onAction(
-                                      action,
-                                      candidate,
-                                      zonesById[candidate.zoneId],
-                                    ),
+                                    itemBuilder: (context, index) {
+                                      final candidate =
+                                          widget.candidates[index];
+
+                                      return _CandidateTile(
+                                        key: Key(
+                                          'parking_candidate_${candidate.zoneId}',
+                                        ),
+                                        candidate: candidate,
+                                        zone: zonesById[candidate.zoneId],
+                                        resultTier: resultTiers[index],
+                                        hasDestination: widget.hasDestination,
+                                        originLatitude: widget.originLatitude,
+                                        originLongitude: widget.originLongitude,
+                                        isLastViewed:
+                                            candidate.zoneId ==
+                                            widget.lastViewedZoneId,
+                                        s: s,
+                                        badgeWidth: badgeWidth,
+                                        onTap: () =>
+                                            widget.onSelect(candidate.zoneId),
+                                        onAction: (action) => widget.onAction(
+                                          action,
+                                          candidate,
+                                          zonesById[candidate.zoneId],
+                                        ),
+                                      );
+                                    },
                                   );
                                 },
                               ),
@@ -291,6 +343,7 @@ class _CandidateTile extends ConsumerWidget {
     required this.hasDestination,
     required this.isLastViewed,
     required this.s,
+    required this.badgeWidth,
     required this.onTap,
     required this.onAction,
     this.originLatitude,
@@ -305,6 +358,7 @@ class _CandidateTile extends ConsumerWidget {
   final double? originLongitude;
   final bool isLastViewed;
   final AppStrings s;
+  final double badgeWidth;
   final VoidCallback onTap;
   final ValueChanged<CandidateAction> onAction;
 
@@ -355,10 +409,14 @@ class _CandidateTile extends ConsumerWidget {
               longitude: centroid(zone!.geometry).longitude,
             )),
           );
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final useAndroidCandidateLayout =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
     final timeColor = switch (resultTier) {
-      ParkingResultTier.good => AppColors.primary,
+      ParkingResultTier.good =>
+        isDark ? const Color(0xFF81C784) : AppColors.primary,
       ParkingResultTier.average => const Color(0xFFB48409),
-      ParkingResultTier.poor => colors.error,
+      ParkingResultTier.poor => isDark ? const Color(0xFFF44336) : colors.error,
     };
 
     return InkWell(
@@ -372,44 +430,66 @@ class _CandidateTile extends ConsumerWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if ((hasDestination && destinationDistanceText != null) ||
-                (!hasDestination && durationText != null))
-              Container(
-                constraints: const BoxConstraints(minWidth: 58),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                decoration: BoxDecoration(
-                  color: timeColor.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      hasDestination ? destinationDistanceText! : durationText!,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: timeColor,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                      ),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if ((hasDestination && destinationDistanceText != null) ||
+                    (!hasDestination && durationText != null))
+                  Container(
+                    constraints: BoxConstraints(minWidth: badgeWidth),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 6,
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      hasDestination
-                          ? '${walkingText ?? ''} ${s.walkingTime}'.trim()
-                          : s.drivingTime,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: timeColor,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w600,
-                      ),
+                    decoration: BoxDecoration(
+                      color: timeColor.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                  ],
-                ),
-              ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if ((hasDestination &&
+                                destinationDistanceText != null) ||
+                            (!hasDestination && durationText != null))
+                          Text(
+                            hasDestination
+                                ? destinationDistanceText!
+                                : durationText!,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: timeColor,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        const SizedBox(height: 2),
+                        Text(
+                          hasDestination
+                              ? '${walkingText ?? ''} ${s.walkingTime}'.trim()
+                              : s.drivingTime,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: timeColor,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                if (useAndroidCandidateLayout && spacesText != null) ...[
+                  const SizedBox(height: 6),
+                  _AvailabilityBadge(
+                    key: Key('parking_candidate_spaces_${candidate.zoneId}'),
+                    text: spacesText,
+                    freeCount: displayedFreeCount,
+                  ),
+                ],
+              ],
+            ),
             if ((hasDestination && destinationDistanceText != null) ||
-                (!hasDestination && durationText != null))
+                (!hasDestination && durationText != null) ||
+                (useAndroidCandidateLayout && spacesText != null))
               const SizedBox(width: 10),
             Expanded(
               child: Column(
@@ -417,26 +497,61 @@ class _CandidateTile extends ConsumerWidget {
                 children: [
                   address.when(
                     data: (value) => Text(
-                      [
-                        '${s.parkingNumber}${candidate.zoneId}',
-                        if (value != null && value.trim().isNotEmpty) value,
-                      ].join(' · '),
-                      maxLines: 2,
+                      useAndroidCandidateLayout
+                          ? (value?.trim().isNotEmpty == true
+                                ? value!.trim()
+                                : '')
+                          : [
+                              '${s.parkingNumber}${candidate.zoneId}',
+                              if (value != null && value.trim().isNotEmpty)
+                                value.trim(),
+                            ].join(' · '),
+                      maxLines: useAndroidCandidateLayout
+                          ? _androidCandidateAddressMaxLines
+                          : 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
+                      softWrap: useAndroidCandidateLayout,
+                      style: TextStyle(
+                        fontSize: useAndroidCandidateLayout
+                            ? _androidCandidateAddressFontSize
+                            : 15,
+                        fontWeight: useAndroidCandidateLayout
+                            ? FontWeight.w500
+                            : FontWeight.w600,
+                        height: useAndroidCandidateLayout
+                            ? _androidCandidateAddressLineHeight
+                            : null,
                       ),
                     ),
                     loading: () => Text(
-                      '${s.parkingNumber}${candidate.zoneId} · ${s.addressLoading}',
-                      maxLines: 1,
+                      useAndroidCandidateLayout
+                          ? s.addressLoading
+                          : '${s.parkingNumber}${candidate.zoneId} · '
+                                '${s.addressLoading}',
+                      maxLines: useAndroidCandidateLayout
+                          ? _androidCandidateAddressMaxLines
+                          : 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: colors.onSurfaceVariant),
+                      softWrap: useAndroidCandidateLayout,
+                      style: TextStyle(
+                        fontSize: useAndroidCandidateLayout
+                            ? _androidCandidateAddressFontSize
+                            : null,
+                        color: colors.onSurfaceVariant,
+                      ),
                     ),
                     error: (_, _) => Text(
-                      '${s.parkingNumber}${candidate.zoneId}',
-                      style: const TextStyle(fontWeight: FontWeight.w600),
+                      useAndroidCandidateLayout
+                          ? ''
+                          : '${s.parkingNumber}${candidate.zoneId}',
+                      style: TextStyle(
+                        fontSize: useAndroidCandidateLayout
+                            ? _androidCandidateAddressFontSize
+                            : null,
+                        fontWeight: useAndroidCandidateLayout
+                            ? FontWeight.w500
+                            : FontWeight.w600,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 5),
@@ -445,12 +560,19 @@ class _CandidateTile extends ConsumerWidget {
                     runSpacing: 4,
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      if (spacesText != null)
+                      if (useAndroidCandidateLayout)
+                        _ParkingNumberBadge(
+                          key: Key(
+                            'parking_candidate_number_${candidate.zoneId}',
+                          ),
+                          zoneId: candidate.zoneId,
+                        ),
+                      if (!useAndroidCandidateLayout && spacesText != null)
                         _Fact(
                           icon: Icons.local_parking,
                           text: spacesText,
                           color: switch (displayedFreeCount) {
-                            null => colors.onSurfaceVariant,
+                            null => null,
                             <= 0 => colors.error,
                             1 => const Color(0xFFB48409),
                             _ => AppColors.primary,
@@ -583,6 +705,74 @@ class _PanelMessage extends StatelessWidget {
       ),
     ),
   );
+}
+
+class _ParkingNumberBadge extends StatelessWidget {
+  const _ParkingNumberBadge({super.key, required this.zoneId});
+
+  final int zoneId;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFDDF4FF),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        '№$zoneId',
+        style: const TextStyle(
+          color: Color(0xFF0866A8),
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+          height: 1,
+        ),
+      ),
+    );
+  }
+}
+
+class _AvailabilityBadge extends StatelessWidget {
+  const _AvailabilityBadge({
+    super.key,
+    required this.text,
+    required this.freeCount,
+  });
+
+  final String text;
+  final int? freeCount;
+
+  Color _textColor(ColorScheme colors) {
+    final count = freeCount;
+    if (count == null) return colors.onSurfaceVariant;
+    if (count <= 0) return colors.error;
+    if (count == 1) return const Color(0xFFB48409);
+    return AppColors.primary;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      constraints: const BoxConstraints(minWidth: 72),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F3F5),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: _textColor(colors),
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+          height: 1.1,
+        ),
+      ),
+    );
+  }
 }
 
 class _Fact extends StatelessWidget {

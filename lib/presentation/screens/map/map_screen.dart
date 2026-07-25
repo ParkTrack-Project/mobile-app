@@ -57,7 +57,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   double _currentAzimuth = 0;
   bool _isUserCentered = false;
   Uint8List? _destinationPinBytes;
-  Uint8List? _userLocationBytes;
+  Uint8List? _userLocationArrowBytes;
+  Uint8List? _userLocationPinBytes;
   Uint8List? _navArrowBytes;
 
   bool _parkingDetailsLoading = false;
@@ -81,6 +82,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   int? _activeRouteZoneId;
   DrivingSession? _drivingSession;
   bool _navBuilding = false;
+  bool _nativeUserLayerVisible = false;
 
   List<Zone>? _cachedMapZones;
   Set<int> _cachedCandidateIds = const {};
@@ -109,14 +111,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Future<void> _loadMarkerBitmaps() async {
     final bitmaps = await Future.wait<Uint8List>([
       buildDestinationPinBitmap(),
-      _buildUserLocationBitmap(),
+      _buildUserLocationBitmap(includeDirection: true),
+      _buildUserLocationBitmap(includeDirection: false),
       _buildNavArrowBitmap(),
     ]);
     if (!mounted) return;
     setState(() {
       _destinationPinBytes = bitmaps[0];
-      _userLocationBytes = bitmaps[1];
-      _navArrowBytes = bitmaps[2];
+      _userLocationArrowBytes = bitmaps[1];
+      _userLocationPinBytes = bitmaps[2];
+      _navArrowBytes = bitmaps[3];
     });
   }
 
@@ -210,32 +214,128 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
   }
 
-  Future<Uint8List> _buildUserLocationBitmap() async {
-    const size = 48.0;
-    const center = Offset(size / 2, size / 2);
+  double _devicePixelRatio() {
+    final views = ui.PlatformDispatcher.instance.views;
+    if (views.isEmpty) return 3.0;
+    final dpr = views.first.devicePixelRatio;
+    return dpr > 0 ? dpr : 3.0;
+  }
+
+  Future<Uint8List> _buildUserLocationBitmap({
+    required bool includeDirection,
+  }) async {
+    final dpr = _devicePixelRatio();
+    final size = 64.0 * dpr;
+    final center = Offset(size / 2, size / 2);
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
 
-    final direction = Path()
-      ..moveTo(size / 2, 3)
-      ..lineTo(size * 0.61, size * 0.39)
-      ..quadraticBezierTo(size / 2, size * 0.35, size * 0.39, size * 0.39)
-      ..close();
-    canvas.drawPath(
-      direction,
+    const arrowColor = Color(0xFFD83329);
+    const outerColor = Color(0xFFFFFFFF);
+    const innerColor = Color(0xFFFF3B30);
+
+    if (includeDirection) {
+      final arrowPath = Path()
+        ..moveTo(center.dx, center.dy - 30 * dpr)
+        ..lineTo(center.dx + 17.6 * dpr, center.dy)
+        ..lineTo(center.dx, center.dy)
+        ..lineTo(center.dx - 17.6 * dpr, center.dy)
+        ..close();
+
+      canvas.drawPath(
+        arrowPath.shift(Offset(0, 2 * dpr)),
+        Paint()
+          ..color = const Color(0x29000000)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, 2 * dpr),
+      );
+      canvas.drawPath(arrowPath, Paint()..color = arrowColor);
+    }
+
+    canvas.drawCircle(
+      center.translate(0, 2 * dpr),
+      18 * dpr,
       Paint()
-        ..color = Colors.white
-        ..style = ui.PaintingStyle.stroke
-        ..strokeWidth = 3
-        ..strokeJoin = ui.StrokeJoin.round,
+        ..color = const Color(0x40000000)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, 3.5 * dpr),
     );
-    canvas.drawPath(direction, Paint()..color = const Color(0xFFE53935));
-    canvas.drawCircle(center, 10, Paint()..color = Colors.white);
-    canvas.drawCircle(center, 7, Paint()..color = const Color(0xFFE53935));
+
+    canvas.drawCircle(center, 18 * dpr, Paint()..color = outerColor);
+    canvas.drawCircle(
+      center,
+      18 * dpr,
+      Paint()
+        ..color = const Color(0x08000000)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1 * dpr,
+    );
+
+    canvas.drawCircle(
+      center.translate(0, 0.5 * dpr),
+      13.5 * dpr,
+      Paint()
+        ..color = const Color(0x2E000000)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, 1 * dpr),
+    );
+    canvas.drawCircle(center, 13.5 * dpr, Paint()..color = innerColor);
+    canvas.drawCircle(
+      center.translate(0, 0.5 * dpr),
+      13.5 * dpr,
+      Paint()
+        ..color = const Color(0x52FFFFFF)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1 * dpr,
+    );
+
     final picture = recorder.endRecording();
     final image = await picture.toImage(size.toInt(), size.toInt());
     final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
     return byteData!.buffer.asUint8List();
+  }
+
+  Future<UserLocationView> _styleUserLocationView(UserLocationView view) async {
+    final arrowBytes = _userLocationArrowBytes;
+    final pinBytes = _userLocationPinBytes;
+    if (arrowBytes == null || pinBytes == null) return view;
+    final scale = 1.0 / _devicePixelRatio();
+
+    return view.copyWith(
+      arrow: view.arrow.copyWith(
+        opacity: 1,
+        icon: PlacemarkIcon.single(
+          PlacemarkIconStyle(
+            image: BitmapDescriptor.fromBytes(arrowBytes),
+            rotationType: RotationType.rotate,
+            scale: scale,
+          ),
+        ),
+      ),
+      pin: view.pin.copyWith(
+        opacity: 1,
+        icon: PlacemarkIcon.single(
+          PlacemarkIconStyle(
+            image: BitmapDescriptor.fromBytes(pinBytes),
+            scale: scale,
+          ),
+        ),
+      ),
+      accuracyCircle: view.accuracyCircle.copyWith(
+        fillColor: Colors.transparent,
+        strokeColor: Colors.transparent,
+        strokeWidth: 0,
+      ),
+    );
+  }
+
+  Future<void> _syncNativeUserLayer({required bool visible}) async {
+    if (kIsWeb) return;
+    final controller = _mapController;
+    if (controller == null || _nativeUserLayerVisible == visible) return;
+    _nativeUserLayerVisible = visible;
+    await controller.toggleUserLayer(
+      visible: visible,
+      headingEnabled: true,
+      autoZoomEnabled: false,
+    );
   }
 
   Future<Uint8List> _buildNavArrowBitmap() async {
@@ -1171,7 +1271,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             s: ref.read(l10nProvider),
           );
 
-      await _mapController?.toggleUserLayer(visible: false);
+      await _syncNativeUserLayer(visible: false);
       await _mapController?.toggleTrafficLayer(visible: true);
     } catch (e, st) {
       if (mounted) {
@@ -1285,8 +1385,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             _activeRouteZoneId = null;
           });
         }
+        unawaited(_syncNativeUserLayer(visible: true));
         return;
       }
+      unawaited(_syncNativeUserLayer(visible: false));
       if (prev?.route != nav.route) {
         setState(() => _routePolyline = nav.route);
       }
@@ -1357,7 +1459,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       await next.when(
         idle: () async {
           ref.read(navigationProvider.notifier).stop();
-          await _mapController?.toggleUserLayer(visible: false);
+          await _syncNativeUserLayer(visible: true);
           await _mapController?.toggleTrafficLayer(visible: false);
           setState(() {
             _routePolyline = null;
@@ -1468,25 +1570,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           brightness: Theme.of(context).brightness,
         ),
       ?zoneLabels,
-      if (_userPosition != null && _userLocationBytes != null && !isNavigating)
-        PlacemarkMapObject(
-          mapId: const MapObjectId('user_location'),
-          point: Point(
-            latitude: _userPosition!.latitude,
-            longitude: _userPosition!.longitude,
-          ),
-          opacity: 1,
-          direction: _userPosition!.heading.isFinite
-              ? _userPosition!.heading
-              : 0,
-          icon: PlacemarkIcon.single(
-            PlacemarkIconStyle(
-              image: BitmapDescriptor.fromBytes(_userLocationBytes!),
-              rotationType: RotationType.rotate,
-              scale: 1.0,
-            ),
-          ),
-        ),
       if (isNavigating && _navArrowBytes != null)
         PlacemarkMapObject(
           mapId: const MapObjectId('nav_arrow'),
@@ -1649,6 +1732,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     longitude: 34.359757,
                   );
                   _lastCameraTarget = fallback;
+                  await _syncNativeUserLayer(visible: true);
                   await controller.moveCamera(
                     CameraUpdate.newCameraPosition(
                       const CameraPosition(target: fallback, zoom: 14),
@@ -1656,6 +1740,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   );
                   _fetchZones();
                 },
+                onUserLocationAdded: _styleUserLocationView,
                 onCameraPositionChanged: _onCameraPositionChanged,
                 onMapTap: (_) => _onMapBackgroundTap(),
               ),

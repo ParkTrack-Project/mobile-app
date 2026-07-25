@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,9 +10,11 @@ import 'package:mobile/presentation/screens/map/widgets/candidates_sheet.dart';
 import 'package:yandex_mapkit/yandex_mapkit.dart';
 
 void main() {
-  testWidgets('renders actual candidate facts and compact actions', (
+  testWidgets('renders Android candidate badges and compact actions', (
     tester,
   ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
     tester.view.physicalSize = const Size(340, 640);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -80,10 +83,11 @@ void main() {
 
     expect(find.text('Parking nearby'), findsOneWidget);
     expect(find.text('Ranked by time and distance'), findsOneWidget);
-    expect(find.text('Parking #42 · 42 Test Street'), findsOneWidget);
+    expect(find.text('42 Test Street'), findsOneWidget);
+    expect(find.text('№42'), findsOneWidget);
     expect(find.text('450 m'), findsOneWidget);
-    expect(find.textContaining('111 m (6 min) from you'), findsOneWidget);
-    expect(find.text('Forecast: 5 spaces by 12:01'), findsOneWidget);
+    expect(find.textContaining('111 m'), findsOneWidget);
+    expect(find.textContaining('5 spaces'), findsOneWidget);
     expect(find.text('7 spaces'), findsOneWidget);
     expect(find.text('Free'), findsOneWidget);
     expect(find.text('Accessible parking'), findsOneWidget);
@@ -100,6 +104,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(selectedAction, CandidateAction.go);
     expect(tester.takeException(), isNull);
+    debugDefaultTargetPlatformOverride = null;
   });
 
   test('assigns relative green, yellow, and red result tiers', () {
@@ -145,6 +150,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     final heights = <double>[];
+    var closeCount = 0;
     final candidate = RouteCandidate(
       zoneId: 1,
       rank: 1,
@@ -168,7 +174,7 @@ void main() {
               onAction: (_, _, _) {},
               onPanelHeightChanged: heights.add,
               onScrollOffsetChanged: (_) {},
-              onClose: () {},
+              onClose: () => closeCount++,
             ),
           ),
         ),
@@ -185,6 +191,20 @@ void main() {
 
     expect(heights.last, lessThan(initialHeight));
     expect(find.byKey(const Key('parking_candidate_1')), findsOneWidget);
+
+    final collapsedHeight = heights.last;
+
+    await tester.drag(
+      find.byKey(const Key('parking_results_drag_header')),
+      const Offset(0, -160),
+    );
+    await tester.pumpAndSettle();
+
+    expect(heights.last, greaterThan(collapsedHeight));
+
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+    expect(closeCount, 1);
   });
 
   testWidgets('renders explicit loading, empty, and error states', (
