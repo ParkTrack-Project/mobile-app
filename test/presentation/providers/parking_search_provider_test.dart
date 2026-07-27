@@ -91,8 +91,13 @@ void main() {
     expect(notifier.state.selectedZoneId, isNull);
 
     notifier.startRoute(5);
-    expect(notifier.state.view, ParkingSearchView.hidden);
+    expect(notifier.state.view, ParkingSearchView.routeBuilding);
     expect(notifier.state.selectedZoneId, 5);
+
+    notifier.hidePanel();
+    expect(notifier.state.view, ParkingSearchView.hidden);
+    expect(notifier.state.selectedZoneId, isNull);
+    expect(notifier.state.candidates.map((candidate) => candidate.zoneId), [5]);
 
     notifier.clear();
     expect(notifier.state.candidates, isEmpty);

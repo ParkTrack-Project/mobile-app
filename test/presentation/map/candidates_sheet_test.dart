@@ -207,40 +207,44 @@ void main() {
     expect(closeCount, 1);
   });
 
-  testWidgets('renders explicit loading, empty, and error states', (
-    tester,
-  ) async {
-    Future<void> pump(ParkingResultsPanelState state) async {
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [l10nProvider.overrideWithValue(AppStrings.en)],
-          child: MaterialApp(
-            home: SizedBox(
-              height: 420,
-              child: CandidatesSheet(
-                candidates: const [],
-                zones: const [],
-                lastViewedZoneId: null,
-                initialScrollOffset: 0,
-                panelState: state,
-                onSelect: (_) {},
-                onAction: (_, _, _) {},
-                onScrollOffsetChanged: (_) {},
-                onClose: () {},
+  testWidgets(
+    'renders explicit loading, route building, empty, and error states',
+    (tester) async {
+      Future<void> pump(ParkingResultsPanelState state) async {
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [l10nProvider.overrideWithValue(AppStrings.en)],
+            child: MaterialApp(
+              home: SizedBox(
+                height: 420,
+                child: CandidatesSheet(
+                  candidates: const [],
+                  zones: const [],
+                  lastViewedZoneId: null,
+                  initialScrollOffset: 0,
+                  panelState: state,
+                  onSelect: (_) {},
+                  onAction: (_, _, _) {},
+                  onScrollOffsetChanged: (_) {},
+                  onClose: () {},
+                ),
               ),
             ),
           ),
-        ),
-      );
-    }
+        );
+      }
 
-    await pump(ParkingResultsPanelState.loading);
-    expect(find.byKey(const Key('parking_search_loading')), findsOneWidget);
+      await pump(ParkingResultsPanelState.loading);
+      expect(find.byKey(const Key('parking_search_loading')), findsOneWidget);
 
-    await pump(ParkingResultsPanelState.results);
-    expect(find.byKey(const Key('parking_search_empty')), findsOneWidget);
+      await pump(ParkingResultsPanelState.routeBuilding);
+      expect(find.byKey(const Key('parking_route_building')), findsOneWidget);
 
-    await pump(ParkingResultsPanelState.error);
-    expect(find.byKey(const Key('parking_search_error')), findsOneWidget);
-  });
+      await pump(ParkingResultsPanelState.results);
+      expect(find.byKey(const Key('parking_search_empty')), findsOneWidget);
+
+      await pump(ParkingResultsPanelState.error);
+      expect(find.byKey(const Key('parking_search_error')), findsOneWidget);
+    },
+  );
 }

@@ -16,7 +16,7 @@ final rawZonesProvider =
     );
 
 class ZonesNotifier extends StateNotifier<AsyncValue<List<Zone>>> {
-  ZonesNotifier(this._ref) : super(const AsyncValue.data([])) {
+  ZonesNotifier(this._ref) : super(const AsyncValue.loading()) {
     _refreshTimer = Timer.periodic(zoneAutoRefreshInterval, (_) => refresh());
   }
 

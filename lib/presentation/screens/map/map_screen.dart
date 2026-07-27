@@ -29,12 +29,21 @@ import 'widgets/destination_marker.dart';
 import 'widgets/navigation_overlay.dart'
     show NavigationTurnCard, NavigationBottomBar;
 import 'widgets/parking_zone_layer.dart';
+import 'widgets/parking_result_formatter.dart';
 import 'widgets/time_selector_widget.dart';
 import 'widgets/web_map_view.dart';
 import 'widgets/web_map_types.dart';
 import 'widgets/parking_card_sheet.dart';
 import 'widgets/route_preview_sheet.dart';
 import 'widgets/pwa_install_guide.dart';
+
+const double _minMapZoom = 3;
+const double _maxMapZoom = 21;
+const double _myLocationZoom = 15;
+const double _tapZoomStep = 1;
+const double _holdZoomStep = 0.16;
+const double _tapZoomDurationSeconds = 0.18;
+const double _holdZoomDurationSeconds = 0.05;
 
 class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({super.key, this.initialParkingId, this.searchQuery});
@@ -54,8 +63,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Timer? _timeDebounce;
   Position? _userPosition;
   Point? _lastCameraTarget;
+  double _currentZoom = 14;
   double _currentAzimuth = 0;
+  double _currentTilt = 0;
   bool _isUserCentered = false;
+  bool _zoomUpdateInFlight = false;
   Uint8List? _destinationPinBytes;
   Uint8List? _navArrowBytes;
 
@@ -81,6 +93,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   DrivingSession? _drivingSession;
   bool _navBuilding = false;
   bool _nativeUserLayerVisible = false;
+  String? _lastShownZonesErrorSignature;
 
   List<Zone>? _cachedMapZones;
   Set<int> _cachedCandidateIds = const {};
@@ -269,6 +282,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     bool cameraUpdateFinished,
   ) {
     _lastCameraTarget = position.target;
+    _currentZoom = position.zoom;
+    _currentTilt = position.tilt;
     final centered = _isCameraCenteredOnUser(position.target);
     if ((position.azimuth - _currentAzimuth).abs() > 0.5 ||
         centered != _isUserCentered) {
@@ -284,12 +299,19 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   void _onZoneTap(Zone zone) {
     final searchState = ref.read(parkingSearchProvider);
+    if (searchState.view == ParkingSearchView.routeBuilding ||
+        ref.read(navigationProvider) != null) {
+      return;
+    }
     final searchIsActive = searchState.view != ParkingSearchView.hidden;
     if (searchIsActive) {
       if (_candidateIds.contains(zone.zoneId)) {
         _selectSearchCandidate(zone.zoneId, knownZone: zone);
+        return;
       }
-      return;
+      ref
+          .read(parkingSearchProvider.notifier)
+          .hidePanel(lastViewedZoneId: zone.zoneId);
     }
     _openParkingDetails(zone);
   }
@@ -301,7 +323,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       return;
     }
     if (_standaloneSelectedZone != null) {
-      setState(() => _standaloneSelectedZone = null);
+      _closeStandaloneParkingDetails();
+    }
+  }
+
+  void _closeStandaloneParkingDetails() {
+    setState(() => _standaloneSelectedZone = null);
+    final search = ref.read(parkingSearchProvider);
+    if (search.view == ParkingSearchView.hidden &&
+        search.candidates.isNotEmpty) {
+      ref.read(parkingSearchProvider.notifier).backToResults();
     }
   }
 
@@ -420,11 +451,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   ) async {
     switch (action) {
       case CandidateAction.go:
-        final selected = await _selectSearchCandidate(
+        ref.read(parkingSearchProvider.notifier).startRoute(candidate.zoneId);
+        await _buildRouteForZone(
           candidate.zoneId,
+          candidate: candidate,
           knownZone: zone,
         );
-        if (selected != null) await _buildRouteForZone(candidate.zoneId);
       case CandidateAction.openExternal:
         if (zone == null || zone.geometry.isEmpty) return;
         final point = centroid(zone.geometry);
@@ -580,6 +612,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       latitude: camera.latitude,
       longitude: camera.longitude,
     );
+    _currentZoom = camera.zoom;
     final centered = _isCameraCenteredOnUser(
       Point(latitude: camera.latitude, longitude: camera.longitude),
     );
@@ -659,19 +692,89 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         const Point(latitude: 61.789114, longitude: 34.359757);
   }
 
+  EdgeInsets _getCurrentMapMargins() {
+    final search = ref.read(parkingSearchProvider);
+    final routingState = ref.read(routingProvider);
+    final navState = ref.read(navigationProvider);
+    final isNavigating = navState != null;
+
+    final routePreview = routingState.maybeWhen(
+      routePreview: (route) => route,
+      orElse: () => null,
+    );
+
+    final searchResultsVisible =
+        {
+          ParkingSearchView.loading,
+          ParkingSearchView.results,
+          ParkingSearchView.routeBuilding,
+          ParkingSearchView.error,
+        }.contains(search.view) &&
+        !isNavigating &&
+        routePreview == null;
+
+    final searchDetailsVisible =
+        search.view == ParkingSearchView.details &&
+        !isNavigating &&
+        routePreview == null;
+
+    final standaloneDetailsVisible =
+        _standaloneSelectedZone != null &&
+        search.view == ParkingSearchView.hidden &&
+        !isNavigating &&
+        routePreview == null;
+
+    final routePreviewVisible = routePreview != null && !isNavigating;
+
+    final bottomHeight = isNavigating
+        ? 0.0
+        : routePreviewVisible
+        ? _routePreviewPanelHeight
+        : searchResultsVisible
+        ? _searchPanelHeight
+        : searchDetailsVisible
+        ? _detailsPanelHeight
+        : standaloneDetailsVisible
+        ? _detailsPanelHeight
+        : 0.0;
+
+    return EdgeInsets.only(
+      top: 88, // Search bar
+      bottom: bottomHeight > 0 ? bottomHeight + 20 : 0,
+      left: 24,
+      right: 24,
+    );
+  }
+
   Future<void> _goToMyLocation() async {
     final pos = await _getCurrentPosition();
     if (pos == null) return;
     if (mounted) setState(() => _isUserCentered = true);
+
+    final margins = _getCurrentMapMargins();
+
     if (kIsWeb) {
-      _webMapController.move(pos.latitude, pos.longitude, 16);
+      _webMapController.focus(
+        pos.latitude,
+        pos.longitude,
+        _myLocationZoom,
+        top: margins.top,
+        right: margins.right,
+        bottom: margins.bottom,
+        left: margins.left,
+      );
       return;
     }
+
+    if (!mounted) return;
+
     await _mapController?.moveCamera(
       CameraUpdate.newCameraPosition(
         CameraPosition(
           target: Point(latitude: pos.latitude, longitude: pos.longitude),
-          zoom: 16,
+          zoom: _myLocationZoom,
+          azimuth: _currentAzimuth,
+          tilt: _currentTilt,
         ),
       ),
       animation: const MapAnimation(duration: 0.8),
@@ -689,43 +792,55 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     );
   }
 
-  Future<void> _zoomIn() async {
+  Future<void> _changeZoom(
+    double delta, {
+    required double durationSeconds,
+  }) async {
+    if (!kIsWeb && _zoomUpdateInFlight) return;
+    final targetZoom = (_currentZoom + delta).clamp(_minMapZoom, _maxMapZoom);
+    if ((targetZoom - _currentZoom).abs() < 0.001) return;
+    _currentZoom = targetZoom;
     if (kIsWeb) {
-      _webMapController.zoomBy(1);
+      _webMapController.zoomBy(delta);
       return;
     }
     if (_mapController == null) return;
-    final pos = await _mapController!.getCameraPosition();
-    await _mapController!.moveCamera(
-      CameraUpdate.newCameraPosition(
-        CameraPosition(
-          target: pos.target,
-          zoom: pos.zoom + 1,
-          azimuth: pos.azimuth,
-          tilt: pos.tilt,
+    _zoomUpdateInFlight = true;
+    try {
+      final target = _lastCameraTarget;
+      if (target == null) return;
+      await _mapController!.moveCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: target,
+            zoom: targetZoom,
+            azimuth: _currentAzimuth,
+            tilt: _currentTilt,
+          ),
         ),
-      ),
-      animation: const MapAnimation(duration: 0.2),
-    );
+        animation: MapAnimation(duration: durationSeconds),
+      );
+    } finally {
+      _zoomUpdateInFlight = false;
+    }
+  }
+
+  Future<void> _zoomIn() async {
+    await _changeZoom(_tapZoomStep, durationSeconds: _tapZoomDurationSeconds);
   }
 
   Future<void> _zoomOut() async {
-    if (kIsWeb) {
-      _webMapController.zoomBy(-1);
-      return;
-    }
-    if (_mapController == null) return;
-    final pos = await _mapController!.getCameraPosition();
-    await _mapController!.moveCamera(
-      CameraUpdate.newCameraPosition(
-        CameraPosition(
-          target: pos.target,
-          zoom: pos.zoom - 1,
-          azimuth: pos.azimuth,
-          tilt: pos.tilt,
-        ),
-      ),
-      animation: const MapAnimation(duration: 0.2),
+    await _changeZoom(-_tapZoomStep, durationSeconds: _tapZoomDurationSeconds);
+  }
+
+  Future<void> _zoomInContinuously() async {
+    await _changeZoom(_holdZoomStep, durationSeconds: _holdZoomDurationSeconds);
+  }
+
+  Future<void> _zoomOutContinuously() async {
+    await _changeZoom(
+      -_holdZoomStep,
+      durationSeconds: _holdZoomDurationSeconds,
     );
   }
 
@@ -1010,12 +1125,20 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
   }
 
-  Future<void> _buildRouteForZone(int zoneId) async {
+  Future<void> _buildRouteForZone(
+    int zoneId, {
+    RouteCandidate? candidate,
+    Zone? knownZone,
+  }) async {
     final origin = await _routingOrigin();
-    if (origin == null) return;
-    final zone = await _resolveRouteZone(zoneId);
+    if (origin == null) {
+      ref.read(parkingSearchProvider.notifier).backToResults();
+      return;
+    }
+    final zone = knownZone ?? await _resolveRouteZone(zoneId);
     if (!mounted) return;
     if (zone == null || zone.geometry.isEmpty) {
+      ref.read(parkingSearchProvider.notifier).backToResults();
       showErrorSnackBar(
         context,
         ref.read(l10nProvider).pointLookupError,
@@ -1024,10 +1147,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       return;
     }
     try {
-      final geometry = await _requestRouteGeometry(
-        origin,
-        centroid(zone.geometry),
-      );
+      final candidatePolyline = candidate?.routePolyline;
+      final geometry =
+          candidatePolyline != null && candidatePolyline.length >= 2
+          ? (
+              points: candidatePolyline,
+              distanceMeters: parkingPolylineLengthMeters(candidatePolyline),
+              durationSeconds: candidate?.durationFromOriginSeconds,
+            )
+          : await _requestRouteGeometry(origin, centroid(zone.geometry));
       if (!mounted) return;
       if (geometry == null) {
         throw StateError('The map routing service returned no driving route');
@@ -1051,7 +1179,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         error: error,
         stackTrace: stackTrace,
         s: ref.read(l10nProvider),
-        onRetry: () => _buildRouteForZone(zoneId),
+        onRetry: () =>
+            _buildRouteForZone(zoneId, candidate: candidate, knownZone: zone),
       );
     }
   }
@@ -1247,7 +1376,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         );
       }
       if (next.view == ParkingSearchView.hidden &&
-          previous?.view != ParkingSearchView.hidden) {
+          previous?.view != ParkingSearchView.hidden &&
+          next.candidates.isEmpty) {
         _preparedResultSignature = null;
         _resultZonesById.clear();
       }
@@ -1291,8 +1421,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     });
 
     ref.listen(rawZonesProvider, (_, next) {
+      if (next.hasValue) {
+        _lastShownZonesErrorSignature = null;
+        return;
+      }
       next.whenOrNull(
         error: (e, st) {
+          final signature = e.toString();
+          if (_lastShownZonesErrorSignature == signature) return;
+          _lastShownZonesErrorSignature = signature;
           showErrorSnackBar(
             context,
             ref.read(l10nProvider).errorLoadingZones,
@@ -1491,9 +1628,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         {
           ParkingSearchView.loading,
           ParkingSearchView.results,
+          ParkingSearchView.routeBuilding,
           ParkingSearchView.error,
         }.contains(parkingSearchState.view) &&
-        !isNavigating;
+        !isNavigating &&
+        routePreview == null;
     final searchDetailsVisible =
         parkingSearchState.view == ParkingSearchView.details &&
         !isNavigating &&
@@ -1516,6 +1655,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         routePreview == null;
     final resultsPanelState = switch (parkingSearchState.view) {
       ParkingSearchView.loading => ParkingResultsPanelState.loading,
+      ParkingSearchView.routeBuilding => ParkingResultsPanelState.routeBuilding,
       ParkingSearchView.error => ParkingResultsPanelState.error,
       _ => ParkingResultsPanelState.results,
     };
@@ -1747,8 +1887,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                               },
                         originLatitude: _userPosition?.latitude,
                         originLongitude: _userPosition?.longitude,
-                        onClose: () =>
-                            setState(() => _standaloneSelectedZone = null),
+                        onClose: _closeStandaloneParkingDetails,
                       ),
                     ),
                   ),
@@ -1877,6 +2016,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                               key: const ValueKey('zoom_controls'),
                               onZoomIn: _zoomIn,
                               onZoomOut: _zoomOut,
+                              onZoomInHold: _zoomInContinuously,
+                              onZoomOutHold: _zoomOutContinuously,
                             )
                           : const SizedBox.shrink(
                               key: ValueKey('zoom_controls_hidden'),
@@ -2354,10 +2495,14 @@ class _ZoomControlGroup extends StatelessWidget {
     super.key,
     required this.onZoomIn,
     required this.onZoomOut,
+    required this.onZoomInHold,
+    required this.onZoomOutHold,
   });
 
   final VoidCallback onZoomIn;
   final VoidCallback onZoomOut;
+  final VoidCallback onZoomInHold;
+  final VoidCallback onZoomOutHold;
 
   @override
   Widget build(BuildContext context) {
@@ -2373,12 +2518,18 @@ class _ZoomControlGroup extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _ZoomButton(icon: Icons.add_rounded, tooltip: '+', onTap: onZoomIn),
+            _ZoomButton(
+              icon: Icons.add_rounded,
+              tooltip: '+',
+              onTap: onZoomIn,
+              onHoldTick: onZoomInHold,
+            ),
             Divider(height: 1, indent: 10, endIndent: 10),
             _ZoomButton(
               icon: Icons.remove_rounded,
               tooltip: '−',
               onTap: onZoomOut,
+              onHoldTick: onZoomOutHold,
             ),
           ],
         ),
@@ -2387,28 +2538,76 @@ class _ZoomControlGroup extends StatelessWidget {
   }
 }
 
-class _ZoomButton extends StatelessWidget {
+class _ZoomButton extends StatefulWidget {
   const _ZoomButton({
     required this.icon,
     required this.tooltip,
     required this.onTap,
+    required this.onHoldTick,
   });
 
   final IconData icon;
   final String tooltip;
   final VoidCallback onTap;
+  final VoidCallback onHoldTick;
+
+  @override
+  State<_ZoomButton> createState() => _ZoomButtonState();
+}
+
+class _ZoomButtonState extends State<_ZoomButton> {
+  Timer? _holdTimer;
+  bool _holdActive = false;
+  bool _skipNextTap = false;
+
+  void _startHold() {
+    if (_holdActive) return;
+    _holdActive = true;
+    _skipNextTap = true;
+    widget.onHoldTick();
+    _holdTimer = Timer.periodic(
+      const Duration(milliseconds: 55),
+      (_) => widget.onHoldTick(),
+    );
+  }
+
+  void _stopHold() {
+    _holdTimer?.cancel();
+    _holdTimer = null;
+    _holdActive = false;
+  }
+
+  void _handleTap() {
+    if (_holdActive || _skipNextTap) {
+      _skipNextTap = false;
+      return;
+    }
+    widget.onTap();
+  }
+
+  @override
+  void dispose() {
+    _stopHold();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) => Semantics(
     button: true,
-    label: tooltip,
+    label: widget.tooltip,
     child: InkWell(
-      onTap: onTap,
+      onTapDown: (_) {
+        if (!_holdActive) _skipNextTap = false;
+      },
+      onTap: _handleTap,
+      onLongPress: _startHold,
+      onTapUp: (_) => _stopHold(),
+      onTapCancel: _stopHold,
       child: SizedBox(
         width: 52,
         height: 48,
         child: Icon(
-          icon,
+          widget.icon,
           size: 27,
           color: Theme.of(context).colorScheme.onSurface,
         ),

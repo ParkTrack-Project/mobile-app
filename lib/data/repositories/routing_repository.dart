@@ -76,17 +76,20 @@ class RoutingRepository {
     routePolyline: _parsePolyline(dto.routeGeometry),
   );
 
-  ActiveRoute _mapRoute(RouteDto dto) => ActiveRoute(
-    routeId: dto.routeId,
-    status: dto.status,
-    selectedZoneId: dto.selectedZoneId ?? 0,
-    arrivalTime: dto.arrivalTime,
-    deeplinkUrl: dto.deeplinkUrl,
-    routePolyline: null,
-    candidates: dto.selectedCandidate != null
-        ? [_mapCandidate(dto.selectedCandidate!)]
-        : [],
-  );
+  ActiveRoute _mapRoute(RouteDto dto) {
+    final selectedCandidate = dto.selectedCandidate == null
+        ? null
+        : _mapCandidate(dto.selectedCandidate!);
+    return ActiveRoute(
+      routeId: dto.routeId,
+      status: dto.status,
+      selectedZoneId: dto.selectedZoneId ?? 0,
+      arrivalTime: dto.arrivalTime,
+      deeplinkUrl: dto.deeplinkUrl,
+      routePolyline: selectedCandidate?.routePolyline,
+      candidates: selectedCandidate != null ? [selectedCandidate] : [],
+    );
+  }
 
   List<Point>? _parsePolyline(Map<String, dynamic>? geometry) {
     if (geometry == null) return null;

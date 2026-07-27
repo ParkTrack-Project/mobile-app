@@ -2,7 +2,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/models/route_result.dart';
 
-enum ParkingSearchView { hidden, loading, results, details, error }
+enum ParkingSearchView {
+  hidden,
+  loading,
+  results,
+  details,
+  routeBuilding,
+  error,
+}
 
 class ParkingSearchState {
   const ParkingSearchState({
@@ -101,9 +108,17 @@ class ParkingSearchNotifier extends StateNotifier<ParkingSearchState> {
   void startRoute(int zoneId) {
     if (!state.resultZoneIds.contains(zoneId)) return;
     state = state.copyWith(
-      view: ParkingSearchView.hidden,
+      view: ParkingSearchView.routeBuilding,
       selectedZoneId: zoneId,
       lastViewedZoneId: zoneId,
+    );
+  }
+
+  void hidePanel({int? lastViewedZoneId}) {
+    state = state.copyWith(
+      view: ParkingSearchView.hidden,
+      clearSelection: true,
+      lastViewedZoneId: lastViewedZoneId,
     );
   }
 

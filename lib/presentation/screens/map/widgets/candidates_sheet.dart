@@ -15,7 +15,7 @@ import 'parking_result_formatter.dart';
 
 enum CandidateAction { go, openExternal }
 
-enum ParkingResultsPanelState { loading, results, error }
+enum ParkingResultsPanelState { loading, results, routeBuilding, error }
 
 const _resultsHeaderHeight = 114.0;
 const _androidCandidateAddressFontSize = 12.0;
@@ -229,6 +229,12 @@ class _CandidatesSheetState extends ConsumerState<CandidatesSheet> {
                             icon: const CircularProgressIndicator(),
                             message: s.searching,
                           ),
+                          ParkingResultsPanelState.routeBuilding =>
+                            _PanelMessage(
+                              key: const Key('parking_route_building'),
+                              icon: const CircularProgressIndicator(),
+                              message: s.routeBuilding,
+                            ),
                           ParkingResultsPanelState.error => _PanelMessage(
                             key: const Key('parking_search_error'),
                             icon: Icon(
