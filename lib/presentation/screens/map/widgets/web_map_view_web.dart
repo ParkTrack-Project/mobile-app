@@ -64,9 +64,6 @@ external void _focusYandexMap(
   JSNumber left,
 );
 
-@JS('parkTrackYandexMaps.resetNorth')
-external void _resetYandexMapNorth(JSString elementId);
-
 @JS('parkTrackYandexMaps.destroy')
 external void _destroyYandexMap(JSString elementId);
 
@@ -207,9 +204,6 @@ class _WebMapViewState extends State<WebMapView> {
             left.toJS,
           );
         };
-    widget.controller.resetNorthHandler = () {
-      _resetYandexMapNorth(_elementId.toJS);
-    };
     widget.controller.retryHandler = () {
       _retryYandexMap(_elementId.toJS);
     };

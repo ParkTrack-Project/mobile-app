@@ -57,8 +57,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   double _currentAzimuth = 0;
   bool _isUserCentered = false;
   Uint8List? _destinationPinBytes;
-  Uint8List? _userLocationArrowBytes;
-  Uint8List? _userLocationPinBytes;
   Uint8List? _navArrowBytes;
 
   bool _parkingDetailsLoading = false;
@@ -111,16 +109,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Future<void> _loadMarkerBitmaps() async {
     final bitmaps = await Future.wait<Uint8List>([
       buildDestinationPinBitmap(),
-      _buildUserLocationBitmap(includeDirection: true),
-      _buildUserLocationBitmap(includeDirection: false),
       _buildNavArrowBitmap(),
     ]);
     if (!mounted) return;
     setState(() {
       _destinationPinBytes = bitmaps[0];
-      _userLocationArrowBytes = bitmaps[1];
-      _userLocationPinBytes = bitmaps[2];
-      _navArrowBytes = bitmaps[3];
+      _navArrowBytes = bitmaps[1];
     });
   }
 
@@ -212,118 +206,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         _zoneBitmapCache.removeWhere((key, _) => !usedStyles.contains(key));
       });
     }
-  }
-
-  double _devicePixelRatio() {
-    final views = ui.PlatformDispatcher.instance.views;
-    if (views.isEmpty) return 3.0;
-    final dpr = views.first.devicePixelRatio;
-    return dpr > 0 ? dpr : 3.0;
-  }
-
-  Future<Uint8List> _buildUserLocationBitmap({
-    required bool includeDirection,
-  }) async {
-    final dpr = _devicePixelRatio();
-    final size = 64.0 * dpr;
-    final center = Offset(size / 2, size / 2);
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-
-    const arrowColor = Color(0xFFD83329);
-    const outerColor = Color(0xFFFFFFFF);
-    const innerColor = Color(0xFFFF3B30);
-
-    if (includeDirection) {
-      final arrowPath = Path()
-        ..moveTo(center.dx, center.dy - 30 * dpr)
-        ..lineTo(center.dx + 17.6 * dpr, center.dy)
-        ..lineTo(center.dx, center.dy)
-        ..lineTo(center.dx - 17.6 * dpr, center.dy)
-        ..close();
-
-      canvas.drawPath(
-        arrowPath.shift(Offset(0, 2 * dpr)),
-        Paint()
-          ..color = const Color(0x29000000)
-          ..maskFilter = MaskFilter.blur(BlurStyle.normal, 2 * dpr),
-      );
-      canvas.drawPath(arrowPath, Paint()..color = arrowColor);
-    }
-
-    canvas.drawCircle(
-      center.translate(0, 2 * dpr),
-      18 * dpr,
-      Paint()
-        ..color = const Color(0x40000000)
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, 3.5 * dpr),
-    );
-
-    canvas.drawCircle(center, 18 * dpr, Paint()..color = outerColor);
-    canvas.drawCircle(
-      center,
-      18 * dpr,
-      Paint()
-        ..color = const Color(0x08000000)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1 * dpr,
-    );
-
-    canvas.drawCircle(
-      center.translate(0, 0.5 * dpr),
-      13.5 * dpr,
-      Paint()
-        ..color = const Color(0x2E000000)
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, 1 * dpr),
-    );
-    canvas.drawCircle(center, 13.5 * dpr, Paint()..color = innerColor);
-    canvas.drawCircle(
-      center.translate(0, 0.5 * dpr),
-      13.5 * dpr,
-      Paint()
-        ..color = const Color(0x52FFFFFF)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1 * dpr,
-    );
-
-    final picture = recorder.endRecording();
-    final image = await picture.toImage(size.toInt(), size.toInt());
-    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-    return byteData!.buffer.asUint8List();
-  }
-
-  Future<UserLocationView> _styleUserLocationView(UserLocationView view) async {
-    final arrowBytes = _userLocationArrowBytes;
-    final pinBytes = _userLocationPinBytes;
-    if (arrowBytes == null || pinBytes == null) return view;
-    final scale = 1.0 / _devicePixelRatio();
-
-    return view.copyWith(
-      arrow: view.arrow.copyWith(
-        opacity: 1,
-        icon: PlacemarkIcon.single(
-          PlacemarkIconStyle(
-            image: BitmapDescriptor.fromBytes(arrowBytes),
-            rotationType: RotationType.rotate,
-            scale: scale,
-          ),
-        ),
-      ),
-      pin: view.pin.copyWith(
-        opacity: 1,
-        icon: PlacemarkIcon.single(
-          PlacemarkIconStyle(
-            image: BitmapDescriptor.fromBytes(pinBytes),
-            scale: scale,
-          ),
-        ),
-      ),
-      accuracyCircle: view.accuracyCircle.copyWith(
-        fillColor: Colors.transparent,
-        strokeColor: Colors.transparent,
-        strokeWidth: 0,
-      ),
-    );
   }
 
   Future<void> _syncNativeUserLayer({required bool visible}) async {
@@ -797,10 +679,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   Future<void> _resetNorth() async {
-    if (kIsWeb) {
-      _webMapController.resetNorth();
-      return;
-    }
     if (_mapController == null) return;
     final pos = await _mapController!.getCameraPosition();
     await _mapController!.moveCamera(
@@ -1671,7 +1549,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final mapControlsBottom =
         mapPanelHeight + (parkingFabVisible ? 82.0 : 0.0) + 12;
     final showZoomControls = viewportHeight - mapControlsBottom >= 280;
-    final showCompass = _currentAzimuth.abs() > 1.0;
+    final showCompass = !kIsWeb && _currentAzimuth.abs() > 1.0;
 
     return Scaffold(
       body: SafeArea(
@@ -1740,7 +1618,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   );
                   _fetchZones();
                 },
-                onUserLocationAdded: _styleUserLocationView,
                 onCameraPositionChanged: _onCameraPositionChanged,
                 onMapTap: (_) => _onMapBackgroundTap(),
               ),

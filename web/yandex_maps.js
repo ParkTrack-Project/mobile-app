@@ -7,6 +7,7 @@
   let renderingLocale = null;
   let renderingPromise = null;
   let clusterModule = null;
+  let defaultUiThemeModule = null;
   const searchConfigPromises = new Map();
   let searchJsonpSequence = 0;
   const cameraEmitIntervalMs = 100;
@@ -149,6 +150,13 @@
           if (!window.ymaps3) throw new Error('rendering_api_unavailable');
           await window.ymaps3.ready;
           renderingApi = window.ymaps3;
+          renderingApi.import.registerCdn(
+            'https://cdn.jsdelivr.net/npm/{package}',
+            ['@yandex/ymaps3-default-ui-theme@0.0']
+          );
+          defaultUiThemeModule = await renderingApi.import(
+            '@yandex/ymaps3-default-ui-theme'
+          );
 
           try {
             clusterModule = await renderingApi.import('@yandex/ymaps3-clusterer@0.0.1');
@@ -189,6 +197,7 @@
     entry.zoneFeatures = new Map();
     entry.routeObjects = [];
     entry.positionObjects = [];
+    entry.rotateControls = null;
     entry.zoneGeometrySignature = null;
     entry.zoneStyleSignature = null;
     entry.zoneMarkerSignature = null;
@@ -580,6 +589,12 @@
       entry.schemeLayer = new api.YMapDefaultSchemeLayer({ theme: entry.theme });
       entry.map.addChild(entry.schemeLayer);
       entry.map.addChild(new api.YMapDefaultFeaturesLayer());
+      const { YMapControls } = api;
+      const { YMapRotateControl } = defaultUiThemeModule;
+      entry.rotateControls = new YMapControls({ position: 'right' }, [
+        new YMapRotateControl({})
+      ]);
+      entry.map.addChild(entry.rotateControls);
       entry.map.addChild(new api.YMapListener({
         onUpdate: () => scheduleCameraEmit(entry),
         onClick: () => {
@@ -618,6 +633,7 @@
         zoneFeatures: new Map(),
         routeObjects: [],
         positionObjects: [],
+        rotateControls: null,
         center: [...defaultCenter],
         zoom: defaultZoom,
         pendingPromoRoots: new Set(),
@@ -657,12 +673,6 @@
     setZoom(id, z) {
       const entry = entries.get(id);
       if (entry && entry.map) entry.map.setLocation({ zoom: z, duration: 200 });
-    },
-    resetNorth(id) {
-      const entry = entries.get(id);
-      if (entry && entry.map) {
-        entry.map.setLocation({ azimuth: 0, tilt: 0, duration: 300 });
-      }
     },
     fitBounds(id, south, west, north, east, top, right, bottom, left) {
       const entry = entries.get(id);

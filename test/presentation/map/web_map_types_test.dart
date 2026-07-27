@@ -16,20 +16,16 @@ void main() {
     double? zoom;
     (double, double, double)? move;
     var retries = 0;
-    var northResets = 0;
     controller.zoomHandler = (value) => zoom = value;
     controller.moveHandler = (lat, lon, value) => move = (lat, lon, value);
     controller.retryHandler = () => retries++;
-    controller.resetNorthHandler = () => northResets++;
 
     controller.zoomBy(1);
     controller.move(60, 30, 16);
     controller.retry();
-    controller.resetNorth();
 
     expect(zoom, 15);
     expect(move, (60, 30, 16));
     expect(retries, 1);
-    expect(northResets, 1);
   });
 }
