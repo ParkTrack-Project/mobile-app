@@ -33,10 +33,9 @@ void main() {
   });
 
   test('uses supported v3 interactions and real themes', () {
-    expect(
-      bridge,
-      contains("behaviors: ['drag', 'scrollZoom', 'pinchZoom', 'dblClick']"),
-    );
+    expect(bridge, contains("'pinchRotate'"));
+    expect(bridge, contains("'pinchZoom'"));
+    expect(bridge, contains("'drag'"));
     expect(bridge, contains("state.theme === 'dark' ? 'dark' : 'light'"));
     expect(bridge, isNot(contains('filter: invert')));
     expect(bridge, isNot(contains('grayscale(')));

@@ -708,7 +708,13 @@
       entry.map = new api.YMap(entry.element, {
         location: { center: entry.center, zoom: entry.zoom },
         theme: entry.theme,
-        behaviors: ['drag', 'scrollZoom', 'pinchZoom', 'dblClick']
+        behaviors: [
+          'drag',
+          'scrollZoom',
+          'pinchZoom',
+          'pinchRotate',
+          'dblClick'
+        ]
       });
       entry.schemeLayer = new api.YMapDefaultSchemeLayer({ theme: entry.theme });
       entry.map.addChild(entry.schemeLayer);
