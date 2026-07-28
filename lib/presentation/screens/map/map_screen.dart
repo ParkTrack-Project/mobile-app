@@ -138,6 +138,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   double _routeDistanceMeters = 0;
   int? _activeRouteZoneId;
   DrivingSession? _drivingSession;
+  bool _routeBuilding = false;
   bool _navBuilding = false;
   bool _nativeUserLayerVisible = false;
   String? _lastShownZonesErrorSignature;
@@ -1249,58 +1250,65 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     RouteCandidate? candidate,
     Zone? knownZone,
   }) async {
-    final origin = await _routingOrigin();
-    if (origin == null) {
-      ref.read(parkingSearchProvider.notifier).backToResults();
-      return;
-    }
-    final zone = knownZone ?? await _resolveRouteZone(zoneId);
-    if (!mounted) return;
-    if (zone == null || zone.geometry.isEmpty) {
-      ref.read(parkingSearchProvider.notifier).backToResults();
-      showErrorSnackBar(
-        context,
-        ref.read(l10nProvider).pointLookupError,
-        s: ref.read(l10nProvider),
-      );
-      return;
-    }
+    if (mounted) setState(() => _routeBuilding = true);
     try {
-      final candidatePolyline = candidate?.routePolyline;
-      final geometry =
-          candidatePolyline != null && candidatePolyline.length >= 2
-          ? (
-              points: candidatePolyline,
-              distanceMeters: parkingPolylineLengthMeters(candidatePolyline),
-              durationSeconds: candidate?.durationFromOriginSeconds,
-            )
-          : await _requestRouteGeometry(origin, centroid(zone.geometry));
-      if (!mounted) return;
-      if (geometry == null) {
-        throw StateError('The map routing service returned no driving route');
+      final origin = await _routingOrigin();
+      if (origin == null) {
+        ref.read(parkingSearchProvider.notifier).backToResults();
+        return;
       }
-      await ref
-          .read(routingProvider.notifier)
-          .buildRoute(
-            originLat: origin.latitude,
-            originLon: origin.longitude,
-            selectedZoneId: zoneId,
-            routePolyline: geometry.points,
-            routeDistanceMeters: geometry.distanceMeters,
-            routeDurationSeconds: geometry.durationSeconds,
-          );
-    } catch (error, stackTrace) {
+      final zone = knownZone ?? await _resolveRouteZone(zoneId);
       if (!mounted) return;
-      ref.read(parkingSearchProvider.notifier).backToResults();
-      showErrorSnackBar(
-        context,
-        ref.read(l10nProvider).errorCreatingRoute,
-        error: error,
-        stackTrace: stackTrace,
-        s: ref.read(l10nProvider),
-        onRetry: () =>
-            _buildRouteForZone(zoneId, candidate: candidate, knownZone: zone),
-      );
+      if (zone == null || zone.geometry.isEmpty) {
+        ref.read(parkingSearchProvider.notifier).backToResults();
+        showErrorSnackBar(
+          context,
+          ref.read(l10nProvider).pointLookupError,
+          s: ref.read(l10nProvider),
+        );
+        return;
+      }
+      try {
+        final candidatePolyline = candidate?.routePolyline;
+        final geometry =
+            candidatePolyline != null && candidatePolyline.length >= 2
+            ? (
+                points: candidatePolyline,
+                distanceMeters: parkingPolylineLengthMeters(candidatePolyline),
+                durationSeconds: candidate?.durationFromOriginSeconds,
+              )
+            : await _requestRouteGeometry(origin, centroid(zone.geometry));
+        if (!mounted) return;
+        if (geometry == null) {
+          throw StateError('The map routing service returned no driving route');
+        }
+        await ref
+            .read(routingProvider.notifier)
+            .buildRoute(
+              originLat: origin.latitude,
+              originLon: origin.longitude,
+              selectedZoneId: zoneId,
+              routePolyline: geometry.points,
+              routeDistanceMeters: geometry.distanceMeters,
+              routeDurationSeconds: geometry.durationSeconds,
+            );
+      } catch (error, stackTrace) {
+        if (!mounted) return;
+        ref.read(parkingSearchProvider.notifier).backToResults();
+        showErrorSnackBar(
+          context,
+          ref.read(l10nProvider).errorCreatingRoute,
+          error: error,
+          stackTrace: stackTrace,
+          s: ref.read(l10nProvider),
+          onRetry: () =>
+              _buildRouteForZone(zoneId, candidate: candidate, knownZone: zone),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _routeBuilding = false);
+      }
     }
   }
 
@@ -2354,7 +2362,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   ),
                 ),
               ),
-            if (isRoutingLoading)
+            if ((isRoutingLoading || _routeBuilding) &&
+                parkingSearchState.view != ParkingSearchView.loading &&
+                parkingSearchState.view != ParkingSearchView.routeBuilding)
               Positioned(
                 top: 148,
                 left: 0,
@@ -2387,7 +2397,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             ),
                             const SizedBox(width: 8),
-                            Text(s.searching),
+                            Text(
+                              _routeBuilding ? s.routeBuilding : s.searching,
+                            ),
                           ],
                         ),
                       ),

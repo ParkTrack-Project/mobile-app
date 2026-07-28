@@ -49,7 +49,7 @@ void main() {
     expect(AppStrings.ru.goAction, 'В путь');
     expect(AppStrings.ru.buildRoute, 'Маршрут');
     expect(AppStrings.ru.openInYandexMaps, 'Яндекс Карты');
-    expect(AppStrings.ru.routeBuilding, 'Строим маршрут');
+    expect(AppStrings.ru.routeBuilding, 'Строим маршрут...');
     expect(AppStrings.en.goAction, 'Go');
     expect(AppStrings.en.buildRoute, 'Route');
     expect(AppStrings.en.openInYandexMaps, 'Yandex Maps');

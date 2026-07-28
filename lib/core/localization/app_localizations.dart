@@ -388,7 +388,7 @@ class AppStrings {
     locationServicesDisabled: 'Геолокация отключена',
     searching: 'Ищем...',
     startingNavigation: 'Запускаем навигацию...',
-    routeBuilding: 'Строим маршрут',
+    routeBuilding: 'Строим маршрут...',
     routeReady: 'Маршрут готов',
     selectParking: 'Выберите парковку',
     parkingZone: 'Парковка',
