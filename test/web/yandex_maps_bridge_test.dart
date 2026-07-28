@@ -12,10 +12,16 @@ void main() {
   test('keeps rendering and service contracts implemented', () {
     expect(bridge, isNot(contains('window.ymaps.route')));
     expect(bridge, isNot(contains('/services/route/2.0/')));
-    expect(bridge, contains('const responses = await api.route({'));
+    expect(bridge, contains('const responses = await withTimeout('));
+    expect(bridge, contains('api.route({'));
+    expect(bridge, contains('.setApikeys({ router: apiKey })'));
     expect(
-      bridge,
-      contains('api.getDefaultConfig().setApikeys({ router: routerApiKey })'),
+      bridge.indexOf('.setApikeys({ router: apiKey })'),
+      lessThan(bridge.indexOf('entry.map = new api.YMap')),
+    );
+    expect(
+      bridge.indexOf('.setApikeys({ router: apiKey })'),
+      lessThan(bridge.indexOf('async route(fLat, fLon, tLat, tLon)')),
     );
     expect(bridge, contains('points: [[fLon, fLat], [tLon, tLat]]'));
     expect(
@@ -26,6 +32,17 @@ void main() {
     );
     expect(bridge, contains('duration: Number(properties.duration) || 0'));
     expect(bridge, contains('distance: Number(properties.length) || 0'));
+    expect(bridge, contains('async function routeViaOsrm('));
+    expect(
+      bridge,
+      contains('https://router.project-osrm.org/route/v1/driving/'),
+    );
+    expect(bridge, contains("payload.code === 'Ok'"));
+    expect(bridge, contains("'?overview=full&geometries=geojson&steps=false'"));
+    expect(
+      bridge.indexOf('const responses = await withTimeout('),
+      lessThan(bridge.indexOf('return JSON.stringify(await routeViaOsrm(')),
+    );
     expect(bridge, contains('window.ymaps.geocode'));
     expect(bridge, contains('searchViaServices'));
     expect(bridge, contains('api-maps.yandex.ru/services/search/'));

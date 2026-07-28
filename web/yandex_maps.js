@@ -6,9 +6,12 @@
   let renderingApi = null;
   let renderingLocale = null;
   let renderingPromise = null;
+  let routerApiConfigured = false;
   const searchConfigPromises = new Map();
   let searchJsonpSequence = 0;
   const cameraEmitIntervalMs = 100;
+  const yandexRouteTimeoutMs = 4000;
+  const osrmRouteTimeoutMs = 5000;
   const promoSelectors = [
     '[class*="-gotoymaps"]',
     '[class*="-gototech"]',
@@ -26,6 +29,65 @@
 
   function serviceSearchLocale(locale) {
     return locale === 'ru_RU' ? 'ru_RU' : 'en_US';
+  }
+
+  function withTimeout(promise, timeoutMs, errorCode) {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error(errorCode)), timeoutMs);
+      Promise.resolve(promise).then(
+        value => {
+          clearTimeout(timeout);
+          resolve(value);
+        },
+        error => {
+          clearTimeout(timeout);
+          reject(error);
+        }
+      );
+    });
+  }
+
+  async function routeViaOsrm(fLat, fLon, tLat, tLon) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), osrmRouteTimeoutMs);
+    try {
+      const coordinates =
+        `${encodeURIComponent(fLon)},${encodeURIComponent(fLat)};` +
+        `${encodeURIComponent(tLon)},${encodeURIComponent(tLat)}`;
+      const response = await fetch(
+        `https://router.project-osrm.org/route/v1/driving/${coordinates}` +
+          '?overview=full&geometries=geojson&steps=false',
+        { signal: controller.signal }
+      );
+      if (!response.ok) throw new Error(`osrm_route_http_${response.status}`);
+      const payload = await response.json();
+      const route =
+        payload && payload.code === 'Ok' && Array.isArray(payload.routes)
+          ? payload.routes[0]
+          : null;
+      const rawCoordinates =
+        route &&
+        route.geometry &&
+        Array.isArray(route.geometry.coordinates)
+          ? route.geometry.coordinates
+          : [];
+      const points = rawCoordinates
+        .filter(coordinate =>
+          Array.isArray(coordinate) &&
+          coordinate.length >= 2 &&
+          Number.isFinite(Number(coordinate[0])) &&
+          Number.isFinite(Number(coordinate[1]))
+        )
+        .map(coordinate => [Number(coordinate[1]), Number(coordinate[0])]);
+      if (points.length < 2) throw new Error('osrm_route_empty');
+      return {
+        points,
+        duration: Number(route.duration) || 0,
+        distance: Number(route.distance) || 0,
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   function loadSearchServiceConfig(locale, apiKey, forceRefresh = false) {
@@ -147,6 +209,16 @@
         try {
           if (!window.ymaps3) throw new Error('rendering_api_unavailable');
           await window.ymaps3.ready;
+          if (!routerApiConfigured) {
+            try {
+              window.ymaps3
+                .getDefaultConfig()
+                .setApikeys({ router: apiKey });
+              routerApiConfigured = true;
+            } catch (error) {
+              console.warn('Yandex Router API configuration failed:', error);
+            }
+          }
           renderingApi = window.ymaps3;
           resolve(renderingApi);
         } catch (error) {
@@ -1031,13 +1103,14 @@
         if (typeof api.route !== 'function') {
           throw new Error('ymaps3_route_unavailable');
         }
-        const routerApiKey = serviceApiKey();
-        if (!routerApiKey) throw new Error('missing_router_api_key');
-        api.getDefaultConfig().setApikeys({ router: routerApiKey });
-        const responses = await api.route({
-          points: [[fLon, fLat], [tLon, tLat]],
-          type: 'driving',
-        });
+        const responses = await withTimeout(
+          api.route({
+            points: [[fLon, fLat], [tLon, tLat]],
+            type: 'driving',
+          }),
+          yandexRouteTimeoutMs,
+          'ymaps3_route_timeout'
+        );
         const response = Array.isArray(responses) ? responses[0] : null;
         const feature =
           response && typeof response.toRoute === 'function'
@@ -1067,7 +1140,12 @@
         }
         throw new Error('ymaps3_route_empty');
       } catch (error) {
-        console.warn('Yandex Maps v3 route failed:', error);
+        console.warn('Yandex Maps v3 route failed, using OSRM:', error);
+      }
+      try {
+        return JSON.stringify(await routeViaOsrm(fLat, fLon, tLat, tLon));
+      } catch (error) {
+        console.error('OSRM route failed:', error);
         return JSON.stringify({ points: [], duration: 0, distance: 0 });
       }
     },
