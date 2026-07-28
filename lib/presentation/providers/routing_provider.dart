@@ -32,12 +32,6 @@ class Destination with _$Destination {
 
 final destinationProvider = StateProvider<Destination?>((ref) => null);
 
-enum DestinationMode { routeToAddress, nearestParking }
-
-final destinationModeProvider = StateProvider<DestinationMode>(
-  (ref) => DestinationMode.nearestParking,
-);
-
 class SearchBias {
   const SearchBias({
     required this.latitude,

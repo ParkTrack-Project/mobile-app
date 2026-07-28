@@ -55,7 +55,6 @@ class AppStrings {
   final String logoutConfirm;
   final String cancel;
   final String inAppRoute;
-  final String yandexNavigator;
   final String buildRoute;
   final String searchParkingNear;
   final String selectedPlace;
@@ -240,7 +239,6 @@ class AppStrings {
     required this.logoutConfirm,
     required this.cancel,
     required this.inAppRoute,
-    required this.yandexNavigator,
     required this.buildRoute,
     required this.searchParkingNear,
     required this.selectedPlace,
@@ -426,7 +424,6 @@ class AppStrings {
     logoutConfirm: 'Вы уверены, что хотите выйти из аккаунта?',
     cancel: 'Отмена',
     inAppRoute: 'В путь',
-    yandexNavigator: 'Яндекс Карты',
     buildRoute: 'Маршрут',
     searchParkingNear: 'Искать парковку рядом',
     selectedPlace: 'Выбранное место',
@@ -629,7 +626,6 @@ class AppStrings {
     logoutConfirm: 'Are you sure you want to sign out?',
     cancel: 'Cancel',
     inAppRoute: 'Go',
-    yandexNavigator: 'Yandex Maps',
     buildRoute: 'Route',
     searchParkingNear: 'Search parking nearby',
     selectedPlace: 'Selected place',

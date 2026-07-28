@@ -25,6 +25,12 @@ external void _createYandexMap(
 @JS('parkTrackYandexMaps.update')
 external void _updateYandexMap(JSString elementId, JSString stateJson);
 
+@JS('parkTrackYandexMaps.updatePosition')
+external void _updateYandexMapPosition(
+  JSString elementId,
+  JSString positionJson,
+);
+
 @JS('parkTrackYandexMaps.move')
 external void _moveYandexMap(
   JSString elementId,
@@ -128,11 +134,13 @@ class _WebMapViewState extends State<WebMapView> {
   Set<int> _serializedCandidateIds = const {};
   int? _serializedSelectedZoneId;
   int? _serializedActiveRouteZoneId;
+  Brightness? _serializedBrightness;
   List<Map<String, Object?>> _serializedZones = const [];
   List<Point>? _serializedRouteSource;
   List<List<double>>? _serializedRoute;
   Map<int, Zone> _zonesById = const {};
   String? _lastStateJson;
+  String? _lastPositionJson;
 
   @override
   void initState() {
@@ -168,7 +176,37 @@ class _WebMapViewState extends State<WebMapView> {
   @override
   void didUpdateWidget(covariant WebMapView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!_created) return;
+    if (_hasStructuralChanges(oldWidget)) {
+      _updateMap();
+    } else if (_hasPositionChanges(oldWidget)) {
+      _updatePosition();
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
     if (_created) _updateMap();
+  }
+
+  bool _hasStructuralChanges(WebMapView oldWidget) {
+    return !identical(oldWidget.zones, widget.zones) ||
+        !setEquals(oldWidget.candidateIds, widget.candidateIds) ||
+        oldWidget.selectedZoneId != widget.selectedZoneId ||
+        oldWidget.activeRouteZoneId != widget.activeRouteZoneId ||
+        !identical(oldWidget.route, widget.route);
+  }
+
+  bool _hasPositionChanges(WebMapView oldWidget) {
+    return oldWidget.userLatitude != widget.userLatitude ||
+        oldWidget.userLongitude != widget.userLongitude ||
+        oldWidget.userHeading != widget.userHeading ||
+        oldWidget.navigationLatitude != widget.navigationLatitude ||
+        oldWidget.navigationLongitude != widget.navigationLongitude ||
+        oldWidget.navigationHeading != widget.navigationHeading ||
+        oldWidget.destinationLatitude != widget.destinationLatitude ||
+        oldWidget.destinationLongitude != widget.destinationLongitude;
   }
 
   void _initializeMap(web.HTMLElement element) {
@@ -259,40 +297,54 @@ class _WebMapViewState extends State<WebMapView> {
         ? 'ru_RU'
         : 'en_RU';
 
+    final position = _positionState();
     final state = <String, Object?>{
       'theme': isDark ? 'dark' : 'light',
       'locale': locale,
       'zones': _zoneState(),
       'route': _routeState(),
-      'user': widget.userLatitude != null && widget.userLongitude != null
-          ? [widget.userLatitude, widget.userLongitude, widget.userHeading ?? 0]
-          : null,
-      'navigation':
-          widget.navigationLatitude != null &&
-              widget.navigationLongitude != null
-          ? [
-              widget.navigationLatitude,
-              widget.navigationLongitude,
-              widget.navigationHeading ?? 0,
-            ]
-          : null,
-      'destination':
-          widget.destinationLatitude != null &&
-              widget.destinationLongitude != null
-          ? [widget.destinationLatitude, widget.destinationLongitude]
-          : null,
+      ...position,
     };
     final stateJson = jsonEncode(state);
     if (stateJson == _lastStateJson) return;
     _lastStateJson = stateJson;
+    _lastPositionJson = jsonEncode(position);
     _updateYandexMap(_elementId.toJS, stateJson.toJS);
   }
 
+  void _updatePosition() {
+    final positionJson = jsonEncode(_positionState());
+    if (positionJson == _lastPositionJson) return;
+    _lastPositionJson = positionJson;
+    _updateYandexMapPosition(_elementId.toJS, positionJson.toJS);
+  }
+
+  Map<String, Object?> _positionState() => {
+    'user': widget.userLatitude != null && widget.userLongitude != null
+        ? [widget.userLatitude, widget.userLongitude, widget.userHeading ?? 0]
+        : null,
+    'navigation':
+        widget.navigationLatitude != null && widget.navigationLongitude != null
+        ? [
+            widget.navigationLatitude,
+            widget.navigationLongitude,
+            widget.navigationHeading ?? 0,
+          ]
+        : null,
+    'destination':
+        widget.destinationLatitude != null &&
+            widget.destinationLongitude != null
+        ? [widget.destinationLatitude, widget.destinationLongitude]
+        : null,
+  };
+
   List<Map<String, Object?>> _zoneState() {
+    final brightness = Theme.of(context).brightness;
     if (identical(_serializedZonesSource, widget.zones) &&
         setEquals(_serializedCandidateIds, widget.candidateIds) &&
         _serializedSelectedZoneId == widget.selectedZoneId &&
-        _serializedActiveRouteZoneId == widget.activeRouteZoneId) {
+        _serializedActiveRouteZoneId == widget.activeRouteZoneId &&
+        _serializedBrightness == brightness) {
       return _serializedZones;
     }
 
@@ -300,6 +352,7 @@ class _WebMapViewState extends State<WebMapView> {
     _serializedCandidateIds = Set.unmodifiable(widget.candidateIds);
     _serializedSelectedZoneId = widget.selectedZoneId;
     _serializedActiveRouteZoneId = widget.activeRouteZoneId;
+    _serializedBrightness = brightness;
     _zonesById = {for (final zone in widget.zones) zone.zoneId: zone};
     final markerState = resolveParkingMarkerState(
       allIds: _zonesById.keys.toSet(),
@@ -308,27 +361,15 @@ class _WebMapViewState extends State<WebMapView> {
     );
     _serializedZones = widget.zones
         .map((zone) {
-          final colors = parkingZoneColors(
-            zone,
-            brightness: Theme.of(context).brightness,
-          );
+          final colors = parkingZoneColors(zone, brightness: brightness);
           final center = centroid(zone.geometry);
           final isCandidate = widget.candidateIds.contains(zone.zoneId);
           final isSelected = widget.selectedZoneId == zone.zoneId;
           final isDimmed = !markerState.activeIds.contains(zone.zoneId);
           final displayedColors = isDimmed ? colors.dimmed() : colors;
-          final clusterFull = parkingClusterColor(
-            0,
-            brightness: Theme.of(context).brightness,
-          );
-          final clusterOne = parkingClusterColor(
-            1,
-            brightness: Theme.of(context).brightness,
-          );
-          final clusterFree = parkingClusterColor(
-            3,
-            brightness: Theme.of(context).brightness,
-          );
+          final clusterFull = parkingClusterColor(0, brightness: brightness);
+          final clusterOne = parkingClusterColor(1, brightness: brightness);
+          final clusterFree = parkingClusterColor(3, brightness: brightness);
           return <String, Object?>{
             'id': zone.zoneId,
             'type': zone.zoneType == ZoneType.parallel ? 'line' : 'polygon',
@@ -343,7 +384,7 @@ class _WebMapViewState extends State<WebMapView> {
             'candidate': isCandidate,
             'active': widget.activeRouteZoneId == zone.zoneId || isSelected,
             'markerOpacity': isDimmed ? parkingCounterDimmedOpacity : 1.0,
-            'markerTextColor': Theme.of(context).brightness == Brightness.dark
+            'markerTextColor': brightness == Brightness.dark
                 ? '#09090b'
                 : '#ffffff',
             'clusterFull': _cssColor(clusterFull),
@@ -382,6 +423,7 @@ class _WebMapViewState extends State<WebMapView> {
     widget.controller.clear();
     _zonesById = const {};
     _lastStateJson = null;
+    _lastPositionJson = null;
     super.dispose();
   }
 

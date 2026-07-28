@@ -38,4 +38,10 @@ void main() {
     expect(bridge, contains('M16 39C13 32'));
     expect(bridge, contains('viewBox="0 0 48 48" width="24" height="24"'));
   });
+
+  test('updates moving markers without rebuilding parking zones', () {
+    expect(bridge, contains('function renderPositions(entry, state)'));
+    expect(bridge, contains('updatePosition(id, state)'));
+    expect(bridge, contains('renderPositions(entry, entry.latestState)'));
+  });
 }

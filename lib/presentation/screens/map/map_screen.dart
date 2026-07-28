@@ -260,28 +260,37 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         );
     if (same) return;
     final generation = ++_bitmapGeneration;
-    final newCache = <int, Uint8List>{};
     final newById = <int, Zone>{};
     final usedStyles = <({int? count, int color, int textColor})>{};
     for (final zone in zones) {
-      if (_bitmapGeneration != generation) return;
       if (zone.geometry.length < 3) continue;
       final style = styles[zone.zoneId]!;
       usedStyles.add(style);
-      var bitmap = _zoneBitmapCache[style];
-      if (bitmap == null) {
-        bitmap = await buildCountBitmap(
-          style.count,
-          Color(style.color),
-          textColor: Color(style.textColor),
-        );
-        if (_bitmapGeneration != generation) return;
-        _zoneBitmapCache[style] = bitmap;
-      }
-      newCache[zone.zoneId] = bitmap;
       newById[zone.zoneId] = zone;
     }
+
+    final missingStyles = usedStyles
+        .where((style) => !_zoneBitmapCache.containsKey(style))
+        .toList(growable: false);
+    final generated = await Future.wait(
+      missingStyles.map(
+        (style) async => MapEntry(
+          style,
+          await buildCountBitmap(
+            style.count,
+            Color(style.color),
+            textColor: Color(style.textColor),
+          ),
+        ),
+      ),
+    );
     if (_bitmapGeneration != generation) return;
+    _zoneBitmapCache.addEntries(generated);
+
+    final newCache = <int, Uint8List>{
+      for (final entry in newById.entries)
+        entry.key: _zoneBitmapCache[styles[entry.key]!]!,
+    };
     if (mounted) {
       setState(() {
         _markerBrightness = brightness;

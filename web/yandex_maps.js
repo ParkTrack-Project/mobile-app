@@ -401,6 +401,46 @@
     };
   }
 
+  function renderPositions(entry, state) {
+    if (!entry.map || !renderingApi) return;
+    const { YMapMarker } = renderingApi;
+    const positionSignature = JSON.stringify([
+      state.navigation || null,
+      state.user || null,
+      state.destination || null,
+    ]);
+    if (positionSignature === entry.positionSignature) return;
+    entry.positionSignature = positionSignature;
+    clearObjectGroup(entry, 'positionObjects');
+
+    if (state.navigation) {
+      const angle = state.navigation[2] || 0;
+      const el = document.createElement('div');
+      el.style.cssText = `position:absolute;left:-14px;top:-14px;width:28px;height:28px;z-index:2400`;
+      el.innerHTML = `<svg viewBox="0 0 80 80" width="28" height="28" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,0.45));transform:rotate(${angle}deg)"><path d="M40 4 L62.4 57.6 L40 44.8 L17.6 57.6 Z" fill="#007aff" stroke="#fff" stroke-width="3" stroke-linejoin="round"/></svg>`;
+      addObject(entry, new YMapMarker({
+        coordinates: [state.navigation[1], state.navigation[0]]
+      }, el), 'positionObjects');
+    }
+    if (state.user) {
+      const el = document.createElement('div');
+      const angle = Number(state.user[2] || 0);
+      el.style.cssText = 'position:absolute;left:-12px;top:-12px;width:24px;height:24px;z-index:2300';
+      el.innerHTML = `<svg viewBox="0 0 48 48" width="24" height="24" style="transform-origin:50% 50%;transform:rotate(${angle}deg);filter:drop-shadow(0 1px 1px rgba(0,0,0,.28))"><path d="M24 3 L29.3 18.7 Q24 16.8 18.7 18.7 Z" fill="#e53935" stroke="#fff" stroke-width="3" stroke-linejoin="round"/><circle cx="24" cy="24" r="10" fill="#fff"/><circle cx="24" cy="24" r="7" fill="#e53935"/></svg>`;
+      addObject(entry, new YMapMarker({
+        coordinates: [state.user[1], state.user[0]]
+      }, el), 'positionObjects');
+    }
+    if (state.destination) {
+      const el = document.createElement('div');
+      el.style.cssText = 'position:absolute;left:-16px;top:-40px;width:32px;height:40px;z-index:2300';
+      el.innerHTML = '<svg viewBox="0 0 32 40" width="32" height="40" style="filter:drop-shadow(0 2px 2px rgba(0,0,0,.35))"><path d="M16 39C13 32 4 24 4 14A12 12 0 0 1 28 14C28 24 19 32 16 39Z" fill="#2e7d32" stroke="#fff" stroke-width="2"/><circle cx="16" cy="14" r="4" fill="#fff"/></svg>';
+      addObject(entry, new YMapMarker({
+        coordinates: [state.destination[1], state.destination[0]]
+      }, el), 'positionObjects');
+    }
+  }
+
   function render(entry, state) {
     entry.latestState = state;
     if (!entry.map || !renderingApi) return;
@@ -527,42 +567,7 @@
       }), 'routeObjects');
     }
 
-    const positionSignature = JSON.stringify([
-      state.navigation || null,
-      state.user || null,
-      state.destination || null,
-    ]);
-    if (positionSignature !== entry.positionSignature) {
-      entry.positionSignature = positionSignature;
-      clearObjectGroup(entry, 'positionObjects');
-
-      if (state.navigation) {
-        const angle = state.navigation[2] || 0;
-        const el = document.createElement('div');
-        el.style.cssText = `position:absolute;left:-14px;top:-14px;width:28px;height:28px;z-index:2400`;
-        el.innerHTML = `<svg viewBox="0 0 80 80" width="28" height="28" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,0.45));transform:rotate(${angle}deg)"><path d="M40 4 L62.4 57.6 L40 44.8 L17.6 57.6 Z" fill="#007aff" stroke="#fff" stroke-width="3" stroke-linejoin="round"/></svg>`;
-        addObject(entry, new YMapMarker({
-          coordinates: [state.navigation[1], state.navigation[0]]
-        }, el), 'positionObjects');
-      }
-      if (state.user) {
-        const el = document.createElement('div');
-        const angle = Number(state.user[2] || 0);
-        el.style.cssText = 'position:absolute;left:-12px;top:-12px;width:24px;height:24px;z-index:2300';
-        el.innerHTML = `<svg viewBox="0 0 48 48" width="24" height="24" style="transform-origin:50% 50%;transform:rotate(${angle}deg);filter:drop-shadow(0 1px 1px rgba(0,0,0,.28))"><path d="M24 3 L29.3 18.7 Q24 16.8 18.7 18.7 Z" fill="#e53935" stroke="#fff" stroke-width="3" stroke-linejoin="round"/><circle cx="24" cy="24" r="10" fill="#fff"/><circle cx="24" cy="24" r="7" fill="#e53935"/></svg>`;
-        addObject(entry, new YMapMarker({
-          coordinates: [state.user[1], state.user[0]]
-        }, el), 'positionObjects');
-      }
-      if (state.destination) {
-        const el = document.createElement('div');
-        el.style.cssText = 'position:absolute;left:-16px;top:-40px;width:32px;height:40px;z-index:2300';
-        el.innerHTML = '<svg viewBox="0 0 32 40" width="32" height="40" style="filter:drop-shadow(0 2px 2px rgba(0,0,0,.35))"><path d="M16 39C13 32 4 24 4 14A12 12 0 0 1 28 14C28 24 19 32 16 39Z" fill="#2e7d32" stroke="#fff" stroke-width="2"/><circle cx="16" cy="14" r="4" fill="#fff"/></svg>';
-        addObject(entry, new YMapMarker({
-          coordinates: [state.destination[1], state.destination[0]]
-        }, el), 'positionObjects');
-      }
-    }
+    renderPositions(entry, state);
   }
 
   async function initializeMap(entry) {
@@ -648,6 +653,13 @@
       if (!entry || state === entry.latestStateJson) return;
       entry.latestStateJson = state;
       render(entry, JSON.parse(state));
+    },
+    updatePosition(id, state) {
+      const entry = entries.get(id);
+      if (!entry) return;
+      const positions = JSON.parse(state);
+      entry.latestState = Object.assign(entry.latestState || {}, positions);
+      renderPositions(entry, entry.latestState);
     },
     move(id, lat, lon, zoom) {
       const entry = entries.get(id);
