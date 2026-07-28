@@ -1,4 +1,4 @@
-• A convenient new parking results list is synchronized with markers on the map.
-• Added quick “Go” and “Open in Yandex Maps” actions.
-• Improved route preview while keeping map controls available.
-• Search destinations are now marked with a precise pin.
+• Added convenient search results and detailed parking cards.
+• Added m.parktrack.live and parktrack:// links for opening app sections.
+• Refreshed the location marker, compass, map controls, and route-building feedback.
+• Accelerated map, marker, and navigation updates and fixed parking-card opening.
