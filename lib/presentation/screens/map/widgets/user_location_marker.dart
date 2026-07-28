@@ -77,19 +77,24 @@ void _drawPoint(Canvas canvas, Offset center) {
   );
   canvas.drawCircle(center, 18.5, Paint()..color = const Color(0x08000000));
   canvas.drawCircle(center, 18, Paint()..color = Colors.white);
-  canvas.drawCircle(center, 13.5, Paint()..color = const Color(0xFFFF3B30));
+  const redRadius = 12.5;
+  canvas.drawCircle(
+    center,
+    redRadius,
+    Paint()..color = const Color(0xFFFF3B30),
+  );
 
   final highlight = Paint()
     ..shader = ui.Gradient.radial(
       center - const Offset(4, 5),
-      14,
+      redRadius,
       const [Color(0x55FFFFFF), Color(0x00FFFFFF)],
       const [0, 1],
     );
-  canvas.drawCircle(center, 13.5, highlight);
+  canvas.drawCircle(center, redRadius, highlight);
   canvas.drawCircle(
     center + const Offset(0, 1),
-    13.5,
+    redRadius,
     Paint()
       ..color = const Color(0x24000000)
       ..style = PaintingStyle.stroke

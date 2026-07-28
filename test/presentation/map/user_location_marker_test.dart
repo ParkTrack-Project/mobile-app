@@ -23,6 +23,7 @@ void main() {
     final pixels = await _pixels(image);
 
     expect(_pixel(pixels, image.width, 32, 32), _isCloseToColor(0xFFFF3B30));
+    expect(_pixel(pixels, image.width, 45, 32), _isCloseToColor(0xFFFFFFFF));
     expect(_pixel(pixels, image.width, 47, 32), _isCloseToColor(0xFFFFFFFF));
     expect(_alpha(_pixel(pixels, image.width, 0, 0)), 0);
   });

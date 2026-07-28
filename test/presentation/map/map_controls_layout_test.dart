@@ -16,6 +16,17 @@ void main() {
     );
   });
 
+  test('hides lower controls before they reach the top controls', () {
+    expect(
+      shouldShowLowerMapControls(viewportHeight: 800, mapControlsBottom: 663),
+      isTrue,
+    );
+    expect(
+      shouldShowLowerMapControls(viewportHeight: 800, mapControlsBottom: 665),
+      isFalse,
+    );
+  });
+
   test('suppresses a background tap immediately following a parking tap', () {
     final now = DateTime(2026, 7, 28, 12);
 

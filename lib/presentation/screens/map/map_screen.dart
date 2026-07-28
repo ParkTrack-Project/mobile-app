@@ -69,6 +69,17 @@ double resolveZoomControlsBottom({
 }
 
 @visibleForTesting
+bool shouldShowLowerMapControls({
+  required double viewportHeight,
+  required double mapControlsBottom,
+}) {
+  const controlHeight = 52.0;
+  const minimumTop = 84.0;
+  final controlTop = viewportHeight - mapControlsBottom - controlHeight;
+  return controlTop >= minimumTop;
+}
+
+@visibleForTesting
 bool shouldIgnoreMapBackgroundTap({
   required DateTime? lastZoneTapAt,
   required DateTime now,
@@ -1801,6 +1812,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       viewportHeight: viewportHeight,
       mapControlsBottom: mapControlsBottom,
     );
+    final showLowerMapControls = shouldShowLowerMapControls(
+      viewportHeight: viewportHeight,
+      mapControlsBottom: mapControlsBottom,
+    );
     final showCompass = _currentAzimuth.abs() > 1.0;
 
     return Scaffold(
@@ -2136,48 +2151,51 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 ),
               ),
             ),
-            Positioned(
-              right: 12,
-              bottom: mapControlsBottom,
-              child: PointerInterceptor(
-                intercepting: kIsWeb,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 180),
-                      child: showCompass
-                          ? Padding(
-                              key: const ValueKey('compass_visible'),
-                              padding: const EdgeInsets.only(right: 8),
-                              child: MapCompassButton(
-                                azimuth: _currentAzimuth,
-                                onPressed: _resetNorth,
-                                tooltip: s.map,
+            if (showLowerMapControls)
+              Positioned(
+                right: 12,
+                bottom: mapControlsBottom,
+                child: PointerInterceptor(
+                  intercepting: kIsWeb,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 180),
+                        child: showCompass
+                            ? Padding(
+                                key: const ValueKey('compass_visible'),
+                                padding: const EdgeInsets.only(right: 8),
+                                child: MapCompassButton(
+                                  azimuth: _currentAzimuth,
+                                  onPressed: _resetNorth,
+                                  tooltip: s.map,
+                                ),
+                              )
+                            : const SizedBox.shrink(
+                                key: ValueKey('compass_hidden'),
                               ),
-                            )
-                          : const SizedBox.shrink(
-                              key: ValueKey('compass_hidden'),
-                            ),
-                    ),
-                    _RoundMapControl(
-                      onTap: _goToMyLocation,
-                      tooltip: s.myLocation,
-                      child: Transform.rotate(
-                        angle: math.pi / 4,
-                        child: Icon(
-                          Icons.navigation_rounded,
-                          size: 26,
-                          color: _isUserCentered
-                              ? const Color(0xFF1967D2)
-                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                      _RoundMapControl(
+                        onTap: _goToMyLocation,
+                        tooltip: s.myLocation,
+                        child: Transform.rotate(
+                          angle: math.pi / 4,
+                          child: Icon(
+                            Icons.navigation_rounded,
+                            size: 26,
+                            color: _isUserCentered
+                                ? const Color(0xFF1967D2)
+                                : Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
             // ─── Селектор времени: всегда левый край ──────────────
             if (parkingFabVisible)
               Positioned(
