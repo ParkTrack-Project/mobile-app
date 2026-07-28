@@ -718,7 +718,51 @@
         entries.delete(id);
       }
     },
-    route(fLat, fLon, tLat, tLon) {
+    async route(fLat, fLon, tLat, tLon) {
+      try {
+        const api = await loadRenderingApi(renderingLocale || 'ru_RU');
+        if (typeof api.route !== 'function') {
+          throw new Error('ymaps3_route_unavailable');
+        }
+        const routerApiKey = serviceApiKey();
+        if (!routerApiKey) throw new Error('missing_router_api_key');
+        api.getDefaultConfig().setApikeys({ router: routerApiKey });
+        const responses = await api.route({
+          points: [[fLon, fLat], [tLon, tLat]],
+          type: 'driving',
+        });
+        const response = Array.isArray(responses) ? responses[0] : null;
+        const feature =
+          response && typeof response.toRoute === 'function'
+            ? response.toRoute()
+            : null;
+        const coordinates =
+          feature &&
+          feature.geometry &&
+          Array.isArray(feature.geometry.coordinates)
+            ? feature.geometry.coordinates
+            : [];
+        const points = coordinates
+          .filter(coordinate =>
+            Array.isArray(coordinate) &&
+            coordinate.length >= 2 &&
+            Number.isFinite(Number(coordinate[0])) &&
+            Number.isFinite(Number(coordinate[1]))
+          )
+          .map(coordinate => [Number(coordinate[1]), Number(coordinate[0])]);
+        if (points.length >= 2) {
+          const properties = feature.properties || {};
+          return JSON.stringify({
+            points,
+            duration: Number(properties.duration) || 0,
+            distance: Number(properties.length) || 0,
+          });
+        }
+        throw new Error('ymaps3_route_empty');
+      } catch (error) {
+        console.warn('Yandex Maps v3 route failed, using v2.1 fallback:', error);
+      }
+
       return new Promise((resolve) => {
         if (!window.ymaps) return resolve(JSON.stringify({ points: [], duration: 0, distance: 0 }));
         window.ymaps.ready(() => {

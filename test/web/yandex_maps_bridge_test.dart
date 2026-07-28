@@ -11,6 +11,20 @@ void main() {
 
   test('keeps rendering and service contracts implemented', () {
     expect(bridge, contains('window.ymaps.route'));
+    expect(bridge, contains('const responses = await api.route({'));
+    expect(
+      bridge,
+      contains('api.getDefaultConfig().setApikeys({ router: routerApiKey })'),
+    );
+    expect(bridge, contains('points: [[fLon, fLat], [tLon, tLat]]'));
+    expect(
+      bridge,
+      contains(
+        '.map(coordinate => [Number(coordinate[1]), Number(coordinate[0])])',
+      ),
+    );
+    expect(bridge, contains('duration: Number(properties.duration) || 0'));
+    expect(bridge, contains('distance: Number(properties.length) || 0'));
     expect(bridge, contains('window.ymaps.geocode'));
     expect(bridge, contains('searchViaServices'));
     expect(bridge, contains('api-maps.yandex.ru/services/search/'));

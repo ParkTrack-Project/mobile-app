@@ -207,6 +207,47 @@ void main() {
     expect(closeCount, 1);
   });
 
+  testWidgets('panel height follows the drag distance one to one', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(340, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final heights = <double>[];
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [l10nProvider.overrideWithValue(AppStrings.en)],
+        child: MaterialApp(
+          home: Scaffold(
+            body: CandidatesSheet(
+              candidates: const [],
+              zones: const [],
+              lastViewedZoneId: null,
+              initialScrollOffset: 0,
+              onSelect: (_) {},
+              onAction: (_, _, _) {},
+              onPanelHeightChanged: heights.add,
+              onScrollOffsetChanged: (_) {},
+              onClose: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    final initialHeight = heights.last;
+    final header = find.byKey(const Key('parking_results_drag_header'));
+    final gesture = await tester.startGesture(tester.getCenter(header));
+
+    await gesture.moveBy(const Offset(0, 40));
+    await tester.pump();
+
+    expect(heights.last, closeTo(initialHeight - 40, 0.01));
+    await gesture.up();
+  });
+
   testWidgets(
     'renders explicit loading, route building, empty, and error states',
     (tester) async {

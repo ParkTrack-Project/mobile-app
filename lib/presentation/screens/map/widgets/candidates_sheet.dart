@@ -83,7 +83,7 @@ class _CandidatesSheetState extends ConsumerState<CandidatesSheet> {
     required double maxHeight,
   }) {
     _setPanelHeight(
-      (_panelHeight ?? fallbackHeight) - deltaY * 1.5,
+      (_panelHeight ?? fallbackHeight) - deltaY,
       minHeight,
       maxHeight,
     );
