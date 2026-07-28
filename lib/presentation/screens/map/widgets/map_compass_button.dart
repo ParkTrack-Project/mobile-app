@@ -90,7 +90,8 @@ class _CompassIcon extends StatelessWidget {
       builder: (context, angle, child) =>
           Transform.rotate(angle: angle, child: child),
       child: const CustomPaint(
-        size: Size(23, 31),
+        key: Key('map_compass_icon'),
+        size: Size(18, 24),
         painter: _CompassIconPainter(),
       ),
     );
@@ -118,7 +119,7 @@ class _CompassIconPainter extends CustomPainter {
         ..lineTo(16, 44)
         ..lineTo(28, 22)
         ..close(),
-      Paint()..color = const Color(0xFFBFC1C3),
+      Paint()..color = const Color(0xFFD1D3D4),
     );
     canvas.drawCircle(
       const Offset(16.25, 22.25),

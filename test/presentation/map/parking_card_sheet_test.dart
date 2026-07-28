@@ -85,10 +85,10 @@ void main() {
     await tester.tap(find.text('Previous'));
     await tester.ensureVisible(find.text('Next'));
     await tester.tap(find.text('Next'));
-    await tester.ensureVisible(find.text('Build Route'));
-    await tester.tap(find.text('Build Route'));
-    await tester.ensureVisible(find.text('Open in Yandex Maps'));
-    await tester.tap(find.text('Open in Yandex Maps'));
+    await tester.ensureVisible(find.text('Route'));
+    await tester.tap(find.text('Route'));
+    await tester.ensureVisible(find.text('Yandex Maps'));
+    await tester.tap(find.text('Yandex Maps'));
 
     expect(back, isTrue);
     expect(previous, isTrue);

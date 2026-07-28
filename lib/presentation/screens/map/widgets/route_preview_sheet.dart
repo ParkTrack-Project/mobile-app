@@ -115,12 +115,23 @@ class _RoutePreviewSheetState extends ConsumerState<RoutePreviewSheet> {
                 ),
               ),
               const SizedBox(height: 10),
-              Text(
-                s.routeReady,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      s.routeReady,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: s.close,
+                    onPressed: widget.onClose,
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
               if (widget.route.arrivalTime != null)
@@ -174,14 +185,6 @@ class _RoutePreviewSheetState extends ConsumerState<RoutePreviewSheet> {
                 onPressed: _launching ? null : _launchNavigator,
                 icon: const Icon(Icons.open_in_new),
                 label: Text(_launching ? s.searching : s.openInYandexMaps),
-              ),
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: widget.onClose,
-                child: Text(
-                  s.reset,
-                  style: TextStyle(color: Theme.of(context).hintColor),
-                ),
               ),
             ],
           ),

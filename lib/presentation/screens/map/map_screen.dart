@@ -3,7 +3,12 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart'
-    show TargetPlatform, defaultTargetPlatform, kIsWeb, setEquals;
+    show
+        TargetPlatform,
+        defaultTargetPlatform,
+        kIsWeb,
+        setEquals,
+        visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
@@ -47,6 +52,31 @@ const double _tapZoomStep = 1;
 const double _holdZoomStep = 0.224;
 const double _tapZoomDurationSeconds = 0.18;
 const double _holdZoomDurationSeconds = 0.05;
+
+@visibleForTesting
+double resolveZoomControlsBottom({
+  required double viewportHeight,
+  required double mapControlsBottom,
+}) {
+  const zoomControlsHeight = 105.0;
+  const lowerControlsHeight = 52.0;
+  const controlsGap = 10.0;
+  final centeredBottom = viewportHeight / 2 - zoomControlsHeight / 2;
+  return math.max(
+    centeredBottom,
+    mapControlsBottom + lowerControlsHeight + controlsGap,
+  );
+}
+
+@visibleForTesting
+bool shouldIgnoreMapBackgroundTap({
+  required DateTime? lastZoneTapAt,
+  required DateTime now,
+}) {
+  if (lastZoneTapAt == null) return false;
+  final elapsed = now.difference(lastZoneTapAt);
+  return !elapsed.isNegative && elapsed < const Duration(milliseconds: 200);
+}
 
 class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({super.key, this.initialParkingId, this.searchQuery});
@@ -100,6 +130,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   bool _navBuilding = false;
   bool _nativeUserLayerVisible = false;
   String? _lastShownZonesErrorSignature;
+  DateTime? _lastZoneTapAt;
 
   List<Zone>? _cachedMapZones;
   Set<int> _cachedCandidateIds = const {};
@@ -352,6 +383,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   void _onZoneTap(Zone zone) {
+    _lastZoneTapAt = DateTime.now();
     final searchState = ref.read(parkingSearchProvider);
     if (searchState.view == ParkingSearchView.routeBuilding ||
         ref.read(navigationProvider) != null) {
@@ -371,6 +403,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   void _onMapBackgroundTap() {
+    if (shouldIgnoreMapBackgroundTap(
+      lastZoneTapAt: _lastZoneTapAt,
+      now: DateTime.now(),
+    )) {
+      return;
+    }
     final search = ref.read(parkingSearchProvider);
     if (search.view == ParkingSearchView.details) {
       ref.read(parkingSearchProvider.notifier).backToResults();
@@ -516,6 +554,18 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         final point = centroid(zone.geometry);
         await _openExternalMap(point.latitude, point.longitude);
     }
+  }
+
+  Future<void> _buildRouteFromSearchCard(
+    Zone zone,
+    RouteCandidate? candidate,
+  ) async {
+    ref.read(parkingSearchProvider.notifier).startRoute(zone.zoneId);
+    await _buildRouteForZone(
+      zone.zoneId,
+      candidate: candidate,
+      knownZone: zone,
+    );
   }
 
   Future<void> _openExternalMap(double latitude, double longitude) async {
@@ -1747,6 +1797,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final mapControlsBottom =
         mapPanelHeight + (parkingFabVisible ? 82.0 : 0.0) + 12;
     final showZoomControls = viewportHeight - mapControlsBottom >= 280;
+    final zoomControlsBottom = resolveZoomControlsBottom(
+      viewportHeight: viewportHeight,
+      mapControlsBottom: mapControlsBottom,
+    );
     final showCompass = _currentAzimuth.abs() > 1.0;
 
     return Scaffold(
@@ -1884,8 +1938,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                                     parkingSearchState.candidates.length - 1
                             ? () => _openAdjacentCandidate(1)
                             : null,
-                        onBuildRoute: () =>
-                            _buildRouteForZone(selectedDetailZone.zoneId),
+                        onBuildRoute: () => _buildRouteFromSearchCard(
+                          selectedDetailZone,
+                          selectedCandidate,
+                        ),
                         onOpenExternal: selectedDetailZone.geometry.isEmpty
                             ? null
                             : () {
@@ -2061,61 +2117,62 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               ),
             Positioned(
               right: 12,
+              bottom: zoomControlsBottom,
+              child: PointerInterceptor(
+                intercepting: kIsWeb,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  child: showZoomControls
+                      ? _ZoomControlGroup(
+                          key: const ValueKey('zoom_controls'),
+                          onZoomIn: _zoomIn,
+                          onZoomOut: _zoomOut,
+                          onZoomInHold: _zoomInContinuously,
+                          onZoomOutHold: _zoomOutContinuously,
+                        )
+                      : const SizedBox.shrink(
+                          key: ValueKey('zoom_controls_hidden'),
+                        ),
+                ),
+              ),
+            ),
+            Positioned(
+              right: 12,
               bottom: mapControlsBottom,
               child: PointerInterceptor(
                 intercepting: kIsWeb,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     AnimatedSwitcher(
                       duration: const Duration(milliseconds: 180),
-                      child: showZoomControls
-                          ? _ZoomControlGroup(
-                              key: const ValueKey('zoom_controls'),
-                              onZoomIn: _zoomIn,
-                              onZoomOut: _zoomOut,
-                              onZoomInHold: _zoomInContinuously,
-                              onZoomOutHold: _zoomOutContinuously,
+                      child: showCompass
+                          ? Padding(
+                              key: const ValueKey('compass_visible'),
+                              padding: const EdgeInsets.only(right: 8),
+                              child: MapCompassButton(
+                                azimuth: _currentAzimuth,
+                                onPressed: _resetNorth,
+                                tooltip: s.map,
+                              ),
                             )
                           : const SizedBox.shrink(
-                              key: ValueKey('zoom_controls_hidden'),
+                              key: ValueKey('compass_hidden'),
                             ),
                     ),
-                    if (showZoomControls) const SizedBox(height: 10),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 180),
-                          child: showCompass
-                              ? Padding(
-                                  key: const ValueKey('compass_visible'),
-                                  padding: const EdgeInsets.only(right: 8),
-                                  child: MapCompassButton(
-                                    azimuth: _currentAzimuth,
-                                    onPressed: _resetNorth,
-                                    tooltip: s.map,
-                                  ),
-                                )
-                              : const SizedBox.shrink(
-                                  key: ValueKey('compass_hidden'),
-                                ),
+                    _RoundMapControl(
+                      onTap: _goToMyLocation,
+                      tooltip: s.myLocation,
+                      child: Transform.rotate(
+                        angle: math.pi / 4,
+                        child: Icon(
+                          Icons.navigation_rounded,
+                          size: 26,
+                          color: _isUserCentered
+                              ? const Color(0xFF1967D2)
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
-                        _RoundMapControl(
-                          onTap: _goToMyLocation,
-                          tooltip: s.myLocation,
-                          child: Icon(
-                            Icons.navigation_rounded,
-                            size: 26,
-                            color: _isUserCentered
-                                ? const Color(0xFF1967D2)
-                                : Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ],
                 ),
