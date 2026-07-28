@@ -1,19 +1,6 @@
 class DeepLinkCoordinator {
   static const mobileHost = 'm.parktrack.live';
 
-  Uri? _pendingDestination;
-
-  void remember(Uri destination) {
-    _pendingDestination = Uri.parse(safeLocation(destination));
-  }
-
-  String takePendingOr(String? fallback) {
-    final pending = _pendingDestination;
-    _pendingDestination = null;
-    if (pending != null) return safeLocation(pending);
-    return safeLocation(Uri.tryParse(fallback ?? ''));
-  }
-
   String safeLocation(Uri? uri) {
     final internal = _toInternalUri(uri);
     if (internal == null) return '/map';

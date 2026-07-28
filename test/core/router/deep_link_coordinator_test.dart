@@ -112,12 +112,5 @@ void main() {
         '/map',
       );
     });
-
-    test('restores a remembered destination once after authentication', () {
-      coordinator.remember(Uri.parse('/parking/42'));
-
-      expect(coordinator.takePendingOr('/map'), '/parking/42');
-      expect(coordinator.takePendingOr('/search?q=park'), '/search?q=park');
-    });
   });
 }
