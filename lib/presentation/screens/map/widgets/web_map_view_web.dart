@@ -366,6 +366,7 @@ class _WebMapViewState extends State<WebMapView> {
       selectedId: widget.selectedZoneId,
     );
     _serializedZones = widget.zones
+        .where(isParkingZoneRenderable)
         .map((zone) {
           final colors = parkingZoneColors(zone, brightness: brightness);
           final center = centroid(zone.geometry);

@@ -121,6 +121,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   double _currentTilt = 0;
   bool _isUserCentered = false;
   bool _zoomUpdateInFlight = false;
+  ({double west, double south, double east, double north})?
+  _nativeVisibleBounds;
+  List<Zone>? _cachedViewportZonesSource;
+  ({double west, double south, double east, double north})?
+  _cachedViewportBounds;
+  List<Zone> _cachedViewportZones = const [];
   Uint8List? _destinationPinBytes;
   Uint8List? _navArrowBytes;
   UserLocationMarkerBitmaps? _userLocationMarkerBitmaps;
@@ -159,8 +165,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Brightness? _cachedZoneObjectBrightness;
   List<MapObject> _cachedZoneObjects = const [];
   Map<int, Uint8List>? _cachedLabelBitmaps;
-  MapObject? _cachedZoneLabels;
+  List<MapObject>? _cachedZoneLabels;
   Brightness? _cachedZoneLabelBrightness;
+  List<Zone>? _cachedClusteringZones;
+  double? _cachedClusteringZoom;
+  ParkingClusteringResult? _cachedClustering;
+  final Map<ParkingClusterBitmapKey, Uint8List> _clusterLabelCache = {};
+  final Set<ParkingClusterBitmapKey> _clusterBitmapRequests = {};
   Set<int> _candidateIds = const {};
 
   @override
@@ -402,11 +413,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     CameraUpdateReason reason,
     bool cameraUpdateFinished,
   ) {
+    final previousZoomBucket = parkingClusterZoomBucket(_currentZoom);
+    final nextZoomBucket = parkingClusterZoomBucket(position.zoom);
     _lastCameraTarget = position.target;
     _currentZoom = position.zoom;
     _currentTilt = position.tilt;
     final centered = _isCameraCenteredOnUser(position.target);
-    if ((position.azimuth - _currentAzimuth).abs() > 0.5 ||
+    if (previousZoomBucket != nextZoomBucket ||
+        (position.azimuth - _currentAzimuth).abs() > 0.5 ||
         centered != _isUserCentered) {
       setState(() {
         _currentAzimuth = position.azimuth;
@@ -524,23 +538,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           .where((other) => other.zoneId != zone.zoneId)
           .where((other) => other.geometry.isNotEmpty)
           .map((other) => centroid(other.geometry)),
+      currentZoom: _currentZoom,
     );
-    final points = zone.geometry.length >= 2
-        ? zone.geometry
-        : [
-            Point(
-              latitude: target.latitude - 0.0005,
-              longitude: target.longitude - 0.0005,
-            ),
-            Point(
-              latitude: target.latitude + 0.0005,
-              longitude: target.longitude + 0.0005,
-            ),
-          ];
-    final rawBounds = calculateRouteBounds(points);
-    final bounds = rawBounds == null
-        ? null
-        : ensureLocalContextBounds(rawBounds);
     if (kIsWeb) {
       _webMapController.focus(
         target.latitude,
@@ -553,21 +552,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       );
       return;
     }
-    final mediaQuery = MediaQuery.of(context);
     await _mapController?.moveCamera(
-      bounds == null
-          ? CameraUpdate.newCameraPosition(
-              CameraPosition(target: target, zoom: 17),
-            )
-          : CameraUpdate.newGeometry(
-              Geometry.fromBoundingBox(bounds.boundingBox),
-              focusRect: routeFocusRect(
-                viewport: mediaQuery.size,
-                safePadding: mediaQuery.padding,
-                bottomPanelHeight: _detailsPanelHeight,
-                devicePixelRatio: mediaQuery.devicePixelRatio,
-              ),
-            ),
+      CameraUpdate.newCameraPosition(
+        CameraPosition(target: target, zoom: isolationZoom),
+      ),
       animation: const MapAnimation(duration: 0.65),
     );
   }
@@ -634,39 +622,95 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
   }
 
-  Future<void> _onClusterTap(_, Cluster cluster) async {
-    if (cluster.placemarks.isEmpty) return;
-    final lats = cluster.placemarks.map((p) => p.point.latitude);
-    final lons = cluster.placemarks.map((p) => p.point.longitude);
-    final latMin = lats.reduce(math.min);
-    final latMax = lats.reduce(math.max);
-    final lonMin = lons.reduce(math.min);
-    final lonMax = lons.reduce(math.max);
+  Future<void> _onClusterTap(ParkingCluster cluster) async {
     final controller = _mapController;
     if (controller == null) return;
     final camera = await controller.getCameraPosition();
     final targetZoom = parkingClusterExpansionZoom(
-      cluster.placemarks.map((placemark) => placemark.point).toList(),
+      _cachedMapZones ?? const [],
+      cluster.zoneIds,
       camera.zoom,
     );
     await controller.moveCamera(
       CameraUpdate.newCameraPosition(
         CameraPosition(
-          target: Point(
-            latitude: (latMin + latMax) / 2,
-            longitude: (lonMin + lonMax) / 2,
-          ),
+          target: cluster.center,
           zoom: targetZoom,
           azimuth: camera.azimuth,
           tilt: camera.tilt,
         ),
       ),
-      animation: const MapAnimation(duration: 0.5),
+      animation: const MapAnimation(duration: 0.3),
     );
+  }
+
+  ParkingClusteringResult _clusteringFor(List<Zone> zones) {
+    final zoom = parkingClusterZoomBucket(_currentZoom);
+    if (!identical(_cachedClusteringZones, zones) ||
+        _cachedClusteringZoom != zoom ||
+        _cachedClustering == null) {
+      _cachedClusteringZones = zones;
+      _cachedClusteringZoom = zoom;
+      _cachedClustering = clusterParkingZones(zones, zoom);
+      _cachedMapZones = null;
+      _cachedZoneLabels = null;
+    }
+    return _cachedClustering!;
+  }
+
+  Future<void> _updateClusterBitmaps(
+    ParkingClusteringResult clustering, {
+    required Brightness brightness,
+  }) async {
+    final requiredClusters = clustering.clusters
+        .where((cluster) {
+          final key = parkingClusterBitmapKey(cluster, brightness: brightness);
+          return !_clusterLabelCache.containsKey(key) &&
+              !_clusterBitmapRequests.contains(key);
+        })
+        .toList(growable: false);
+    if (requiredClusters.isEmpty) return;
+    final requestedKeys = requiredClusters
+        .map(
+          (cluster) => parkingClusterBitmapKey(cluster, brightness: brightness),
+        )
+        .toSet();
+    _clusterBitmapRequests.addAll(requestedKeys);
+    try {
+      final entries = await Future.wait(
+        requiredClusters.map((cluster) async {
+          final key = parkingClusterBitmapKey(cluster, brightness: brightness);
+          final bytes = await buildParkingClusterBitmap(
+            cluster,
+            brightness: brightness,
+          );
+          return MapEntry(key, bytes);
+        }),
+      );
+      if (!mounted) return;
+      setState(() {
+        _clusterLabelCache.addEntries(entries);
+        _cachedZoneLabels = null;
+        if (_clusterLabelCache.length > 128) {
+          final requiredKeys = clustering.clusters
+              .map(
+                (cluster) =>
+                    parkingClusterBitmapKey(cluster, brightness: brightness),
+              )
+              .toSet();
+          _clusterLabelCache.removeWhere(
+            (key, _) => !requiredKeys.contains(key),
+          );
+        }
+      });
+    } finally {
+      _clusterBitmapRequests.removeAll(requestedKeys);
+    }
   }
 
   List<MapObject> _zoneObjectsFor(
     List<Zone> zones,
+    ParkingClusteringResult clustering,
     Set<int> candidateIds,
     int? selectedZoneId,
     Brightness brightness,
@@ -681,6 +725,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       _cachedZoneObjectBrightness = brightness;
       _cachedZoneObjects = buildZoneMapObjects(
         zones: zones,
+        visibleZoneIds: clustering.singletonIds,
         resultIds: candidateIds,
         selectedId: selectedZoneId,
         brightness: brightness,
@@ -691,13 +736,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     return _cachedZoneObjects;
   }
 
-  MapObject? _zoneLabelsFor(
+  List<MapObject> _zoneLabelsFor(
     List<Zone> zones,
+    ParkingClusteringResult clustering,
     Set<int> candidateIds,
     int? selectedZoneId,
     Brightness brightness,
   ) {
-    if (_zoneLabelCache.isEmpty) return null;
+    if (_zoneLabelCache.isEmpty && clustering.clusters.isEmpty) {
+      return const [];
+    }
     if (_cachedZoneLabels == null ||
         !identical(_cachedMapZones, zones) ||
         !identical(_cachedLabelBitmaps, _zoneLabelCache) ||
@@ -706,7 +754,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       _cachedZoneLabelBrightness = brightness;
       _cachedZoneLabels = buildZoneLabels(
         zones: zones,
+        clustering: clustering,
+        zoom: _currentZoom,
         bitmapCache: _zoneLabelCache,
+        clusterBitmapCache: _clusterLabelCache,
         zonesById: _zonesById,
         resultIds: candidateIds,
         selectedId: selectedZoneId,
@@ -715,7 +766,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         onClusterTap: _onClusterTap,
       );
     }
-    return _cachedZoneLabels;
+    return _cachedZoneLabels!;
   }
 
   Future<void> _fetchZones({bool clearCache = false}) async {
@@ -734,6 +785,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       final visibleRegion = await _mapController!.getVisibleRegion();
       final bottomLeft = visibleRegion.bottomLeft;
       final topRight = visibleRegion.topRight;
+      final nextBounds = (
+        west: bottomLeft.longitude,
+        south: bottomLeft.latitude,
+        east: topRight.longitude,
+        north: topRight.latitude,
+      );
+      if (_nativeVisibleBounds != nextBounds && mounted) {
+        setState(() => _nativeVisibleBounds = nextBounds);
+      }
       final dLon = (topRight.longitude - bottomLeft.longitude) * 0.5;
       final dLat = (topRight.latitude - bottomLeft.latitude) * 0.5;
       final bbox =
@@ -743,6 +803,32 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     } catch (e, st) {
       ref.read(rawZonesProvider.notifier).setErrorState(e, st);
     }
+  }
+
+  List<Zone> _zonesInsideNativeViewport(List<Zone> zones) {
+    final bounds = _nativeVisibleBounds;
+    if (bounds == null) return zones;
+    if (identical(_cachedViewportZonesSource, zones) &&
+        _cachedViewportBounds == bounds) {
+      return _cachedViewportZones;
+    }
+    _cachedViewportZonesSource = zones;
+    _cachedViewportBounds = bounds;
+    _cachedViewportZones = zones
+        .where((zone) {
+          if (zone.geometry.isEmpty) return false;
+          final center = centroid(zone.geometry);
+          final insideLongitude = bounds.west <= bounds.east
+              ? center.longitude >= bounds.west &&
+                    center.longitude <= bounds.east
+              : center.longitude >= bounds.west ||
+                    center.longitude <= bounds.east;
+          return center.latitude >= bounds.south &&
+              center.latitude <= bounds.north &&
+              insideLongitude;
+        })
+        .toList(growable: false);
+    return _cachedViewportZones;
   }
 
   Future<void> _fetchWebZones(WebMapCamera camera) async {
@@ -763,6 +849,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   void _onWebCameraChanged(WebMapCamera camera) {
+    final previousZoomBucket = parkingClusterZoomBucket(_currentZoom);
+    final nextZoomBucket = parkingClusterZoomBucket(camera.zoom);
     _lastCameraTarget = Point(
       latitude: camera.latitude,
       longitude: camera.longitude,
@@ -771,7 +859,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final centered = _isCameraCenteredOnUser(
       Point(latitude: camera.latitude, longitude: camera.longitude),
     );
-    if ((camera.azimuth - _currentAzimuth).abs() > 0.5 ||
+    if (previousZoomBucket != nextZoomBucket ||
+        (camera.azimuth - _currentAzimuth).abs() > 0.5 ||
         centered != _isUserCentered) {
       setState(() {
         _currentAzimuth = camera.azimuth;
@@ -1722,18 +1811,45 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final selectedMarkerZoneId =
         selectedMapZoneId ?? (routePreview != null ? _activeRouteZoneId : null);
 
+    final renderedZones = kIsWeb ? zones : _zonesInsideNativeViewport(zones);
+    final clustering = kIsWeb
+        ? ParkingClusteringResult(
+            zoom: parkingClusterZoomBucket(_currentZoom),
+            clusters: const [],
+            singletonIds: Set.unmodifiable(
+              renderedZones.map((zone) => zone.zoneId).toSet(),
+            ),
+          )
+        : _clusteringFor(renderedZones);
     final zoneObjects = _zoneObjectsFor(
-      zones,
+      renderedZones,
+      clustering,
       candidateIds,
       selectedMarkerZoneId,
       Theme.of(context).brightness,
     );
     final zoneLabels = _zoneLabelsFor(
-      zones,
+      renderedZones,
+      clustering,
       candidateIds,
       selectedMarkerZoneId,
       Theme.of(context).brightness,
     );
+    final markerBrightness = Theme.of(context).brightness;
+    final missingClusterBitmap = clustering.clusters.any(
+      (cluster) => !_clusterLabelCache.containsKey(
+        parkingClusterBitmapKey(cluster, brightness: markerBrightness),
+      ),
+    );
+    if (missingClusterBitmap) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          unawaited(
+            _updateClusterBitmaps(clustering, brightness: markerBrightness),
+          );
+        }
+      });
+    }
 
     final mapObjects = <MapObject>[
       ...zoneObjects,
@@ -1751,7 +1867,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           _activeRouteZoneId!,
           brightness: Theme.of(context).brightness,
         ),
-      ?zoneLabels,
+      ...zoneLabels,
       if (isNavigating && _navArrowBytes != null)
         PlacemarkMapObject(
           mapId: const MapObjectId('nav_arrow'),
@@ -1783,11 +1899,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     ];
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final markerBrightness = isDark ? Brightness.dark : Brightness.light;
-    if (_markerBrightness != markerBrightness && zones.isNotEmpty) {
+    final bitmapBrightness = isDark ? Brightness.dark : Brightness.light;
+    if (_markerBrightness != bitmapBrightness && zones.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          unawaited(_updateZoneBitmaps(zones, brightness: markerBrightness));
+          unawaited(_updateZoneBitmaps(zones, brightness: bitmapBrightness));
         }
       });
     }

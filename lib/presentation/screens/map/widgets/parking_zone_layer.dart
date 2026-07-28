@@ -6,17 +6,69 @@ import 'package:yandex_mapkit/yandex_mapkit.dart';
 import '../../../../domain/models/zone.dart';
 import '../../../../core/constants.dart';
 
-final Map<
-  ({int totalFree, int clusterSize, int color, int textColor}),
-  Future<Uint8List>
->
-_clusterBitmapCache = {};
+final Map<ParkingClusterBitmapKey, Future<Uint8List>> _clusterBitmapCache = {};
 
 const double parkingCounterDimmedOpacity = 0.38;
-const double parkingClusterRadius = 64;
-const int parkingClusterMinZoom = 19;
+const double parkingClusterMergePx = 22;
+const double parkingClusterZoomStep = 0.5;
+const double parkingZoneBadgeMinZoom = 14;
+const double parkingSelectedZoneZoom = 16;
+const double parkingMapMaxZoom = 21;
+const double parkingClusterExpansionSearchStep = 0.25;
+const double parkingClusterExpansionZoomBuffer = 0.25;
 const int _dimmedFillAlpha = 0x2E;
 const int _dimmedStrokeAlpha = 0x5C;
+
+typedef ParkingClusterBitmapKey = ({
+  int totalFree,
+  int clusterSize,
+  int color,
+  int textColor,
+});
+
+@immutable
+class ParkingCluster {
+  const ParkingCluster({
+    required this.key,
+    required this.center,
+    required this.totalFree,
+    required this.zoneIds,
+  });
+
+  final String key;
+  final Point center;
+  final int totalFree;
+  final Set<int> zoneIds;
+
+  int get zoneCount => zoneIds.length;
+}
+
+@immutable
+class ParkingClusteringResult {
+  const ParkingClusteringResult({
+    required this.zoom,
+    required this.clusters,
+    required this.singletonIds,
+  });
+
+  final double zoom;
+  final List<ParkingCluster> clusters;
+  final Set<int> singletonIds;
+}
+
+class _ParkingClusterPoint {
+  const _ParkingClusterPoint({
+    required this.zone,
+    required this.center,
+    required this.pixel,
+  });
+
+  final Zone zone;
+  final Point center;
+  final Offset pixel;
+
+  int get free => zone.isActive ? math.max(0, zone.freeCount) : 0;
+}
 
 class ParkingZoneColors {
   const ParkingZoneColors({required this.fill, required this.stroke});
@@ -89,9 +141,213 @@ Future<Uint8List> _cachedClusterBitmap(
   );
 }
 
+double parkingClusterZoomBucket(double zoom) =>
+    (zoom / parkingClusterZoomStep).floor() * parkingClusterZoomStep;
+
+double parkingClusterFreeCap(double zoom) {
+  if (zoom < 7) return 1400;
+  if (zoom < 10) return 350;
+  if (zoom < 13) return 150;
+  return double.infinity;
+}
+
+ParkingClusteringResult clusterParkingZones(
+  List<Zone> zones,
+  double zoom, {
+  bool quantizeZoom = true,
+}) {
+  final effectiveZoom = quantizeZoom ? parkingClusterZoomBucket(zoom) : zoom;
+  final points = zones
+      .where(isParkingZoneRenderable)
+      .map((zone) {
+        final center = centroid(zone.geometry);
+        return _ParkingClusterPoint(
+          zone: zone,
+          center: center,
+          pixel: _worldPixel(center, effectiveZoom),
+        );
+      })
+      .toList(growable: false);
+  if (points.isEmpty) {
+    return ParkingClusteringResult(
+      zoom: effectiveZoom,
+      clusters: const [],
+      singletonIds: const {},
+    );
+  }
+
+  final connectedGroups = _connectedParkingGroups(points);
+  final cap = parkingClusterFreeCap(effectiveZoom);
+  final splitGroups = <List<_ParkingClusterPoint>>[];
+  for (final group in connectedGroups) {
+    splitGroups.addAll(_splitParkingGroupByCap(group, cap));
+  }
+
+  final singletonIds = <int>{};
+  var aggregateGroups = <List<_ParkingClusterPoint>>[];
+  for (final group in splitGroups) {
+    if (group.length == 1) {
+      singletonIds.add(group.single.zone.zoneId);
+    } else {
+      aggregateGroups.add(group);
+    }
+  }
+  aggregateGroups = _mergeOverlappingParkingGroups(
+    aggregateGroups,
+    effectiveZoom,
+  );
+
+  final clusters = aggregateGroups.map(_parkingClusterFromPoints).toList()
+    ..sort((left, right) => left.key.compareTo(right.key));
+  return ParkingClusteringResult(
+    zoom: effectiveZoom,
+    clusters: List.unmodifiable(clusters),
+    singletonIds: Set.unmodifiable(singletonIds),
+  );
+}
+
+List<List<_ParkingClusterPoint>> _connectedParkingGroups(
+  List<_ParkingClusterPoint> points,
+) {
+  final parents = List<int>.generate(points.length, (index) => index);
+  final cells = <(int, int), List<int>>{};
+
+  int root(int index) {
+    while (parents[index] != index) {
+      parents[index] = parents[parents[index]];
+      index = parents[index];
+    }
+    return index;
+  }
+
+  void union(int left, int right) {
+    final leftRoot = root(left);
+    final rightRoot = root(right);
+    if (leftRoot != rightRoot) parents[rightRoot] = leftRoot;
+  }
+
+  for (var index = 0; index < points.length; index++) {
+    final pixel = points[index].pixel;
+    final cellX = (pixel.dx / parkingClusterMergePx).floor();
+    final cellY = (pixel.dy / parkingClusterMergePx).floor();
+    for (var dx = -1; dx <= 1; dx++) {
+      for (var dy = -1; dy <= 1; dy++) {
+        for (final other in cells[(cellX + dx, cellY + dy)] ?? const <int>[]) {
+          if ((points[other].pixel - pixel).distance <= parkingClusterMergePx) {
+            union(index, other);
+          }
+        }
+      }
+    }
+    cells.putIfAbsent((cellX, cellY), () => <int>[]).add(index);
+  }
+
+  final groups = <int, List<_ParkingClusterPoint>>{};
+  for (var index = 0; index < points.length; index++) {
+    groups.putIfAbsent(root(index), () => []).add(points[index]);
+  }
+  return groups.values.toList(growable: false);
+}
+
+List<List<_ParkingClusterPoint>> _splitParkingGroupByCap(
+  List<_ParkingClusterPoint> points,
+  double cap,
+) {
+  final totalFree = points.fold<int>(0, (sum, point) => sum + point.free);
+  if (points.length <= 1 || totalFree <= cap) return [points];
+
+  final minX = points.map((point) => point.pixel.dx).reduce(math.min);
+  final maxX = points.map((point) => point.pixel.dx).reduce(math.max);
+  final minY = points.map((point) => point.pixel.dy).reduce(math.min);
+  final maxY = points.map((point) => point.pixel.dy).reduce(math.max);
+  final splitOnX = maxX - minX >= maxY - minY;
+  final sorted = [...points]
+    ..sort((left, right) {
+      final comparison = splitOnX
+          ? left.pixel.dx.compareTo(right.pixel.dx)
+          : left.pixel.dy.compareTo(right.pixel.dy);
+      return comparison != 0
+          ? comparison
+          : left.zone.zoneId.compareTo(right.zone.zoneId);
+    });
+  final midpoint = sorted.length ~/ 2;
+  return [
+    ..._splitParkingGroupByCap(sorted.sublist(0, midpoint), cap),
+    ..._splitParkingGroupByCap(sorted.sublist(midpoint), cap),
+  ];
+}
+
+List<List<_ParkingClusterPoint>> _mergeOverlappingParkingGroups(
+  List<List<_ParkingClusterPoint>> groups,
+  double zoom,
+) {
+  var current = groups;
+  while (current.length > 1) {
+    final parents = List<int>.generate(current.length, (index) => index);
+    final centers = current
+        .map((group) => _worldPixel(_meanParkingCenter(group), zoom))
+        .toList(growable: false);
+
+    int root(int index) {
+      while (parents[index] != index) {
+        parents[index] = parents[parents[index]];
+        index = parents[index];
+      }
+      return index;
+    }
+
+    var merged = false;
+    for (var left = 0; left < current.length; left++) {
+      for (var right = left + 1; right < current.length; right++) {
+        final minimumDistance =
+            parkingClusterSize(current[left].length) / 2 +
+            2 +
+            parkingClusterSize(current[right].length) / 2 +
+            2;
+        if ((centers[left] - centers[right]).distance < minimumDistance) {
+          final leftRoot = root(left);
+          final rightRoot = root(right);
+          if (leftRoot != rightRoot) {
+            parents[rightRoot] = leftRoot;
+            merged = true;
+          }
+        }
+      }
+    }
+    if (!merged) return current;
+
+    final next = <int, List<_ParkingClusterPoint>>{};
+    for (var index = 0; index < current.length; index++) {
+      next.putIfAbsent(root(index), () => []).addAll(current[index]);
+    }
+    current = next.values.toList(growable: false);
+  }
+  return current;
+}
+
+Point _meanParkingCenter(List<_ParkingClusterPoint> points) => Point(
+  latitude:
+      points.fold<double>(0, (sum, point) => sum + point.center.latitude) /
+      points.length,
+  longitude:
+      points.fold<double>(0, (sum, point) => sum + point.center.longitude) /
+      points.length,
+);
+
+ParkingCluster _parkingClusterFromPoints(List<_ParkingClusterPoint> points) {
+  final ids = points.map((point) => point.zone.zoneId).toList()..sort();
+  return ParkingCluster(
+    key: ids.join('-'),
+    center: _meanParkingCenter(points),
+    totalFree: points.fold<int>(0, (sum, point) => sum + point.free),
+    zoneIds: Set.unmodifiable(ids),
+  );
+}
+
 List<MapObject> buildZoneMapObjects({
   required List<Zone> zones,
   required void Function(Zone) onTap,
+  Set<int>? visibleZoneIds,
   Set<int> resultIds = const {},
   int? selectedId,
   Brightness brightness = Brightness.light,
@@ -103,6 +359,9 @@ List<MapObject> buildZoneMapObjects({
     selectedId: selectedId,
   );
   for (final zone in zones) {
+    if (visibleZoneIds != null && !visibleZoneIds.contains(zone.zoneId)) {
+      continue;
+    }
     if (_isDegenerate(zone.geometry)) continue;
     final colors = parkingZoneColors(zone, brightness: brightness);
     final isSelected = selectedId == zone.zoneId;
@@ -175,93 +434,113 @@ List<MapObject> buildHighlightZone(
   }
 }
 
-MapObject buildZoneLabels({
+List<MapObject> buildZoneLabels({
   required List<Zone> zones,
+  required ParkingClusteringResult clustering,
+  required double zoom,
   required Map<int, Uint8List> bitmapCache,
+  required Map<ParkingClusterBitmapKey, Uint8List> clusterBitmapCache,
   required Map<int, Zone> zonesById,
   Set<int> resultIds = const {},
   int? selectedId,
-  ClusterTapCallback? onClusterTap,
+  void Function(ParkingCluster)? onClusterTap,
   void Function(Zone)? onZoneTap,
   Brightness brightness = Brightness.light,
 }) {
-  final placemarks = zones
-      .where(
-        (z) => !_isDegenerate(z.geometry) && bitmapCache.containsKey(z.zoneId),
-      )
-      .map(
-        (zone) => PlacemarkMapObject(
-          mapId: MapObjectId('zone_label_${zone.zoneId}'),
-          point: centroid(zone.geometry),
-          opacity: _zoneOpacity(zone.zoneId, resultIds, selectedId),
-          icon: PlacemarkIcon.single(
-            PlacemarkIconStyle(
-              image: BitmapDescriptor.fromBytes(bitmapCache[zone.zoneId]!),
-              scale: 1.0,
-              zIndex: zone.zoneId == selectedId
-                  ? 20
-                  : resultIds.contains(zone.zoneId)
-                  ? 10
-                  : 0,
-            ),
-          ),
-          onTap: onZoneTap != null ? (_, _) => onZoneTap(zone) : null,
-        ),
-      )
-      .toList();
-
-  return ClusterizedPlacemarkCollection(
-    mapId: const MapObjectId('zone_labels'),
-    placemarks: placemarks,
-    radius: parkingClusterRadius,
-    minZoom: parkingClusterMinZoom,
-    onClusterTap: onClusterTap,
-    onClusterAdded: (collection, cluster) async {
-      final zoneIds = cluster.placemarks
-          .map(
-            (p) => int.tryParse(p.mapId.value.replaceFirst('zone_label_', '')),
+  final result = <MapObject>[];
+  if (zoom >= parkingZoneBadgeMinZoom) {
+    result.addAll(
+      zones
+          .where(
+            (zone) =>
+                clustering.singletonIds.contains(zone.zoneId) &&
+                !_isDegenerate(zone.geometry) &&
+                bitmapCache.containsKey(zone.zoneId),
           )
-          .whereType<int>()
-          .toList();
-      final opacity = zoneIds.contains(selectedId)
-          ? 1.0
-          : selectedId != null
-          ? parkingCounterDimmedOpacity
-          : resultIds.isNotEmpty &&
-                !zoneIds.any((zoneId) => resultIds.contains(zoneId))
-          ? parkingCounterDimmedOpacity
-          : 1.0;
-      final totalFree = zoneIds
-          .map((id) => zonesById[id])
-          .whereType<Zone>()
-          .where((zone) => zone.isActive)
-          .map((zone) => math.max(0, zone.freeCount))
-          .fold<int>(0, (a, b) => a + b);
-      final clusterColor = parkingClusterColor(
-        totalFree,
-        brightness: brightness,
-      );
-      final textColor = brightness == Brightness.dark
-          ? const Color(0xFF09090B)
-          : Colors.white;
-      final bytes = await _cachedClusterBitmap(
-        totalFree,
-        cluster.placemarks.length,
-        clusterColor,
-        textColor,
-      );
-      return cluster.copyWith(
-        appearance: cluster.appearance.copyWith(
-          opacity: opacity,
-          icon: PlacemarkIcon.single(
-            PlacemarkIconStyle(
-              image: BitmapDescriptor.fromBytes(bytes),
-              scale: 1.0,
+          .map(
+            (zone) => PlacemarkMapObject(
+              mapId: MapObjectId('zone_label_${zone.zoneId}'),
+              point: centroid(zone.geometry),
+              opacity: _zoneOpacity(zone.zoneId, resultIds, selectedId),
+              icon: PlacemarkIcon.single(
+                PlacemarkIconStyle(
+                  image: BitmapDescriptor.fromBytes(bitmapCache[zone.zoneId]!),
+                  scale: 1.0,
+                  zIndex: zone.zoneId == selectedId
+                      ? 20
+                      : resultIds.contains(zone.zoneId)
+                      ? 10
+                      : 0,
+                ),
+              ),
+              onTap: onZoneTap != null ? (_, _) => onZoneTap(zone) : null,
             ),
           ),
+    );
+  }
+  for (final cluster in clustering.clusters) {
+    final zonesInCluster = cluster.zoneIds
+        .map((id) => zonesById[id])
+        .whereType<Zone>()
+        .toList(growable: false);
+    if (zonesInCluster.length < 2) continue;
+    final opacity = cluster.zoneIds.contains(selectedId)
+        ? 1.0
+        : selectedId != null
+        ? parkingCounterDimmedOpacity
+        : resultIds.isNotEmpty &&
+              !cluster.zoneIds.any((zoneId) => resultIds.contains(zoneId))
+        ? parkingCounterDimmedOpacity
+        : 1.0;
+    final key = parkingClusterBitmapKey(cluster, brightness: brightness);
+    final bytes = clusterBitmapCache[key];
+    if (bytes == null) continue;
+    result.add(
+      PlacemarkMapObject(
+        mapId: MapObjectId('zone_cluster_${cluster.key}'),
+        point: cluster.center,
+        opacity: opacity,
+        icon: PlacemarkIcon.single(
+          PlacemarkIconStyle(
+            image: BitmapDescriptor.fromBytes(bytes),
+            anchor: const Offset(0.5, 0.5),
+            scale: 0.5,
+            zIndex: 30,
+          ),
         ),
-      );
-    },
+        onTap: onClusterTap == null ? null : (_, _) => onClusterTap(cluster),
+      ),
+    );
+  }
+  return result;
+}
+
+ParkingClusterBitmapKey parkingClusterBitmapKey(
+  ParkingCluster cluster, {
+  Brightness brightness = Brightness.light,
+}) {
+  final color = parkingClusterColor(cluster.totalFree, brightness: brightness);
+  final textColor = brightness == Brightness.dark
+      ? const Color(0xFF09090B)
+      : Colors.white;
+  return (
+    totalFree: cluster.totalFree,
+    clusterSize: cluster.zoneCount,
+    color: color.toARGB32(),
+    textColor: textColor.toARGB32(),
+  );
+}
+
+Future<Uint8List> buildParkingClusterBitmap(
+  ParkingCluster cluster, {
+  Brightness brightness = Brightness.light,
+}) {
+  final key = parkingClusterBitmapKey(cluster, brightness: brightness);
+  return _cachedClusterBitmap(
+    key.totalFree,
+    key.clusterSize,
+    Color(key.color),
+    Color(key.textColor),
   );
 }
 
@@ -359,6 +638,8 @@ bool _isDegenerate(List<Point> points) {
   return points.every((p) => p.latitude == lat0 && p.longitude == lon0);
 }
 
+bool isParkingZoneRenderable(Zone zone) => !_isDegenerate(zone.geometry);
+
 ParkingZoneColors parkingZoneColors(
   Zone zone, {
   Brightness brightness = Brightness.light,
@@ -440,70 +721,51 @@ double parkingClusterSize(int zoneCount) =>
     math.min(28 + (zoneCount ~/ 4) * 4, 44).toDouble();
 
 double parkingClusterExpansionZoom(
-  List<Point> points,
+  List<Zone> zones,
+  Set<int> clusterZoneIds,
   double currentZoom, {
-  double radius = parkingClusterRadius,
-  double maxZoom = 21,
+  double maxZoom = parkingMapMaxZoom,
 }) {
-  if (points.length < 2) return math.min(maxZoom, currentZoom + 0.5);
-  var zoom = ((currentZoom + 0.5) * 2).ceil() / 2;
-  while (zoom < maxZoom &&
-      _parkingClusterComponentCount(points, zoom, radius) < 2) {
-    zoom += 0.5;
+  if (clusterZoneIds.length < 2) {
+    return math.min(maxZoom, currentZoom + parkingClusterZoomStep);
   }
-  return zoom.clamp(currentZoom + 0.5, maxZoom);
+  for (
+    var zoom = currentZoom + parkingClusterExpansionSearchStep;
+    zoom <= maxZoom;
+    zoom += parkingClusterExpansionSearchStep
+  ) {
+    final result = clusterParkingZones(zones, zoom, quantizeZoom: false);
+    final remainsOneCluster = result.clusters.any(
+      (cluster) =>
+          clusterZoneIds.every((zoneId) => cluster.zoneIds.contains(zoneId)),
+    );
+    if (!remainsOneCluster) {
+      return math.min(maxZoom, zoom + parkingClusterExpansionZoomBuffer);
+    }
+  }
+  return maxZoom;
 }
 
 double parkingIsolationZoom(
   Point selected,
   Iterable<Point> others, {
-  double minimumZoom = 17.5,
-  double maximumZoom = 20,
-  double radius = parkingClusterRadius,
+  required double currentZoom,
+  double minimumZoom = parkingSelectedZoneZoom,
+  double maximumZoom = parkingMapMaxZoom,
+  double radius = parkingClusterMergePx,
 }) {
-  var zoom = minimumZoom;
+  var zoom = math.max(minimumZoom, currentZoom);
   final otherPoints = others.toList(growable: false);
-  while (zoom < maximumZoom) {
+  while (zoom <= maximumZoom) {
     final selectedPixel = _worldPixel(selected, zoom);
     final isolated = otherPoints.every((point) {
       final pixel = _worldPixel(point, zoom);
       return (pixel - selectedPixel).distance > radius;
     });
-    if (isolated) return zoom;
-    zoom += 0.5;
+    if (isolated) return math.min(maximumZoom, zoom + 0.5);
+    zoom += parkingClusterExpansionSearchStep;
   }
   return maximumZoom;
-}
-
-int _parkingClusterComponentCount(
-  List<Point> points,
-  double zoom,
-  double radius,
-) {
-  final parents = List<int>.generate(points.length, (index) => index);
-  int root(int index) {
-    while (parents[index] != index) {
-      parents[index] = parents[parents[index]];
-      index = parents[index];
-    }
-    return index;
-  }
-
-  void union(int left, int right) {
-    final leftRoot = root(left);
-    final rightRoot = root(right);
-    if (leftRoot != rightRoot) parents[rightRoot] = leftRoot;
-  }
-
-  final pixels = points.map((point) => _worldPixel(point, zoom)).toList();
-  for (var left = 0; left < pixels.length; left++) {
-    for (var right = left + 1; right < pixels.length; right++) {
-      if ((pixels[left] - pixels[right]).distance <= radius) {
-        union(left, right);
-      }
-    }
-  }
-  return List<int>.generate(points.length, root).toSet().length;
 }
 
 Offset _worldPixel(Point point, double zoom) {

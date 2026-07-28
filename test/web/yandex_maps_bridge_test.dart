@@ -44,8 +44,15 @@ void main() {
     expect(bridge, contains('zone.stroke'));
     expect(bridge, contains(r'opacity:${zone.markerOpacity ?? 1}'));
     expect(bridge, contains('clusterExpansionZoom'));
-    expect(bridge, contains('gridSize: 64'));
-    expect(bridge, contains('clusterCenter(clusterFeatures)'));
+    expect(bridge, contains('function connectedParkingGroups(points)'));
+    expect(bridge, contains('function splitParkingGroupByCap(points, cap)'));
+    expect(bridge, contains('function mergeOverlappingParkingGroups('));
+    expect(bridge, contains('clusterParkingZones(zones, zoomBucket)'));
+    expect(bridge, contains('deltaX * deltaX + deltaY * deltaY <= 22 * 22'));
+    expect(bridge, contains('zonesInsideBounds(state.zones || []'));
+    expect(bridge, contains('clustering.singletonIds.has(zone.id)'));
+    expect(bridge, contains('if (zoomBucket >= 14)'));
+    expect(bridge, isNot(contains('clusterByGrid')));
     expect(bridge, contains('parktrack-user-location__direction'));
     expect(bridge, contains('parktrack-user-location__point'));
     expect(bridge, contains('requestHeading(id)'));

@@ -6,7 +6,6 @@
   let renderingApi = null;
   let renderingLocale = null;
   let renderingPromise = null;
-  let clusterModule = null;
   const searchConfigPromises = new Map();
   let searchJsonpSequence = 0;
   const cameraEmitIntervalMs = 100;
@@ -149,11 +148,6 @@
           if (!window.ymaps3) throw new Error('rendering_api_unavailable');
           await window.ymaps3.ready;
           renderingApi = window.ymaps3;
-          try {
-            clusterModule = await renderingApi.import('@yandex/ymaps3-clusterer@0.0.1');
-          } catch (e) {
-            console.warn('Failed to load clusterer:', e);
-          }
           resolve(renderingApi);
         } catch (error) {
           renderingPromise = null;
@@ -178,6 +172,10 @@
       cancelAnimationFrame(entry.promoFrame);
       entry.promoFrame = null;
     }
+    if (entry.zoneRenderTimer != null) {
+      clearTimeout(entry.zoneRenderTimer);
+      entry.zoneRenderTimer = null;
+    }
     if (entry.map) {
       try { entry.map.destroy(); } catch (e) {}
     }
@@ -188,9 +186,8 @@
     entry.zoneFeatures = new Map();
     entry.routeObjects = [];
     entry.positionObjects = [];
-    entry.zoneGeometrySignature = null;
-    entry.zoneStyleSignature = null;
-    entry.zoneMarkerSignature = null;
+    entry.zoneRenderSignature = null;
+    entry.renderedZoomBucket = null;
     entry.routeSignature = null;
     entry.positionSignature = null;
     entry.lastCameraKey = null;
@@ -240,6 +237,14 @@
       entry.cameraTimer = null;
       emitCamera(entry);
     }, cameraEmitIntervalMs);
+  }
+
+  function scheduleZoneRender(entry) {
+    if (entry.destroyed || entry.zoneRenderTimer != null) return;
+    entry.zoneRenderTimer = setTimeout(() => {
+      entry.zoneRenderTimer = null;
+      if (entry.latestState) render(entry, entry.latestState);
+    }, 400);
   }
 
   function hidePromoElements(root) {
@@ -426,8 +431,7 @@
     return Math.min(28 + Math.floor(zoneCount / 4) * 4, 44);
   }
 
-  function clusterMarkerElement(features, onTap) {
-    const zones = features.map(f => f.properties.zone);
+  function clusterMarkerElement(zones, onTap) {
     const freeCount = zones.reduce(
       (sum, zone) =>
         sum + (zone.isActive ? Math.max(0, Number(zone.freeCount ?? 0)) : 0),
@@ -464,8 +468,20 @@
     ];
   }
 
-  function clusterComponentCount(features, zoom, radius = 22) {
-    const parents = features.map((_, index) => index);
+  function clusterZoomBucket(zoom) {
+    return Math.floor(Number(zoom || 0) / 0.5) * 0.5;
+  }
+
+  function clusterFreeCap(zoom) {
+    if (zoom < 7) return 1400;
+    if (zoom < 10) return 350;
+    if (zoom < 13) return 150;
+    return Infinity;
+  }
+
+  function connectedParkingGroups(points) {
+    const parents = points.map((_, index) => index);
+    const cells = new Map();
     const root = (index) => {
       while (parents[index] !== index) {
         parents[index] = parents[parents[index]];
@@ -473,37 +489,190 @@
       }
       return index;
     };
-    const pixels = features.map(feature =>
-      worldPixel(feature.geometry.coordinates, zoom)
-    );
-    for (let left = 0; left < pixels.length; left++) {
-      for (let right = left + 1; right < pixels.length; right++) {
-        const dx = pixels[left][0] - pixels[right][0];
-        const dy = pixels[left][1] - pixels[right][1];
-        if (Math.hypot(dx, dy) <= radius) {
-          const leftRoot = root(left);
-          const rightRoot = root(right);
-          if (leftRoot !== rightRoot) parents[rightRoot] = leftRoot;
+    const union = (left, right) => {
+      const leftRoot = root(left);
+      const rightRoot = root(right);
+      if (leftRoot !== rightRoot) parents[rightRoot] = leftRoot;
+    };
+    for (let index = 0; index < points.length; index++) {
+      const point = points[index];
+      const cellX = Math.floor(point.pixel[0] / 22);
+      const cellY = Math.floor(point.pixel[1] / 22);
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          const neighbours = cells.get(`${cellX + dx}:${cellY + dy}`) || [];
+          for (const other of neighbours) {
+            const deltaX = points[other].pixel[0] - point.pixel[0];
+            const deltaY = points[other].pixel[1] - point.pixel[1];
+            if (deltaX * deltaX + deltaY * deltaY <= 22 * 22) {
+              union(index, other);
+            }
+          }
         }
       }
+      const key = `${cellX}:${cellY}`;
+      const cell = cells.get(key) || [];
+      cell.push(index);
+      cells.set(key, cell);
     }
-    return new Set(features.map((_, index) => root(index))).size;
+    const groups = new Map();
+    points.forEach((point, index) => {
+      const key = root(index);
+      const group = groups.get(key) || [];
+      group.push(point);
+      groups.set(key, group);
+    });
+    return [...groups.values()];
   }
 
-  function clusterExpansionZoom(features, currentZoom) {
-    let zoom = Math.ceil((currentZoom + 0.5) * 2) / 2;
-    while (zoom < 21 && clusterComponentCount(features, zoom, 64) < 2) {
-      zoom += 0.5;
-    }
-    return Math.min(21, Math.max(currentZoom + 0.5, zoom));
-  }
-
-  function clusterCenter(features) {
-    const points = features.map(feature => feature.geometry.coordinates);
+  function splitParkingGroupByCap(points, cap) {
+    const freeSum = points.reduce(
+      (sum, point) =>
+        sum + (point.zone.isActive
+          ? Math.max(0, Number(point.zone.freeCount || 0))
+          : 0),
+      0
+    );
+    if (points.length <= 1 || freeSum <= cap) return [points];
+    const xs = points.map(point => point.pixel[0]);
+    const ys = points.map(point => point.pixel[1]);
+    const splitOnX =
+      Math.max(...xs) - Math.min(...xs) >= Math.max(...ys) - Math.min(...ys);
+    const sorted = [...points].sort((left, right) => {
+      const delta = splitOnX
+        ? left.pixel[0] - right.pixel[0]
+        : left.pixel[1] - right.pixel[1];
+      return delta || Number(left.zone.id) - Number(right.zone.id);
+    });
+    const midpoint = Math.floor(sorted.length / 2);
     return [
-      points.reduce((sum, point) => sum + point[0], 0) / points.length,
-      points.reduce((sum, point) => sum + point[1], 0) / points.length,
+      ...splitParkingGroupByCap(sorted.slice(0, midpoint), cap),
+      ...splitParkingGroupByCap(sorted.slice(midpoint), cap),
     ];
+  }
+
+  function meanParkingCenter(points) {
+    return [
+      points.reduce((sum, point) => sum + point.coordinates[0], 0) /
+        points.length,
+      points.reduce((sum, point) => sum + point.coordinates[1], 0) /
+        points.length,
+    ];
+  }
+
+  function mergeOverlappingParkingGroups(groups, zoom) {
+    let current = groups;
+    while (current.length > 1) {
+      const parents = current.map((_, index) => index);
+      const root = (index) => {
+        while (parents[index] !== index) {
+          parents[index] = parents[parents[index]];
+          index = parents[index];
+        }
+        return index;
+      };
+      const centers = current.map(group =>
+        worldPixel(meanParkingCenter(group), zoom)
+      );
+      let merged = false;
+      for (let left = 0; left < current.length; left++) {
+        for (let right = left + 1; right < current.length; right++) {
+          const minimumDistance =
+            clusterSize(current[left].length) / 2 + 2 +
+            clusterSize(current[right].length) / 2 + 2;
+          const dx = centers[left][0] - centers[right][0];
+          const dy = centers[left][1] - centers[right][1];
+          if (Math.hypot(dx, dy) < minimumDistance) {
+            const leftRoot = root(left);
+            const rightRoot = root(right);
+            if (leftRoot !== rightRoot) {
+              parents[rightRoot] = leftRoot;
+              merged = true;
+            }
+          }
+        }
+      }
+      if (!merged) return current;
+      const next = new Map();
+      current.forEach((group, index) => {
+        const key = root(index);
+        next.set(key, [...(next.get(key) || []), ...group]);
+      });
+      current = [...next.values()];
+    }
+    return current;
+  }
+
+  function clusterParkingZones(zones, zoom, quantize = true) {
+    const effectiveZoom = quantize ? clusterZoomBucket(zoom) : zoom;
+    const points = zones
+      .filter(zone => Array.isArray(zone.center) && zone.center.length === 2)
+      .map(zone => {
+        const coordinates = [Number(zone.center[1]), Number(zone.center[0])];
+        return {
+          zone,
+          coordinates,
+          pixel: worldPixel(coordinates, effectiveZoom),
+        };
+      });
+    const splitGroups = connectedParkingGroups(points).flatMap(group =>
+      splitParkingGroupByCap(group, clusterFreeCap(effectiveZoom))
+    );
+    const singletonIds = new Set();
+    let aggregateGroups = [];
+    for (const group of splitGroups) {
+      if (group.length === 1) singletonIds.add(group[0].zone.id);
+      else aggregateGroups.push(group);
+    }
+    aggregateGroups = mergeOverlappingParkingGroups(
+      aggregateGroups,
+      effectiveZoom
+    );
+    const clusters = aggregateGroups.map(group => {
+      const zonesInCluster = group.map(point => point.zone);
+      const zoneIds = zonesInCluster.map(zone => zone.id).sort((a, b) => a - b);
+      return {
+        key: zoneIds.join('-'),
+        center: meanParkingCenter(group),
+        zoneIds,
+        zones: zonesInCluster,
+      };
+    }).sort((left, right) => left.key.localeCompare(right.key));
+    return { zoom: effectiveZoom, clusters, singletonIds };
+  }
+
+  function clusterExpansionZoom(zones, clusterZoneIds, currentZoom) {
+    for (let zoom = currentZoom + 0.25; zoom <= 21; zoom += 0.25) {
+      const result = clusterParkingZones(zones, zoom, false);
+      const remainsOneCluster = result.clusters.some(cluster =>
+        clusterZoneIds.every(zoneId => cluster.zoneIds.includes(zoneId))
+      );
+      if (!remainsOneCluster) return Math.min(21, zoom + 0.25);
+    }
+    return 21;
+  }
+
+  function zonesInsideBounds(zones, bounds) {
+    if (!bounds || !bounds[0] || !bounds[1]) return zones;
+    const west = Number(bounds[0][0]);
+    const south = Number(bounds[0][1]);
+    const east = Number(bounds[1][0]);
+    const north = Number(bounds[1][1]);
+    return zones.filter(zone => {
+      if (!Array.isArray(zone.center) || zone.center.length !== 2) return false;
+      const latitude = Number(zone.center[0]);
+      const longitude = Number(zone.center[1]);
+      const insideLongitude = west <= east
+        ? longitude >= west && longitude <= east
+        : longitude >= west || longitude <= east;
+      return (
+        Number.isFinite(latitude) &&
+        Number.isFinite(longitude) &&
+        latitude >= south &&
+        latitude <= north &&
+        insideLongitude
+      );
+    });
   }
 
   function zoneFeatureStyle(zone) {
@@ -574,17 +743,41 @@
       if (entry.schemeLayer) entry.schemeLayer.update({ theme });
     }
 
-    const zones = state.zones || [];
+    const zones = zonesInsideBounds(state.zones || [], entry.map.bounds);
     const { YMapFeature, YMapMarker } = renderingApi;
 
-    const zoneGeometrySignature = JSON.stringify(
-      zones.map(zone => [zone.id, zone.type, zone.points])
-    );
-    if (zoneGeometrySignature !== entry.zoneGeometrySignature) {
-      entry.zoneGeometrySignature = zoneGeometrySignature;
+    const zoomBucket = clusterZoomBucket(entry.map.zoom);
+    const zoneRenderSignature = JSON.stringify([
+      zoomBucket,
+      zones.map(zone => [
+        zone.id,
+        zone.type,
+        zone.points,
+        zone.center,
+        zone.freeCount,
+        zone.isActive,
+        zone.fill,
+        zone.stroke,
+        zone.active,
+        zone.candidate,
+        zone.markerOpacity,
+        zone.markerTextColor,
+        zone.clusterFull,
+        zone.clusterOne,
+        zone.clusterFree,
+      ]),
+    ]);
+    if (zoneRenderSignature !== entry.zoneRenderSignature) {
+      entry.zoneRenderSignature = zoneRenderSignature;
+      entry.renderedZoomBucket = zoomBucket;
       clearObjectGroup(entry, 'zoneGeometryObjects');
+      clearObjectGroup(entry, 'zoneMarkerObjects');
       entry.zoneFeatures.clear();
-      for (const zone of zones) {
+      const clustering = clusterParkingZones(zones, zoomBucket);
+      const singletonZones = zones.filter(zone =>
+        clustering.singletonIds.has(zone.id)
+      );
+      for (const zone of singletonZones) {
         if (!zone.points || zone.points.length < 2) continue;
         const isLine = zone.type === 'line' || zone.points.length < 3;
         const geometryPoints = isLine
@@ -604,75 +797,9 @@
         entry.zoneFeatures.set(zone.id, feature);
         addObject(entry, feature, 'zoneGeometryObjects');
       }
-    }
 
-    const zoneStyleSignature = JSON.stringify(
-      zones.map(zone => [zone.id, zone.fill, zone.stroke, zone.active])
-    );
-    if (zoneStyleSignature !== entry.zoneStyleSignature) {
-      entry.zoneStyleSignature = zoneStyleSignature;
-      for (const zone of zones) {
-        entry.zoneFeatures.get(zone.id)?.update({
-          style: zoneFeatureStyle(zone)
-        });
-      }
-    }
-
-    const zoneMarkerSignature = JSON.stringify(
-      zones.map(zone => [
-        zone.id,
-        zone.center,
-        zone.freeCount,
-        zone.isActive,
-        zone.markerOpacity,
-        zone.stroke,
-        zone.markerTextColor,
-        zone.active,
-        zone.candidate,
-      ])
-    );
-    if (zoneMarkerSignature !== entry.zoneMarkerSignature) {
-      entry.zoneMarkerSignature = zoneMarkerSignature;
-      clearObjectGroup(entry, 'zoneMarkerObjects');
-      if (clusterModule && zones.length >= 2) {
-        const features = zones.map(zone => ({
-          type: 'Feature', id: String(zone.id),
-          geometry: {
-            type: 'Point',
-            coordinates: [zone.center[1], zone.center[0]],
-          },
-          properties: { zone }
-        }));
-        addObject(entry, new clusterModule.YMapClusterer({
-          method: clusterModule.clusterByGrid({ gridSize: 64 }),
-          features,
-          marker: (feature) => new YMapMarker(
-            { coordinates: feature.geometry.coordinates },
-            parkingMarkerElement(
-              feature.properties.zone,
-              () => {
-                entry.zoneTapAt = performance.now();
-                entry.onZoneTap(feature.properties.zone.id);
-              }
-            )
-          ),
-          cluster: (_, clusterFeatures) => {
-            const center = clusterCenter(clusterFeatures);
-            return new YMapMarker(
-              { coordinates: center },
-              clusterMarkerElement(
-                clusterFeatures,
-                () => entry.map.setLocation({
-                  center,
-                  zoom: clusterExpansionZoom(clusterFeatures, entry.map.zoom),
-                  duration: 300,
-                })
-              )
-            );
-          }
-        }), 'zoneMarkerObjects');
-      } else {
-        for (const zone of zones) {
+      if (zoomBucket >= 14) {
+        for (const zone of singletonZones) {
           addObject(entry, new YMapMarker(
             { coordinates: [zone.center[1], zone.center[0]] },
             parkingMarkerElement(zone, () => {
@@ -681,6 +808,23 @@
             })
           ), 'zoneMarkerObjects');
         }
+      }
+      for (const cluster of clustering.clusters) {
+        addObject(entry, new YMapMarker(
+          { coordinates: cluster.center },
+          clusterMarkerElement(
+            cluster.zones,
+            () => entry.map.setLocation({
+              center: cluster.center,
+              zoom: clusterExpansionZoom(
+                zones,
+                cluster.zoneIds,
+                entry.map.zoom
+              ),
+              duration: 300,
+            })
+          )
+        ), 'zoneMarkerObjects');
       }
     }
 
@@ -720,7 +864,17 @@
       entry.map.addChild(entry.schemeLayer);
       entry.map.addChild(new api.YMapDefaultFeaturesLayer());
       entry.map.addChild(new api.YMapListener({
-        onUpdate: () => scheduleCameraEmit(entry),
+        onUpdate: () => {
+          scheduleCameraEmit(entry);
+          scheduleZoneRender(entry);
+          const zoomBucket = clusterZoomBucket(entry.map.zoom);
+          if (
+            entry.latestState &&
+            zoomBucket !== entry.renderedZoomBucket
+          ) {
+            render(entry, entry.latestState);
+          }
+        },
         onClick: () => {
           if (performance.now() - (entry.zoneTapAt || 0) > 80) {
             entry.onMapTap();
@@ -761,6 +915,7 @@
         zoom: defaultZoom,
         pendingPromoRoots: new Set(),
         cameraTimer: null,
+        zoneRenderTimer: null,
         promoFrame: null,
         zoneTapAt: 0,
         latestStateJson: null,
