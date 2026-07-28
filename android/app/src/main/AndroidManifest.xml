@@ -35,6 +35,14 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="m.parktrack.live" />
             </intent-filter>
+
+            <!-- Custom scheme fallback: parktrack://parking/42 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="parktrack" />
+            </intent-filter>
         </activity>
         <meta-data
             android:name="flutterEmbedding"

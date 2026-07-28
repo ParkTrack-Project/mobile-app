@@ -90,10 +90,16 @@ bool shouldIgnoreMapBackgroundTap({
 }
 
 class MapScreen extends ConsumerStatefulWidget {
-  const MapScreen({super.key, this.initialParkingId, this.searchQuery});
+  const MapScreen({
+    super.key,
+    this.initialParkingId,
+    this.searchQuery,
+    this.initialDestination,
+  });
 
   final int? initialParkingId;
   final String? searchQuery;
+  final Destination? initialDestination;
 
   @override
   ConsumerState<MapScreen> createState() => _MapScreenState();
@@ -159,7 +165,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     super.initState();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (widget.initialParkingId != null) {
+      if (widget.initialDestination != null) {
+        ref.read(routingProvider.notifier).reset();
+        ref.read(destinationProvider.notifier).state =
+            widget.initialDestination;
+      } else if (widget.initialParkingId != null) {
         _loadAndShowParking(widget.initialParkingId!);
       } else if (widget.searchQuery != null) {
         _performSearch(widget.searchQuery!);
