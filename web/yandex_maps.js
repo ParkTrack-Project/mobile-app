@@ -777,7 +777,7 @@
       const singletonZones = zones.filter(zone =>
         clustering.singletonIds.has(zone.id)
       );
-      for (const zone of singletonZones) {
+      for (const zone of zones) {
         if (!zone.points || zone.points.length < 2) continue;
         const isLine = zone.type === 'line' || zone.points.length < 3;
         const geometryPoints = isLine

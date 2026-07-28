@@ -256,15 +256,51 @@ void main() {
     expect(parkingClusterExpansionZoom(zones, {1, 2}, 14), 21);
   });
 
-  test('renders only singleton zone geometry', () {
+  test('renders every zone geometry independently from clustering', () {
     final objects = buildZoneMapObjects(
       zones: [_zone(1), _zone(2), _zone(3)],
-      visibleZoneIds: {2},
       onTap: (_) {},
     );
 
-    expect(objects, hasLength(1));
-    expect(objects.single.mapId.value, 'zone_polygon_2');
+    expect(objects, hasLength(3));
+    expect(objects.map((object) => object.mapId.value), [
+      'zone_polygon_1',
+      'zone_polygon_2',
+      'zone_polygon_3',
+    ]);
+  });
+
+  test('uses the palette cluster sizes and the original native icon scale', () {
+    expect(parkingClusterSize(2), 28);
+    expect(parkingClusterSize(4), 32);
+    expect(parkingClusterSize(8), 36);
+    expect(parkingClusterSize(12), 40);
+    expect(parkingClusterSize(16), 44);
+    expect(parkingClusterSize(100), 44);
+    expect(parkingClusterIconScale, 1);
+
+    final zones = [
+      _zoneAt(1, latitude: 0, longitude: 0),
+      _zoneAt(2, latitude: 0, longitude: 0.0001),
+    ];
+    final clustering = clusterParkingZones(zones, 14);
+    final cluster = clustering.clusters.single;
+    final key = parkingClusterBitmapKey(cluster);
+    final labels = buildZoneLabels(
+      zones: zones,
+      clustering: clustering,
+      zoom: 14,
+      bitmapCache: const {},
+      clusterBitmapCache: {
+        key: Uint8List.fromList([0]),
+      },
+      zonesById: {for (final zone in zones) zone.zoneId: zone},
+    );
+    final placemark = labels.single as PlacemarkMapObject;
+    final style = placemark.icon!.toJson()['style'] as Map<String, dynamic>;
+
+    expect(style['scale'], 1);
+    expect(style['anchor'], {'dx': 0.5, 'dy': 0.5});
   });
 
   test('shows a singleton badge only from zoom 14', () {

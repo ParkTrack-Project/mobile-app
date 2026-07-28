@@ -716,7 +716,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   List<MapObject> _zoneObjectsFor(
     List<Zone> zones,
-    ParkingClusteringResult clustering,
     Set<int> candidateIds,
     int? selectedZoneId,
     Brightness brightness,
@@ -731,7 +730,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       _cachedZoneObjectBrightness = brightness;
       _cachedZoneObjects = buildZoneMapObjects(
         zones: zones,
-        visibleZoneIds: clustering.singletonIds,
         resultIds: candidateIds,
         selectedId: selectedZoneId,
         brightness: brightness,
@@ -1840,7 +1838,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         : _clusteringFor(renderedZones);
     final zoneObjects = _zoneObjectsFor(
       renderedZones,
-      clustering,
       candidateIds,
       selectedMarkerZoneId,
       Theme.of(context).brightness,

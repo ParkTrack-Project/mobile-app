@@ -51,7 +51,13 @@ void main() {
     expect(bridge, contains('deltaX * deltaX + deltaY * deltaY <= 22 * 22'));
     expect(bridge, contains('zonesInsideBounds(state.zones || []'));
     expect(bridge, contains('clustering.singletonIds.has(zone.id)'));
+    expect(bridge, contains('for (const zone of zones) {'));
     expect(bridge, contains('if (zoomBucket >= 14)'));
+    expect(
+      bridge,
+      contains('Math.min(28 + Math.floor(zoneCount / 4) * 4, 44)'),
+    );
+    expect(bridge, contains('0 0 0 2px rgba(255,255,255,.7)'));
     expect(bridge, isNot(contains('clusterByGrid')));
     expect(bridge, contains('parktrack-user-location__direction'));
     expect(bridge, contains('parktrack-user-location__point'));

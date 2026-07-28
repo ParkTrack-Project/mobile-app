@@ -16,6 +16,7 @@ const double parkingSelectedZoneZoom = 16;
 const double parkingMapMaxZoom = 21;
 const double parkingClusterExpansionSearchStep = 0.25;
 const double parkingClusterExpansionZoomBuffer = 0.25;
+const double parkingClusterIconScale = 1;
 const int _dimmedFillAlpha = 0x2E;
 const int _dimmedStrokeAlpha = 0x5C;
 
@@ -347,7 +348,6 @@ ParkingCluster _parkingClusterFromPoints(List<_ParkingClusterPoint> points) {
 List<MapObject> buildZoneMapObjects({
   required List<Zone> zones,
   required void Function(Zone) onTap,
-  Set<int>? visibleZoneIds,
   Set<int> resultIds = const {},
   int? selectedId,
   Brightness brightness = Brightness.light,
@@ -359,9 +359,6 @@ List<MapObject> buildZoneMapObjects({
     selectedId: selectedId,
   );
   for (final zone in zones) {
-    if (visibleZoneIds != null && !visibleZoneIds.contains(zone.zoneId)) {
-      continue;
-    }
     if (_isDegenerate(zone.geometry)) continue;
     final colors = parkingZoneColors(zone, brightness: brightness);
     final isSelected = selectedId == zone.zoneId;
@@ -504,7 +501,7 @@ List<MapObject> buildZoneLabels({
           PlacemarkIconStyle(
             image: BitmapDescriptor.fromBytes(bytes),
             anchor: const Offset(0.5, 0.5),
-            scale: 0.5,
+            scale: parkingClusterIconScale,
             zIndex: 30,
           ),
         ),
