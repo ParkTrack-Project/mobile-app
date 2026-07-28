@@ -59,6 +59,19 @@ void main() {
     expect(rect.bottomRight.y, 1356);
   });
 
+  test('centers camera targets inside the currently visible map area', () {
+    final rect = visibleMapFocusRect(
+      viewport: const Size(360, 700),
+      margins: const EdgeInsets.fromLTRB(24, 88, 24, 320),
+      devicePixelRatio: 2,
+    );
+
+    expect(rect.topLeft.x, 48);
+    expect(rect.topLeft.y, 176);
+    expect(rect.bottomRight.x, 672);
+    expect(rect.bottomRight.y, 760);
+  });
+
   test('selected parking bounds preserve enough local map context', () {
     const tiny = RouteMapBounds(
       south: 61.70000,

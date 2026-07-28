@@ -14,6 +14,7 @@ class RoutePreviewSheet extends ConsumerStatefulWidget {
     this.zoneLat,
     this.zoneLon,
     this.onNavigateInApp,
+    this.onShare,
     required this.onClose,
   });
 
@@ -21,6 +22,7 @@ class RoutePreviewSheet extends ConsumerStatefulWidget {
   final double? zoneLat;
   final double? zoneLon;
   final VoidCallback? onNavigateInApp;
+  final VoidCallback? onShare;
   final VoidCallback onClose;
 
   @override
@@ -126,6 +128,13 @@ class _RoutePreviewSheetState extends ConsumerState<RoutePreviewSheet> {
                       ),
                     ),
                   ),
+                  if (widget.onShare != null)
+                    IconButton(
+                      key: const Key('route_share'),
+                      tooltip: s.share,
+                      onPressed: widget.onShare,
+                      icon: const Icon(Icons.share_outlined),
+                    ),
                   IconButton(
                     tooltip: s.close,
                     onPressed: widget.onClose,

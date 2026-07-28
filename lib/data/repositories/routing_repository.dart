@@ -63,6 +63,11 @@ class RoutingRepository {
     return _mapRoute(dto);
   }
 
+  Future<ActiveRoute> getRoute(int routeId) async {
+    final dto = await _api.getRoute(routeId);
+    return _mapRoute(dto);
+  }
+
   RouteCandidate _mapCandidate(RouteCandidateDto dto) => RouteCandidate(
     zoneId: dto.zoneId,
     rank: dto.rank,

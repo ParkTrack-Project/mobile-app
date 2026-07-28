@@ -120,3 +120,21 @@ ScreenRect routeFocusRect({
     ),
   );
 }
+
+ScreenRect visibleMapFocusRect({
+  required Size viewport,
+  required EdgeInsets margins,
+  double devicePixelRatio = 1,
+}) {
+  final left = margins.left.clamp(0.0, viewport.width);
+  final top = margins.top.clamp(0.0, viewport.height);
+  final right = math.max(left + 1, viewport.width - margins.right);
+  final bottom = math.max(top + 1, viewport.height - margins.bottom);
+  return ScreenRect(
+    topLeft: ScreenPoint(x: left * devicePixelRatio, y: top * devicePixelRatio),
+    bottomRight: ScreenPoint(
+      x: right * devicePixelRatio,
+      y: bottom * devicePixelRatio,
+    ),
+  );
+}

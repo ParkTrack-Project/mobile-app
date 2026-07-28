@@ -17,6 +17,7 @@ class ParkingCardSheet extends ConsumerWidget {
     required this.zone,
     required this.onBuildRoute,
     required this.onClose,
+    this.onShare,
     this.onOpenExternal,
     this.originLatitude,
     this.originLongitude,
@@ -32,6 +33,7 @@ class ParkingCardSheet extends ConsumerWidget {
   final RouteCandidate? candidate;
   final VoidCallback onBuildRoute;
   final VoidCallback onClose;
+  final VoidCallback? onShare;
   final VoidCallback? onOpenExternal;
   final double? originLatitude;
   final double? originLongitude;
@@ -129,6 +131,13 @@ class ParkingCardSheet extends ConsumerWidget {
                   Text(
                     '${resultIndex! + 1}/$resultCount',
                     style: TextStyle(color: colors.onSurfaceVariant),
+                  ),
+                if (onShare != null)
+                  IconButton(
+                    key: const Key('parking_share'),
+                    tooltip: s.share,
+                    onPressed: onShare,
+                    icon: const Icon(Icons.share_outlined),
                   ),
                 IconButton(
                   tooltip: s.close,

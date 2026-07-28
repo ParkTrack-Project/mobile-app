@@ -45,12 +45,21 @@ void main() {
     expect(bridge, contains('zone.stroke'));
     expect(bridge, contains(r'opacity:${zone.markerOpacity ?? 1}'));
     expect(bridge, contains('clusterExpansionZoom'));
-    expect(bridge, contains('gridSize: 22'));
+    expect(bridge, contains('gridSize: 64'));
+    expect(bridge, contains('clusterCenter(clusterFeatures)'));
+    expect(bridge, contains('parktrack-user-location__direction'));
+    expect(bridge, contains('parktrack-user-location__point'));
+    expect(bridge, contains('requestHeading(id)'));
+    expect(bridge, contains("'deviceorientationabsolute'"));
     expect(bridge, contains('azimuth: 0, tilt: 0'));
     expect(bridge, contains('const azimuth = Number(entry.map.azimuth || 0)'));
     expect(bridge, contains("left:-16px;top:-40px"));
     expect(bridge, contains('M16 39C13 32'));
-    expect(bridge, contains('viewBox="0 0 48 48" width="24" height="24"'));
+    expect(bridge, contains('width: 64px'));
+    expect(bridge, contains('width: 30px'));
+    expect(bridge, contains('height: 55px'));
+    expect(bridge, contains('width: 36px'));
+    expect(bridge, contains('border: 3px solid'));
   });
 
   test('updates moving markers without rebuilding parking zones', () {

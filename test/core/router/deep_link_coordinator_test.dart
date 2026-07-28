@@ -26,6 +26,20 @@ void main() {
       expect(coordinator.safeLocation(Uri.parse('/parking/nope')), '/map');
     });
 
+    test('accepts route URLs with a positive route id', () {
+      expect(coordinator.safeLocation(Uri.parse('/route/7')), '/route/7');
+      expect(
+        coordinator.safeLocation(Uri.parse('https://m.parktrack.live/route/7')),
+        '/route/7',
+      );
+      expect(
+        coordinator.safeLocation(Uri.parse('parktrack://route/7')),
+        '/route/7',
+      );
+      expect(coordinator.safeLocation(Uri.parse('/route/nope')), '/map');
+      expect(coordinator.safeLocation(Uri.parse('/route/0')), '/map');
+    });
+
     test('preserves a search query', () {
       expect(
         coordinator.safeLocation(
@@ -65,6 +79,7 @@ void main() {
       const paths = [
         '/map',
         '/search?q=park',
+        '/route/7',
         '/profile',
         '/profile/edit',
         '/login',

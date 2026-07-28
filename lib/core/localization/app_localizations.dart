@@ -184,6 +184,7 @@ class AppStrings {
   final String expectedAvailability;
   final String previousParking;
   final String nextParking;
+  final String share;
 
   AppStrings({
     required this.appTitle,
@@ -367,6 +368,7 @@ class AppStrings {
     required this.expectedAvailability,
     required this.previousParking,
     required this.nextParking,
+    required this.share,
   });
 
   static AppStrings ru = AppStrings(
@@ -569,6 +571,7 @@ class AppStrings {
     expectedAvailability: 'к',
     previousParking: 'Предыдущая',
     nextParking: 'Следующая',
+    share: 'Поделиться',
   );
 
   static AppStrings en = AppStrings(
@@ -770,6 +773,7 @@ class AppStrings {
     expectedAvailability: 'by',
     previousParking: 'Previous',
     nextParking: 'Next',
+    share: 'Share',
   );
 }
 

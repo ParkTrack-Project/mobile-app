@@ -219,6 +219,29 @@ class RoutingNotifier extends StateNotifier<RoutingState> {
     }
   }
 
+  Future<void> loadRoute(int routeId) async {
+    final generation = ++_requestGeneration;
+    _cancelToken?.cancel('Superseded by a shared route request');
+    _cancelToken = null;
+    _stableState = null;
+    _startRequest(preserveStableState: false);
+    try {
+      final route = await _ref
+          .read(routingRepositoryProvider)
+          .getRoute(routeId);
+      if (generation != _requestGeneration) return;
+      state = RoutingState.routePreview(route);
+      _stableState = state;
+    } catch (error) {
+      if (generation != _requestGeneration) return;
+      _publishFailure(
+        error,
+        fallback: AppFailureKind.routeLoad,
+        retry: () => loadRoute(routeId),
+      );
+    }
+  }
+
   void reset() {
     _requestGeneration++;
     _cancelToken?.cancel('Routing reset');

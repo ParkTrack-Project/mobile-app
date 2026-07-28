@@ -160,4 +160,9 @@ void main() {
     expect(zoom, greaterThan(13));
     expect(zoom, lessThanOrEqualTo(21));
   });
+
+  test('keeps counters clustered until they can no longer overlap', () {
+    expect(parkingClusterRadius, 64);
+    expect(parkingClusterMinZoom, 19);
+  });
 }

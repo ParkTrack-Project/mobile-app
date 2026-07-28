@@ -7,6 +7,7 @@ ParkTrack supports verified Android App Links on `m.parktrack.live` and the
 | --- | --- | --- |
 | Map | `https://m.parktrack.live/map` | `parktrack://map` |
 | Parking card | `https://m.parktrack.live/parking/42` | `parktrack://parking/42` |
+| Saved route | `https://m.parktrack.live/route/7` | `parktrack://route/7` |
 | Destination | `https://m.parktrack.live/destination?lat=61.789114&lon=34.359757&name=Station` | `parktrack://destination?lat=61.789114&lon=34.359757&name=Station` |
 | Search | `https://m.parktrack.live/search?q=station` | `parktrack://search?q=station` |
 | Profile | `https://m.parktrack.live/profile` | `parktrack://profile` |

@@ -11,6 +11,7 @@ void main() {
   ) async {
     var goPressed = false;
     var closePressed = false;
+    var sharePressed = false;
     const route = ActiveRoute(
       routeId: 1,
       status: 'ready',
@@ -34,6 +35,7 @@ void main() {
                   zoneLat: 61,
                   zoneLon: 34,
                   onNavigateInApp: () => goPressed = true,
+                  onShare: () => sharePressed = true,
                   onClose: () => closePressed = true,
                 ),
               ),
@@ -59,6 +61,8 @@ void main() {
 
     await tester.tap(find.text('Go'));
     expect(goPressed, isTrue);
+    await tester.tap(find.byKey(const Key('route_share')));
+    expect(sharePressed, isTrue);
     expect(find.text('Reset'), findsNothing);
     await tester.tap(find.byTooltip('Close'));
     expect(closePressed, isTrue);

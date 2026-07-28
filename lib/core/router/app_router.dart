@@ -109,6 +109,16 @@ final routerProvider = Provider<GoRouter>((ref) {
         },
       ),
       GoRoute(
+        path: '/route/:id',
+        builder: (context, state) {
+          final id = int.tryParse(state.pathParameters['id'] ?? '');
+          return MapScreen(
+            key: ValueKey(state.uri.toString()),
+            initialRouteId: id,
+          );
+        },
+      ),
+      GoRoute(
         path: '/destination',
         builder: (context, state) => MapScreen(
           key: ValueKey(state.uri.toString()),

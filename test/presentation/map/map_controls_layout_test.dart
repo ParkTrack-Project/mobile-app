@@ -18,11 +18,11 @@ void main() {
 
   test('hides lower controls before they reach the top controls', () {
     expect(
-      shouldShowLowerMapControls(viewportHeight: 800, mapControlsBottom: 663),
+      shouldShowLowerMapControls(viewportHeight: 800, mapControlsBottom: 635),
       isTrue,
     );
     expect(
-      shouldShowLowerMapControls(viewportHeight: 800, mapControlsBottom: 665),
+      shouldShowLowerMapControls(viewportHeight: 800, mapControlsBottom: 637),
       isFalse,
     );
   });

@@ -13,6 +13,8 @@ final Map<
 _clusterBitmapCache = {};
 
 const double parkingCounterDimmedOpacity = 0.38;
+const double parkingClusterRadius = 64;
+const int parkingClusterMinZoom = 19;
 const int _dimmedFillAlpha = 0x2E;
 const int _dimmedStrokeAlpha = 0x5C;
 
@@ -211,8 +213,8 @@ MapObject buildZoneLabels({
   return ClusterizedPlacemarkCollection(
     mapId: const MapObjectId('zone_labels'),
     placemarks: placemarks,
-    radius: 60,
-    minZoom: 15,
+    radius: parkingClusterRadius,
+    minZoom: parkingClusterMinZoom,
     onClusterTap: onClusterTap,
     onClusterAdded: (collection, cluster) async {
       final zoneIds = cluster.placemarks
@@ -440,7 +442,7 @@ double parkingClusterSize(int zoneCount) =>
 double parkingClusterExpansionZoom(
   List<Point> points,
   double currentZoom, {
-  double radius = 60,
+  double radius = parkingClusterRadius,
   double maxZoom = 21,
 }) {
   if (points.length < 2) return math.min(maxZoom, currentZoom + 0.5);
@@ -457,7 +459,7 @@ double parkingIsolationZoom(
   Iterable<Point> others, {
   double minimumZoom = 17.5,
   double maximumZoom = 20,
-  double radius = 60,
+  double radius = parkingClusterRadius,
 }) {
   var zoom = minimumZoom;
   final otherPoints = others.toList(growable: false);

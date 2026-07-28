@@ -48,6 +48,7 @@ class WebMapController {
   )?
   focusHandler;
   void Function()? resetNorthHandler;
+  void Function()? requestHeadingHandler;
   void Function()? retryHandler;
 
   bool get isReady => camera != null;
@@ -92,6 +93,8 @@ class WebMapController {
 
   void resetNorth() => resetNorthHandler?.call();
 
+  void requestHeading() => requestHeadingHandler?.call();
+
   void clear() {
     camera = null;
     moveHandler = null;
@@ -100,6 +103,7 @@ class WebMapController {
     fitBoundsWithInsetsHandler = null;
     focusHandler = null;
     resetNorthHandler = null;
+    requestHeadingHandler = null;
     retryHandler = null;
   }
 }

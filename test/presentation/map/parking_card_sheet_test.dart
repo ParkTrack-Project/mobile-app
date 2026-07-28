@@ -15,6 +15,7 @@ void main() {
     var next = false;
     var route = false;
     var external = false;
+    var shared = false;
     const zone = Zone(
       zoneId: 42,
       zoneType: ZoneType.standard,
@@ -56,6 +57,7 @@ void main() {
                   onNext: () => next = true,
                   onBuildRoute: () => route = true,
                   onOpenExternal: () => external = true,
+                  onShare: () => shared = true,
                   onClose: () {},
                 ),
               ),
@@ -89,12 +91,14 @@ void main() {
     await tester.tap(find.text('Route'));
     await tester.ensureVisible(find.text('Yandex Maps'));
     await tester.tap(find.text('Yandex Maps'));
+    await tester.tap(find.byKey(const Key('parking_share')));
 
     expect(back, isTrue);
     expect(previous, isTrue);
     expect(next, isTrue);
     expect(route, isTrue);
     expect(external, isTrue);
+    expect(shared, isTrue);
     expect(tester.takeException(), isNull);
   });
 }

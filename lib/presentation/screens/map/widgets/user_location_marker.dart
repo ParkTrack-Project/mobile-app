@@ -70,14 +70,14 @@ void _drawArrow(Canvas canvas) {
 void _drawPoint(Canvas canvas, Offset center) {
   canvas.drawCircle(
     center + const Offset(0, 2),
-    18,
+    19,
     Paint()
       ..color = const Color(0x40000000)
       ..maskFilter = const ui.MaskFilter.blur(ui.BlurStyle.normal, 3.5),
   );
-  canvas.drawCircle(center, 18.5, Paint()..color = const Color(0x08000000));
-  canvas.drawCircle(center, 18, Paint()..color = Colors.white);
-  const redRadius = 12.5;
+  canvas.drawCircle(center, 19.5, Paint()..color = const Color(0x08000000));
+  canvas.drawCircle(center, 19, Paint()..color = Colors.white);
+  const redRadius = 11.5;
   canvas.drawCircle(
     center,
     redRadius,

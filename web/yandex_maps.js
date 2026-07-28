@@ -314,6 +314,114 @@
     return el;
   }
 
+  function ensureUserLocationStyles() {
+    if (document.getElementById('parktrack-user-location-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'parktrack-user-location-styles';
+    style.textContent = `
+      .parktrack-user-location {
+        --heading: -90deg;
+        --marker-color: #ff3b30;
+        --arrow-color: #d83329;
+        position: absolute;
+        left: -32px;
+        top: -32px;
+        width: 64px;
+        height: 64px;
+        box-sizing: border-box;
+        pointer-events: none;
+      }
+      .parktrack-user-location__direction {
+        position: absolute;
+        z-index: 1;
+        top: 50%;
+        left: 50%;
+        width: 30px;
+        height: 55px;
+        transform: translate(0, -50%) rotate(var(--heading));
+        transform-origin: 0 50%;
+        background: var(--arrow-color);
+        clip-path: polygon(0 18%, 100% 50%, 0 82%, 0 50%);
+        filter: drop-shadow(0 2px 2px rgb(0 0 0 / 16%));
+      }
+      .parktrack-user-location__point {
+        position: absolute;
+        z-index: 2;
+        top: 50%;
+        left: 50%;
+        width: 36px;
+        height: 36px;
+        transform: translate(-50%, -50%);
+        border: 3px solid rgb(255 255 255 / 92%);
+        border-radius: 50%;
+        background: #fff;
+        box-shadow:
+          0 2px 7px rgb(0 0 0 / 25%),
+          0 0 0 1px rgb(0 0 0 / 3%);
+        box-sizing: border-box;
+      }
+      .parktrack-user-location__point::after {
+        content: "";
+        position: absolute;
+        inset: 4.5px;
+        border-radius: 50%;
+        background: var(--marker-color);
+        box-shadow:
+          inset 0 1px 1px rgb(255 255 255 / 32%),
+          0 1px 2px rgb(0 0 0 / 18%);
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function normalizedDeviceHeading(event) {
+    if (Number.isFinite(Number(event.webkitCompassHeading))) {
+      return (Number(event.webkitCompassHeading) + 360) % 360;
+    }
+    if (!event.absolute || !Number.isFinite(Number(event.alpha))) return null;
+    const screenAngle =
+      (screen.orientation && Number(screen.orientation.angle)) ||
+      Number(window.orientation) ||
+      0;
+    return (360 - Number(event.alpha) + screenAngle + 360) % 360;
+  }
+
+  function attachDeviceHeading(entry) {
+    if (entry.orientationHandler || !window.DeviceOrientationEvent) return;
+    entry.orientationHandler = (event) => {
+      const heading = normalizedDeviceHeading(event);
+      if (
+        heading == null ||
+        Math.abs(heading - (entry.deviceHeading ?? -999)) < 0.5
+      ) {
+        return;
+      }
+      entry.deviceHeading = heading;
+      entry.positionSignature = null;
+      if (entry.latestState) renderPositions(entry, entry.latestState);
+    };
+    window.addEventListener(
+      'deviceorientationabsolute',
+      entry.orientationHandler,
+      true
+    );
+    window.addEventListener('deviceorientation', entry.orientationHandler, true);
+  }
+
+  async function requestDeviceHeading(entry) {
+    const orientation = window.DeviceOrientationEvent;
+    if (!orientation) return;
+    if (typeof orientation.requestPermission === 'function') {
+      try {
+        if (await orientation.requestPermission() !== 'granted') return;
+      } catch (error) {
+        console.warn('Device orientation permission failed:', error);
+        return;
+      }
+    }
+    attachDeviceHeading(entry);
+  }
+
   function clusterSize(zoneCount) {
     return Math.min(28 + Math.floor(zoneCount / 4) * 4, 44);
   }
@@ -384,10 +492,18 @@
 
   function clusterExpansionZoom(features, currentZoom) {
     let zoom = Math.ceil((currentZoom + 0.5) * 2) / 2;
-    while (zoom < 21 && clusterComponentCount(features, zoom) < 2) {
+    while (zoom < 21 && clusterComponentCount(features, zoom, 64) < 2) {
       zoom += 0.5;
     }
     return Math.min(21, Math.max(currentZoom + 0.5, zoom));
+  }
+
+  function clusterCenter(features) {
+    const points = features.map(feature => feature.geometry.coordinates);
+    return [
+      points.reduce((sum, point) => sum + point[0], 0) / points.length,
+      points.reduce((sum, point) => sum + point[1], 0) / points.length,
+    ];
   }
 
   function zoneFeatureStyle(zone) {
@@ -404,9 +520,12 @@
   function renderPositions(entry, state) {
     if (!entry.map || !renderingApi) return;
     const { YMapMarker } = renderingApi;
+    const effectiveUserHeading = entry.deviceHeading ?? state.user?.[2] ?? 0;
     const positionSignature = JSON.stringify([
       state.navigation || null,
-      state.user || null,
+      state.user
+        ? [state.user[0], state.user[1], effectiveUserHeading]
+        : null,
       state.destination || null,
     ]);
     if (positionSignature === entry.positionSignature) return;
@@ -423,10 +542,14 @@
       }, el), 'positionObjects');
     }
     if (state.user) {
+      ensureUserLocationStyles();
       const el = document.createElement('div');
-      const angle = Number(state.user[2] || 0);
-      el.style.cssText = 'position:absolute;left:-12px;top:-12px;width:24px;height:24px;z-index:2300';
-      el.innerHTML = `<svg viewBox="0 0 48 48" width="24" height="24" style="transform-origin:50% 50%;transform:rotate(${angle}deg);filter:drop-shadow(0 1px 1px rgba(0,0,0,.28))"><path d="M24 3 L29.3 18.7 Q24 16.8 18.7 18.7 Z" fill="#e53935" stroke="#fff" stroke-width="3" stroke-linejoin="round"/><circle cx="24" cy="24" r="10" fill="#fff"/><circle cx="24" cy="24" r="7" fill="#e53935"/></svg>`;
+      el.className = 'parktrack-user-location';
+      el.setAttribute('aria-label', 'Your location');
+      el.style.setProperty('--heading', `${effectiveUserHeading - 90}deg`);
+      el.innerHTML =
+        '<span class="parktrack-user-location__direction"></span>' +
+        '<span class="parktrack-user-location__point"></span>';
       addObject(entry, new YMapMarker({
         coordinates: [state.user[1], state.user[0]]
       }, el), 'positionObjects');
@@ -521,7 +644,7 @@
           properties: { zone }
         }));
         addObject(entry, new clusterModule.YMapClusterer({
-          method: clusterModule.clusterByGrid({ gridSize: 22 }),
+          method: clusterModule.clusterByGrid({ gridSize: 64 }),
           features,
           marker: (feature) => new YMapMarker(
             { coordinates: feature.geometry.coordinates },
@@ -533,14 +656,20 @@
               }
             )
           ),
-          cluster: (coordinates, clusterFeatures) => new YMapMarker(
-            { coordinates },
-            clusterMarkerElement(clusterFeatures, () => entry.map.setLocation({
-              center: coordinates,
-              zoom: clusterExpansionZoom(clusterFeatures, entry.map.zoom),
-              duration: 300,
-            }))
-          )
+          cluster: (_, clusterFeatures) => {
+            const center = clusterCenter(clusterFeatures);
+            return new YMapMarker(
+              { coordinates: center },
+              clusterMarkerElement(
+                clusterFeatures,
+                () => entry.map.setLocation({
+                  center,
+                  zoom: clusterExpansionZoom(clusterFeatures, entry.map.zoom),
+                  duration: 300,
+                })
+              )
+            );
+          }
         }), 'zoneMarkerObjects');
       } else {
         for (const zone of zones) {
@@ -647,6 +776,7 @@
       schedulePromoScan(entry, [element]);
 
       initializeMap(entry);
+      attachDeviceHeading(entry);
     },
     update(id, state) {
       const entry = entries.get(id);
@@ -674,6 +804,10 @@
       if (entry && entry.map) {
         entry.map.setLocation({ azimuth: 0, tilt: 0, duration: 400 });
       }
+    },
+    requestHeading(id) {
+      const entry = entries.get(id);
+      if (entry) requestDeviceHeading(entry);
     },
     fitBounds(id, south, west, north, east, top, right, bottom, left) {
       const entry = entries.get(id);
@@ -713,6 +847,18 @@
       const entry = entries.get(id);
       if (entry) {
         entry.destroyed = true;
+        if (entry.orientationHandler) {
+          window.removeEventListener(
+            'deviceorientationabsolute',
+            entry.orientationHandler,
+            true
+          );
+          window.removeEventListener(
+            'deviceorientation',
+            entry.orientationHandler,
+            true
+          );
+        }
         if (entry.observer) entry.observer.disconnect();
         destroyMapInstance(entry);
         entries.delete(id);

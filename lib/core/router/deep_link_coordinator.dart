@@ -16,6 +16,10 @@ class DeepLinkCoordinator {
       final zoneId = int.tryParse(segments[1]);
       return zoneId != null && zoneId > 0 ? '/parking/$zoneId' : '/map';
     }
+    if (segments.length == 2 && segments.first == 'route') {
+      final routeId = int.tryParse(segments[1]);
+      return routeId != null && routeId > 0 ? '/route/$routeId' : '/map';
+    }
     if (segments.length == 3 &&
         segments.first == 'map' &&
         segments[1] == 'parking') {

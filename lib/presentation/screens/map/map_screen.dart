@@ -26,6 +26,7 @@ import '../../providers/navigation_provider.dart';
 import '../../providers/time_selector_provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/navigation_deeplink.dart';
+import '../../../core/utils/app_share.dart';
 import '../../../core/utils/error_snackbar.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/services/yandex_web_route.dart';
@@ -74,7 +75,7 @@ bool shouldShowLowerMapControls({
   required double mapControlsBottom,
 }) {
   const controlHeight = 52.0;
-  const minimumTop = 84.0;
+  const minimumTop = 112.0;
   final controlTop = viewportHeight - mapControlsBottom - controlHeight;
   return controlTop >= minimumTop;
 }
@@ -93,11 +94,13 @@ class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({
     super.key,
     this.initialParkingId,
+    this.initialRouteId,
     this.searchQuery,
     this.initialDestination,
   });
 
   final int? initialParkingId;
+  final int? initialRouteId;
   final String? searchQuery;
   final Destination? initialDestination;
 
@@ -169,6 +172,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         ref.read(routingProvider.notifier).reset();
         ref.read(destinationProvider.notifier).state =
             widget.initialDestination;
+      } else if (widget.initialRouteId != null) {
+        ref.read(routingProvider.notifier).loadRoute(widget.initialRouteId!);
       } else if (widget.initialParkingId != null) {
         _loadAndShowParking(widget.initialParkingId!);
       } else if (widget.searchQuery != null) {
@@ -614,6 +619,21 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
   }
 
+  Future<void> _shareLink(Uri uri, String title) async {
+    try {
+      await shareParkTrackLink(context, uri: uri, title: title);
+    } catch (error, stackTrace) {
+      if (!mounted) return;
+      showErrorSnackBar(
+        context,
+        ref.read(l10nProvider).unknownError,
+        error: error,
+        stackTrace: stackTrace,
+        s: ref.read(l10nProvider),
+      );
+    }
+  }
+
   Future<void> _onClusterTap(_, Cluster cluster) async {
     if (cluster.placemarks.isEmpty) return;
     final lats = cluster.placemarks.map((p) => p.point.latitude);
@@ -889,6 +909,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final margins = _getCurrentMapMargins();
 
     if (kIsWeb) {
+      _webMapController.requestHeading();
       _webMapController.focus(
         pos.latitude,
         pos.longitude,
@@ -1805,7 +1826,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       ParkingSearchView.error => ParkingResultsPanelState.error,
       _ => ParkingResultsPanelState.results,
     };
-    final viewportHeight = MediaQuery.sizeOf(context).height;
+    final mediaQuery = MediaQuery.of(context);
+    final viewportHeight = mediaQuery.size.height - mediaQuery.padding.vertical;
+    final viewportWidth = mediaQuery.size.width - mediaQuery.padding.horizontal;
     final maxDetailsPanelHeight = math.min(viewportHeight * 0.62, 470.0);
     final routePreviewVisible = routePreview != null && !isNavigating;
     final maxRoutePreviewPanelHeight = math.min(viewportHeight * 0.56, 390.0);
@@ -1844,6 +1867,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       mapControlsBottom: mapControlsBottom,
     );
     final showCompass = _currentAzimuth.abs() > 1.0;
+    final mapFocusMargins = EdgeInsets.only(
+      top: 88,
+      right: 24,
+      bottom: mapPanelHeight > 0 ? mapPanelHeight + 20 : 0,
+      left: 24,
+    );
+    final nativeFocusRect = visibleMapFocusRect(
+      viewport: Size(viewportWidth, viewportHeight),
+      margins: mapFocusMargins,
+      devicePixelRatio: mediaQuery.devicePixelRatio,
+    );
 
     return Scaffold(
       body: SafeArea(
@@ -1897,6 +1931,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               YandexMap(
                 mapObjects: mapObjects,
                 nightModeEnabled: isDark,
+                focusRect: nativeFocusRect,
                 onMapCreated: (controller) async {
                   _mapController = controller;
                   const fallback = Point(
@@ -1984,6 +2019,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                           selectedDetailZone,
                           selectedCandidate,
                         ),
+                        onShare: () => _shareLink(
+                          parkingShareUri(selectedDetailZone.zoneId),
+                          '${s.parkingNumber}${selectedDetailZone.zoneId}',
+                        ),
                         onOpenExternal: selectedDetailZone.geometry.isEmpty
                             ? null
                             : () {
@@ -2030,6 +2069,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         zone: _standaloneSelectedZone!,
                         onBuildRoute: () =>
                             _buildRouteForZone(_standaloneSelectedZone!.zoneId),
+                        onShare: () => _shareLink(
+                          parkingShareUri(_standaloneSelectedZone!.zoneId),
+                          '${s.parkingNumber}'
+                          '${_standaloneSelectedZone!.zoneId}',
+                        ),
                         onOpenExternal:
                             _standaloneSelectedZone!.geometry.isEmpty
                             ? null
@@ -2076,6 +2120,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       intercepting: kIsWeb,
                       child: RoutePreviewSheet(
                         route: routePreview,
+                        onShare: () => _shareLink(
+                          routeShareUri(routePreview.routeId),
+                          s.routeReady,
+                        ),
                         zoneLat: routePreviewTarget?.latitude,
                         zoneLon: routePreviewTarget?.longitude,
                         onNavigateInApp: routePreviewTarget == null
@@ -2262,6 +2310,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   intercepting: kIsWeb,
                   child: _DestinationCard(
                     destination: destination,
+                    onShare: () => _shareLink(
+                      destinationShareUri(
+                        latitude: destination.latitude,
+                        longitude: destination.longitude,
+                        name: destination.name,
+                      ),
+                      destination.name ?? s.selectedPlace,
+                    ),
                     onFindParking: isRoutingLoading ? null : _findParking,
                     onNavigate: () => _openExternalMap(
                       destination.latitude,
@@ -2439,6 +2495,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 class _DestinationCard extends ConsumerWidget {
   const _DestinationCard({
     required this.destination,
+    required this.onShare,
     required this.onFindParking,
     required this.onNavigate,
     required this.onNavigateInApp,
@@ -2446,6 +2503,7 @@ class _DestinationCard extends ConsumerWidget {
   });
 
   final Destination destination;
+  final VoidCallback onShare;
   final VoidCallback? onFindParking;
   final VoidCallback onNavigate;
   final VoidCallback onNavigateInApp;
@@ -2485,6 +2543,12 @@ class _DestinationCard extends ConsumerWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+              ),
+              IconButton(
+                key: const Key('destination_share'),
+                tooltip: s.share,
+                onPressed: onShare,
+                icon: const Icon(Icons.share_outlined, size: 20),
               ),
               GestureDetector(
                 onTap: onClear,
