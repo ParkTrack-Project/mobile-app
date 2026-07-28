@@ -1,8 +1,32 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mobile/core/localization/app_localizations.dart';
 import 'package:mobile/core/utils/nav_math.dart';
 import 'package:yandex_mapkit/yandex_mapkit.dart';
 
 void main() {
+  group('formatNavDistance', () {
+    test('rounds meters and kilometers for Russian labels', () {
+      final s = AppStrings.ru;
+
+      expect(formatNavDistance(0, s), '0 м');
+      expect(formatNavDistance(9, s), '10 м');
+      expect(formatNavDistance(237, s), '230 м');
+      expect(formatNavDistance(999, s), '990 м');
+      expect(formatNavDistance(1000, s), '1,0 км');
+      expect(formatNavDistance(1600, s), '1,6 км');
+      expect(formatNavDistance(9999, s), '9,9 км');
+      expect(formatNavDistance(10000, s), '10 км');
+      expect(formatNavDistance(10600, s), '10 км');
+    });
+
+    test('uses an English decimal separator', () {
+      final s = AppStrings.en;
+
+      expect(formatNavDistance(1600, s), '1.6 km');
+      expect(formatNavDistance(10600, s), '10 km');
+    });
+  });
+
   group('PreparedRoute', () {
     test('precomputes distance and returns decreasing remaining distance', () {
       final route = PreparedRoute(const [

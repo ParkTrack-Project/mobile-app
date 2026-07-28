@@ -2,7 +2,8 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
-import 'package:flutter/foundation.dart' show kIsWeb, setEquals;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb, setEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
@@ -26,11 +27,13 @@ import '../../../core/services/yandex_web_route.dart';
 import 'route_camera.dart';
 import 'widgets/candidates_sheet.dart';
 import 'widgets/destination_marker.dart';
+import 'widgets/map_compass_button.dart';
 import 'widgets/navigation_overlay.dart'
     show NavigationTurnCard, NavigationBottomBar;
 import 'widgets/parking_zone_layer.dart';
 import 'widgets/parking_result_formatter.dart';
 import 'widgets/time_selector_widget.dart';
+import 'widgets/user_location_marker.dart';
 import 'widgets/web_map_view.dart';
 import 'widgets/web_map_types.dart';
 import 'widgets/parking_card_sheet.dart';
@@ -39,9 +42,9 @@ import 'widgets/pwa_install_guide.dart';
 
 const double _minMapZoom = 3;
 const double _maxMapZoom = 21;
-const double _myLocationZoom = 15;
+const double _myLocationZoom = 17;
 const double _tapZoomStep = 1;
-const double _holdZoomStep = 0.16;
+const double _holdZoomStep = 0.224;
 const double _tapZoomDurationSeconds = 0.18;
 const double _holdZoomDurationSeconds = 0.05;
 
@@ -70,6 +73,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   bool _zoomUpdateInFlight = false;
   Uint8List? _destinationPinBytes;
   Uint8List? _navArrowBytes;
+  UserLocationMarkerBitmaps? _userLocationMarkerBitmaps;
+  double? _userLocationMarkerDpr;
+  bool _markerBitmapsLoading = false;
 
   bool _parkingDetailsLoading = false;
   Zone? _standaloneSelectedZone;
@@ -108,7 +114,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   @override
   void initState() {
     super.initState();
-    _loadMarkerBitmaps();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (widget.initialParkingId != null) {
@@ -119,16 +124,30 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     });
   }
 
-  Future<void> _loadMarkerBitmaps() async {
-    final bitmaps = await Future.wait<Uint8List>([
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    if (!_markerBitmapsLoading && _userLocationMarkerDpr != dpr) {
+      _userLocationMarkerDpr = dpr;
+      unawaited(_loadMarkerBitmaps(dpr));
+    }
+  }
+
+  Future<void> _loadMarkerBitmaps(double devicePixelRatio) async {
+    _markerBitmapsLoading = true;
+    final bitmaps = await Future.wait<Object>([
       buildDestinationPinBitmap(),
       _buildNavArrowBitmap(),
+      buildUserLocationMarkerBitmaps(devicePixelRatio: devicePixelRatio),
     ]);
     if (!mounted) return;
     setState(() {
-      _destinationPinBytes = bitmaps[0];
-      _navArrowBytes = bitmaps[1];
+      _destinationPinBytes = bitmaps[0] as Uint8List;
+      _navArrowBytes = bitmaps[1] as Uint8List;
+      _userLocationMarkerBitmaps = bitmaps[2] as UserLocationMarkerBitmaps;
     });
+    _markerBitmapsLoading = false;
   }
 
   Future<void> _loadAndShowParking(int id) async {
@@ -230,6 +249,41 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       visible: visible,
       headingEnabled: true,
       autoZoomEnabled: false,
+    );
+  }
+
+  Future<UserLocationView> _onUserLocationAdded(UserLocationView view) async {
+    if (defaultTargetPlatform != TargetPlatform.android) return view;
+    final marker = _userLocationMarkerBitmaps;
+    if (marker == null) return view;
+    return view.copyWith(
+      arrow: view.arrow.copyWith(
+        opacity: 1,
+        icon: PlacemarkIcon.single(
+          PlacemarkIconStyle(
+            image: BitmapDescriptor.fromBytes(marker.arrow),
+            anchor: const Offset(0.5, 0.5),
+            scale: marker.scale,
+            rotationType: RotationType.rotate,
+          ),
+        ),
+      ),
+      pin: view.pin.copyWith(
+        opacity: 1,
+        icon: PlacemarkIcon.single(
+          PlacemarkIconStyle(
+            image: BitmapDescriptor.fromBytes(marker.pin),
+            anchor: const Offset(0.5, 0.5),
+            scale: marker.scale,
+          ),
+        ),
+      ),
+      accuracyCircle: view.accuracyCircle.copyWith(
+        isVisible: false,
+        fillColor: Colors.transparent,
+        strokeColor: Colors.transparent,
+        strokeWidth: 0,
+      ),
     );
   }
 
@@ -782,6 +836,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   Future<void> _resetNorth() async {
+    if (kIsWeb) {
+      _webMapController.resetNorth();
+      return;
+    }
     if (_mapController == null) return;
     final pos = await _mapController!.getCameraPosition();
     await _mapController!.moveCamera(
@@ -1689,7 +1747,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final mapControlsBottom =
         mapPanelHeight + (parkingFabVisible ? 82.0 : 0.0) + 12;
     final showZoomControls = viewportHeight - mapControlsBottom >= 280;
-    final showCompass = !kIsWeb && _currentAzimuth.abs() > 1.0;
+    final showCompass = _currentAzimuth.abs() > 1.0;
 
     return Scaffold(
       body: SafeArea(
@@ -1759,6 +1817,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   _fetchZones();
                 },
                 onCameraPositionChanged: _onCameraPositionChanged,
+                onUserLocationAdded: _onUserLocationAdded,
                 onMapTap: (_) => _onMapBackgroundTap(),
               ),
             if (searchResultsVisible)
@@ -2033,32 +2092,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                               ? Padding(
                                   key: const ValueKey('compass_visible'),
                                   padding: const EdgeInsets.only(right: 8),
-                                  child: _RoundMapControl(
-                                    onTap: _resetNorth,
+                                  child: MapCompassButton(
+                                    azimuth: _currentAzimuth,
+                                    onPressed: _resetNorth,
                                     tooltip: s.map,
-                                    child: Transform.rotate(
-                                      angle: -_currentAzimuth * math.pi / 180,
-                                      child: Stack(
-                                        alignment: Alignment.center,
-                                        children: [
-                                          Icon(
-                                            Icons.navigation_rounded,
-                                            size: 28,
-                                            color: Theme.of(
-                                              context,
-                                            ).colorScheme.onSurface,
-                                          ),
-                                          const Positioned(
-                                            top: 5,
-                                            child: Icon(
-                                              Icons.arrow_drop_up,
-                                              size: 14,
-                                              color: Colors.red,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
                                   ),
                                 )
                               : const SizedBox.shrink(
@@ -2203,7 +2240,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                                 ),
                               ),
                               const SizedBox(width: 12),
-                              Text(s.searching),
+                              Text(s.startingNavigation),
                             ],
                           ),
                         ),
@@ -2506,9 +2543,8 @@ class _ZoomControlGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
     return Material(
-      color: colors.surface,
+      color: mapControlSurfaceColor,
       elevation: 3,
       shadowColor: Colors.black.withValues(alpha: 0.22),
       borderRadius: BorderRadius.circular(16),
@@ -2556,38 +2592,72 @@ class _ZoomButton extends StatefulWidget {
 }
 
 class _ZoomButtonState extends State<_ZoomButton> {
-  Timer? _holdTimer;
-  bool _holdActive = false;
-  bool _skipNextTap = false;
+  static const _holdStartDelay = Duration(milliseconds: 500);
+  static const _holdTickInterval = Duration(milliseconds: 55);
 
-  void _startHold() {
-    if (_holdActive) return;
+  Timer? _holdStartTimer;
+  Timer? _holdTickTimer;
+  int? _activePointer;
+  bool _holdActive = false;
+  bool _pointerInside = false;
+
+  void _handlePointerDown(PointerDownEvent event) {
+    if (_activePointer != null) return;
+    _activePointer = event.pointer;
+    _pointerInside = true;
+    _holdActive = false;
+    _holdStartTimer?.cancel();
+    _holdStartTimer = Timer(_holdStartDelay, _startHoldTicks);
+  }
+
+  void _handlePointerMove(PointerMoveEvent event) {
+    if (event.pointer != _activePointer) return;
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null) return;
+    final local = box.globalToLocal(event.position);
+    final inside =
+        local.dx >= 0 &&
+        local.dy >= 0 &&
+        local.dx <= box.size.width &&
+        local.dy <= box.size.height;
+    if (!inside) _cancelPointer();
+  }
+
+  void _handlePointerUp(PointerUpEvent event) {
+    if (event.pointer != _activePointer) return;
+    final wasHolding = _holdActive;
+    final wasInside = _pointerInside;
+    _cancelPointer();
+    if (!wasHolding && wasInside) widget.onTap();
+  }
+
+  void _handlePointerCancel(PointerCancelEvent event) {
+    if (event.pointer == _activePointer) _cancelPointer();
+  }
+
+  void _startHoldTicks() {
+    if (_activePointer == null || _holdActive) return;
     _holdActive = true;
-    _skipNextTap = true;
     widget.onHoldTick();
-    _holdTimer = Timer.periodic(
-      const Duration(milliseconds: 55),
+    _holdTickTimer = Timer.periodic(
+      _holdTickInterval,
       (_) => widget.onHoldTick(),
     );
   }
 
-  void _stopHold() {
-    _holdTimer?.cancel();
-    _holdTimer = null;
+  void _cancelPointer() {
+    _holdStartTimer?.cancel();
+    _holdStartTimer = null;
+    _holdTickTimer?.cancel();
+    _holdTickTimer = null;
+    _activePointer = null;
     _holdActive = false;
-  }
-
-  void _handleTap() {
-    if (_holdActive || _skipNextTap) {
-      _skipNextTap = false;
-      return;
-    }
-    widget.onTap();
+    _pointerInside = false;
   }
 
   @override
   void dispose() {
-    _stopHold();
+    _cancelPointer();
     super.dispose();
   }
 
@@ -2595,14 +2665,12 @@ class _ZoomButtonState extends State<_ZoomButton> {
   Widget build(BuildContext context) => Semantics(
     button: true,
     label: widget.tooltip,
-    child: InkWell(
-      onTapDown: (_) {
-        if (!_holdActive) _skipNextTap = false;
-      },
-      onTap: _handleTap,
-      onLongPress: _startHold,
-      onTapUp: (_) => _stopHold(),
-      onTapCancel: _stopHold,
+    child: Listener(
+      behavior: HitTestBehavior.opaque,
+      onPointerDown: _handlePointerDown,
+      onPointerMove: _handlePointerMove,
+      onPointerUp: _handlePointerUp,
+      onPointerCancel: _handlePointerCancel,
       child: SizedBox(
         width: 52,
         height: 48,
@@ -2634,7 +2702,7 @@ class _RoundMapControl extends StatelessWidget {
       button: true,
       label: tooltip,
       child: Material(
-        color: Theme.of(context).colorScheme.surface,
+        color: mapControlSurfaceColor,
         elevation: 3,
         shadowColor: Colors.black.withValues(alpha: 0.22),
         shape: const CircleBorder(),

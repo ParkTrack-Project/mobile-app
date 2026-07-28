@@ -18,6 +18,7 @@ class AppStrings {
   final String serviceUnavailable;
   final String locationServicesDisabled;
   final String searching;
+  final String startingNavigation;
   final String routeBuilding;
   final String routeReady;
   final String selectParking;
@@ -201,6 +202,7 @@ class AppStrings {
     required this.serviceUnavailable,
     required this.locationServicesDisabled,
     required this.searching,
+    required this.startingNavigation,
     required this.routeBuilding,
     required this.routeReady,
     required this.selectParking,
@@ -385,6 +387,7 @@ class AppStrings {
     serviceUnavailable: 'Сервис временно недоступен',
     locationServicesDisabled: 'Геолокация отключена',
     searching: 'Ищем...',
+    startingNavigation: 'Запускаем навигацию...',
     routeBuilding: 'Строим маршрут...',
     routeReady: 'Маршрут готов',
     selectParking: 'Выберите парковку',
@@ -587,6 +590,7 @@ class AppStrings {
     serviceUnavailable: 'Service temporarily unavailable',
     locationServicesDisabled: 'Location services disabled',
     searching: 'Searching...',
+    startingNavigation: 'Starting navigation...',
     routeBuilding: 'Building route...',
     routeReady: 'Route Ready',
     selectParking: 'Select Parking',

@@ -39,6 +39,9 @@ external void _setYandexMapZoom(JSString elementId, JSNumber zoom);
 @JS('parkTrackYandexMaps.retry')
 external void _retryYandexMap(JSString elementId);
 
+@JS('parkTrackYandexMaps.resetNorth')
+external void _resetNorthYandexMap(JSString elementId);
+
 @JS('parkTrackYandexMaps.fitBounds')
 external void _fitYandexMapBounds(
   JSString elementId,
@@ -206,6 +209,9 @@ class _WebMapViewState extends State<WebMapView> {
         };
     widget.controller.retryHandler = () {
       _retryYandexMap(_elementId.toJS);
+    };
+    widget.controller.resetNorthHandler = () {
+      _resetNorthYandexMap(_elementId.toJS);
     };
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
