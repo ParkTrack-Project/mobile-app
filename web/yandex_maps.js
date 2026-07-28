@@ -1067,22 +1067,9 @@
         }
         throw new Error('ymaps3_route_empty');
       } catch (error) {
-        console.warn('Yandex Maps v3 route failed, using v2.1 fallback:', error);
+        console.warn('Yandex Maps v3 route failed:', error);
+        return JSON.stringify({ points: [], duration: 0, distance: 0 });
       }
-
-      return new Promise((resolve) => {
-        if (!window.ymaps) return resolve(JSON.stringify({ points: [], duration: 0, distance: 0 }));
-        window.ymaps.ready(() => {
-          window.ymaps.route([[fLat, fLon], [tLat, tLon]], { routingMode: 'auto' })
-            .then(r => {
-              const points = [];
-              r.getPaths().each(p => p.geometry.getCoordinates().forEach(c => {
-                if (!points.length || points[points.length-1][0] !== c[0] || points[points.length-1][1] !== c[1]) points.push(c);
-              }));
-              resolve(JSON.stringify({ points, duration: r.getTime(), distance: r.getLength() }));
-            }, () => resolve(JSON.stringify({ points: [], duration: 0, distance: 0 })));
-        });
-      });
     },
     async suggest(text, s, w, n, e) {
       const query = String(text || '').trim();

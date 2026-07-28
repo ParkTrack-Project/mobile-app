@@ -70,6 +70,12 @@ final searchBiasProvider = StateProvider<SearchBias?>((ref) => null);
 
 final searchQueryProvider = StateProvider<String>((ref) => '');
 
+typedef RouteGeometry = ({
+  List<Point> points,
+  int distanceMeters,
+  int durationSeconds,
+});
+
 class RoutingNotifier extends StateNotifier<RoutingState> {
   RoutingNotifier(this._ref) : super(const RoutingState.idle());
 
@@ -167,6 +173,7 @@ class RoutingNotifier extends StateNotifier<RoutingState> {
     List<Point>? routePolyline,
     int? routeDistanceMeters,
     int? routeDurationSeconds,
+    Future<RouteGeometry?> Function()? routeGeometryFallback,
   }) async {
     final generation = ++_requestGeneration;
     _cancelToken?.cancel('Superseded by a newer routing request');
@@ -192,11 +199,30 @@ class RoutingNotifier extends StateNotifier<RoutingState> {
             cancelToken: cancelToken,
           );
       if (generation != _requestGeneration || cancelToken.isCancelled) return;
+      RouteGeometry? fallbackGeometry;
+      final primaryPolyline = routePolyline ?? route.routePolyline;
+      if ((primaryPolyline == null || primaryPolyline.length < 2) &&
+          routeGeometryFallback != null) {
+        fallbackGeometry = await routeGeometryFallback();
+        if (generation != _requestGeneration || cancelToken.isCancelled) {
+          return;
+        }
+      }
+      final resolvedPolyline =
+          routePolyline ?? route.routePolyline ?? fallbackGeometry?.points;
+      if (resolvedPolyline == null || resolvedPolyline.length < 2) {
+        throw StateError('The routing services returned no driving route');
+      }
       route = route.copyWith(
-        routePolyline: routePolyline ?? route.routePolyline,
-        routeDistanceMeters: routeDistanceMeters ?? route.routeDistanceMeters,
+        routePolyline: resolvedPolyline,
+        routeDistanceMeters:
+            routeDistanceMeters ??
+            route.routeDistanceMeters ??
+            fallbackGeometry?.distanceMeters,
         routeDurationSeconds:
-            routeDurationSeconds ?? route.routeDurationSeconds,
+            routeDurationSeconds ??
+            route.routeDurationSeconds ??
+            fallbackGeometry?.durationSeconds,
       );
       state = RoutingState.routePreview(route);
       _stableState = state;
@@ -214,6 +240,7 @@ class RoutingNotifier extends StateNotifier<RoutingState> {
           routePolyline: routePolyline,
           routeDistanceMeters: routeDistanceMeters,
           routeDurationSeconds: routeDurationSeconds,
+          routeGeometryFallback: routeGeometryFallback,
         ),
       );
     }

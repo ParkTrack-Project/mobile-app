@@ -90,6 +90,12 @@ bool shouldIgnoreMapBackgroundTap({
   return !elapsed.isNegative && elapsed < const Duration(milliseconds: 200);
 }
 
+@visibleForTesting
+bool shouldDismissParkingDetailsForDestination({
+  required Destination? destination,
+  required bool hasStandaloneParkingDetails,
+}) => destination != null && hasStandaloneParkingDetails;
+
 class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({
     super.key,
@@ -1325,8 +1331,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
   }
 
-  Future<({List<Point> points, int distanceMeters, int durationSeconds})?>
-  _requestRouteGeometry(Point origin, Point target) async {
+  Future<RouteGeometry?> _requestRouteGeometry(
+    Point origin,
+    Point target,
+  ) async {
     if (kIsWeb) {
       final route = await requestYandexWebRoute(
         fromLatitude: origin.latitude,
@@ -1399,27 +1407,30 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       }
       try {
         final candidatePolyline = candidate?.routePolyline;
-        final geometry =
+        final RouteGeometry? geometry =
             candidatePolyline != null && candidatePolyline.length >= 2
             ? (
                 points: candidatePolyline,
-                distanceMeters: parkingPolylineLengthMeters(candidatePolyline),
-                durationSeconds: candidate?.durationFromOriginSeconds,
+                distanceMeters:
+                    parkingPolylineLengthMeters(candidatePolyline) ?? 0,
+                durationSeconds: candidate?.durationFromOriginSeconds ?? 0,
               )
+            : kIsWeb
+            ? null
             : await _requestRouteGeometry(origin, centroid(zone.geometry));
         if (!mounted) return;
-        if (geometry == null) {
-          throw StateError('The map routing service returned no driving route');
-        }
         await ref
             .read(routingProvider.notifier)
             .buildRoute(
               originLat: origin.latitude,
               originLon: origin.longitude,
               selectedZoneId: zoneId,
-              routePolyline: geometry.points,
-              routeDistanceMeters: geometry.distanceMeters,
-              routeDurationSeconds: geometry.durationSeconds,
+              routePolyline: geometry?.points,
+              routeDistanceMeters: geometry?.distanceMeters,
+              routeDurationSeconds: geometry?.durationSeconds,
+              routeGeometryFallback: kIsWeb && geometry == null
+                  ? () => _requestRouteGeometry(origin, centroid(zone.geometry))
+                  : null,
             );
       } catch (error, stackTrace) {
         if (!mounted) return;
@@ -1711,6 +1722,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
     ref.listen(destinationProvider, (_, dest) {
       if (dest == null) return;
+      if (shouldDismissParkingDetailsForDestination(
+        destination: dest,
+        hasStandaloneParkingDetails: _standaloneSelectedZone != null,
+      )) {
+        setState(() => _standaloneSelectedZone = null);
+      }
       if (kIsWeb) {
         _webMapController.move(dest.latitude, dest.longitude, 15);
         return;
