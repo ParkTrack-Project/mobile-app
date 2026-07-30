@@ -173,6 +173,23 @@ void main() {
     expect(headingTrackingSource, contains('_scheduleFollowingCamera();'));
   });
 
+  test('web navigation location button uses active navigation position', () {
+    final source = File(
+      'lib/presentation/screens/map/map_screen.dart',
+    ).readAsStringSync();
+
+    const navigationRead =
+        'final navigation = kIsWeb ? ref.read(navigationProvider) : null;';
+    expect(source, contains(navigationRead));
+    expect(source, contains('navigation.currentPosition.latitude'));
+    expect(source, contains('navigation.currentPosition.longitude'));
+    expect(source, contains('navigation.heading'));
+    expect(
+      source.indexOf(navigationRead),
+      lessThan(source.indexOf('Position? pos;')),
+    );
+  });
+
   test(
     'Android tracking uses one arbitrated stream without periodic races',
     () {

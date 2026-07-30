@@ -100,6 +100,7 @@ void main() {
     );
     expect(find.text('450 m'), findsOneWidget);
     expect(find.textContaining('111 m'), findsOneWidget);
+    expect(find.textContaining('from you'), findsNothing);
     expect(find.textContaining('5 spaces'), findsOneWidget);
     expect(find.textContaining('Forecast:'), findsNothing);
     expect(find.text('7 spaces'), findsOneWidget);

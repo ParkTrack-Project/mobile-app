@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -19,6 +20,26 @@ Uri destinationShareUri({
   if (name != null && name.trim().isNotEmpty) 'name': name.trim(),
 });
 
+@visibleForTesting
+ShareParams buildParkTrackShareParams({
+  required Uri uri,
+  required String title,
+  String? text,
+  Rect? sharePositionOrigin,
+  required bool isWeb,
+}) {
+  final body = [
+    if (text != null && text.trim().isNotEmpty) text.trim(),
+    uri.toString(),
+  ].join('\n');
+  return ShareParams(
+    title: isWeb ? null : title,
+    subject: isWeb ? null : title,
+    text: body,
+    sharePositionOrigin: sharePositionOrigin,
+  );
+}
+
 Future<void> shareParkTrackLink(
   BuildContext context, {
   required Uri uri,
@@ -29,16 +50,13 @@ Future<void> shareParkTrackLink(
   final origin = overlay is RenderBox
       ? overlay.localToGlobal(Offset.zero) & overlay.size
       : null;
-  final body = [
-    if (text != null && text.trim().isNotEmpty) text.trim(),
-    uri.toString(),
-  ].join('\n');
   await SharePlus.instance.share(
-    ShareParams(
+    buildParkTrackShareParams(
+      uri: uri,
       title: title,
-      subject: title,
-      text: body,
       sharePositionOrigin: origin,
+      text: text,
+      isWeb: kIsWeb,
     ),
   );
 }

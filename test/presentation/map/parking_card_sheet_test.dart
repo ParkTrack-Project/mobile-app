@@ -74,6 +74,7 @@ void main() {
     expect(find.text('Accessible parking'), findsOneWidget);
     expect(find.text('Confidence: 90%'), findsOneWidget);
     expect(find.text('4 spaces by 13:23'), findsOneWidget);
+    expect(find.textContaining('from you'), findsOneWidget);
     expect(
       find.descendant(
         of: find.byType(ParkingCardSheet),

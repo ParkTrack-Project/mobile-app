@@ -452,6 +452,8 @@
         height: 64px;
         box-sizing: border-box;
         pointer-events: none;
+        transform: scale(0.6666666667);
+        transform-origin: center;
       }
       .parktrack-user-location__direction {
         position: absolute;

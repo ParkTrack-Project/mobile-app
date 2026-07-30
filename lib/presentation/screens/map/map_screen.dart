@@ -1583,6 +1583,26 @@ class _MapScreenState extends ConsumerState<MapScreen>
   }
 
   Future<void> _goToMyLocation() async {
+    final navigation = kIsWeb ? ref.read(navigationProvider) : null;
+    if (navigation != null) {
+      final margins = _getCurrentMapMargins();
+      if (mounted) {
+        setState(() => _myLocationCameraMode = MyLocationCameraMode.centered);
+      }
+      _webMapController.follow(
+        navigation.currentPosition.latitude,
+        navigation.currentPosition.longitude,
+        _currentZoom,
+        navigation.heading,
+        top: margins.top,
+        right: margins.right,
+        bottom: margins.bottom,
+        left: margins.left,
+        durationSeconds: 0.6,
+      );
+      return;
+    }
+
     Position? pos;
     if (_usesManagedAndroidLocation) {
       pos = _userPosition;

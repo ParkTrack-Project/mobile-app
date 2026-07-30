@@ -450,7 +450,6 @@ class _CandidateTile extends ConsumerWidget {
           text: [
             ?drivingDistanceText,
             if (durationText != null) '($durationText)',
-            s.fromYou,
           ].join(' '),
         ),
       if (zone?.isPrivate == true)

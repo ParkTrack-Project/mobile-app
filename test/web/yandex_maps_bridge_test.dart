@@ -163,6 +163,8 @@ void main() {
     expect(bridge, contains('top: -32px'));
     expect(bridge, contains('width: 64px'));
     expect(bridge, contains('height: 64px'));
+    expect(bridge, contains('transform: scale(0.6666666667)'));
+    expect(bridge, contains('transform-origin: center'));
     expect(bridge, contains('width: 30px'));
     expect(bridge, contains('height: 55px'));
     expect(bridge, contains('width: 36px'));
@@ -182,7 +184,7 @@ void main() {
     expect(bridge, contains("fill: 'rgba(255, 59, 48, 0.14)'"));
     expect(webView, contains('final double? userAccuracy'));
     expect(webView, contains('widget.userAccuracy!.isFinite'));
-    expect(indexHtml, contains('yandex_maps.js?v=3.10'));
+    expect(indexHtml, contains('yandex_maps.js?v=3.11'));
   });
 
   test('updates moving markers without rebuilding parking zones', () {
