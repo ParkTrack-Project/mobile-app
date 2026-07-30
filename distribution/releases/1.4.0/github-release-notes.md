@@ -11,6 +11,8 @@ more reliable across Android and the web app.
   on the map.
 - Added detailed parking cards, route previews, and quick Route and Yandex Maps
   actions.
+- Parking cards now slide smoothly from the bottom of the map, with coordinated
+  camera movement to the selected parking area.
 - Added complete verified `m.parktrack.live` App Links and `parktrack://`
   custom links for the map, parking cards, destinations, search, profile, and
   authentication screens.
@@ -22,6 +24,8 @@ more reliable across Android and the web app.
 - Added synchronized parking results and parking cards to the Yandex Maps web
   experience.
 - Added destination markers, route previews, and in-app navigation controls.
+- Parking-card opening and route-preview camera movement now use smoother,
+  coordinated animations.
 - Added direct path links for map, parking, destination, search, profile, and
   authentication sections.
 
@@ -30,9 +34,17 @@ more reliable across Android and the web app.
 ### Android
 
 - Restored reliable parking-card opening from map taps.
+- Fixed route previews so the full route is visible above the route card, with
+  the destination near the top and the start near the bottom of the map.
+- Fixed `+` and `-` zoom buttons in follow mode so single taps change zoom
+  without bouncing back or leaving follow mode.
+- Repositioned the location and compass controls above destination cards and
+  the navigation bottom panel.
 - Improved route-building progress feedback and navigation distance formatting.
 - Improved zoom-button hold behavior, map-control placement on small screens,
   and location-marker contrast.
+- Reduced redundant zone fetches, optimized parking-cluster overlap merging,
+  and removed repeated route/parking camera refits after panel measurement.
 - Parallelized parking marker bitmap generation and removed unused routing and
   localization code.
 - Added focused coverage for map controls, parking cards, route previews,
@@ -42,6 +54,10 @@ more reliable across Android and the web app.
 
 - Stopped serializing and redrawing all parking zones for every GPS position
   update; moving markers now use a lightweight update path.
+- Fixed route-preview framing so routes fit in the visible map area above the
+  route card.
+- Repositioned location and compass controls around destination cards and
+  navigation panels.
 - Improved map theme synchronization, compass behavior, marker selection,
   routing overlays, and small-screen control placement.
 - Improved deep-link fallback behavior and preserved protected destinations

@@ -1,4 +1,7 @@
 • Added convenient search results and detailed parking cards.
 • Added m.parktrack.live and parktrack:// links for opening app sections.
-• Refreshed the location marker, compass, map controls, and route-building feedback.
-• Accelerated map, marker, and navigation updates and fixed parking-card opening.
+• Parking cards now slide smoothly from the bottom while the map focuses on the selected parking area.
+• Route previews now fit the full route in the visible map area above the route card.
+• Fixed + and - in follow mode so zoom changes no longer bounce back.
+• Location and compass controls now sit above place cards and the navigation panel.
+• Optimized map, parking cluster, marker, and navigation updates.
