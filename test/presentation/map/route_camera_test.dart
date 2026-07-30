@@ -18,6 +18,44 @@ void main() {
     expect(bounds.east, 34.40);
   });
 
+  test('calculates camera azimuth from route start to finish', () {
+    expect(
+      calculateRouteAzimuth(const [
+        Point(latitude: 0, longitude: 0),
+        Point(latitude: 1, longitude: 0),
+      ]),
+      closeTo(0, 1e-10),
+    );
+    expect(
+      calculateRouteAzimuth(const [
+        Point(latitude: 0, longitude: 0),
+        Point(latitude: 0, longitude: 1),
+      ]),
+      closeTo(90, 1e-10),
+    );
+  });
+
+  test('route azimuth uses the short direction across the date line', () {
+    expect(
+      calculateRouteAzimuth(const [
+        Point(latitude: 0, longitude: 179),
+        Point(latitude: 0, longitude: -179),
+      ]),
+      closeTo(90, 1e-10),
+    );
+  });
+
+  test('route azimuth ignores invalid points and rejects equal endpoints', () {
+    expect(
+      calculateRouteAzimuth(const [
+        Point(latitude: double.nan, longitude: 10),
+        Point(latitude: 1, longitude: 1),
+        Point(latitude: 1, longitude: 1),
+      ]),
+      isNull,
+    );
+  });
+
   test('pads route bounds to keep the route above the preview panel', () {
     const bounds = RouteMapBounds(
       south: 61.70,

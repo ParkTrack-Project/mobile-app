@@ -57,7 +57,7 @@ void main() {
                   onNext: () => next = true,
                   onBuildRoute: () => route = true,
                   onOpenExternal: () => external = true,
-                  onShare: () => shared = true,
+                  onShare: (_) => shared = true,
                   onClose: () {},
                 ),
               ),
@@ -73,7 +73,7 @@ void main() {
     expect(find.text('Private'), findsOneWidget);
     expect(find.text('Accessible parking'), findsOneWidget);
     expect(find.text('Confidence: 90%'), findsOneWidget);
-    expect(find.text('Forecast: 4 spaces by 13:23'), findsOneWidget);
+    expect(find.text('4 spaces by 13:23'), findsOneWidget);
     expect(
       find.descendant(
         of: find.byType(ParkingCardSheet),

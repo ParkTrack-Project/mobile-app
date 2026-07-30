@@ -8,6 +8,8 @@ class WebMapCamera {
     required this.east,
     required this.north,
     this.azimuth = 0,
+    this.cameraUpdateFinished = true,
+    this.userGesture = false,
   });
 
   final double latitude;
@@ -18,6 +20,8 @@ class WebMapCamera {
   final double east;
   final double north;
   final double azimuth;
+  final bool cameraUpdateFinished;
+  final bool userGesture;
 }
 
 class WebMapController {
@@ -31,6 +35,7 @@ class WebMapController {
     double west,
     double north,
     double east,
+    double azimuth,
     double top,
     double right,
     double bottom,
@@ -47,6 +52,17 @@ class WebMapController {
     double left,
   )?
   focusHandler;
+  void Function(
+    double latitude,
+    double longitude,
+    double zoom,
+    double azimuth,
+    double top,
+    double right,
+    double bottom,
+    double left,
+  )?
+  followHandler;
   void Function()? resetNorthHandler;
   void Function()? requestHeadingHandler;
   void Function()? retryHandler;
@@ -55,6 +71,8 @@ class WebMapController {
 
   void move(double latitude, double longitude, double zoom) =>
       moveHandler?.call(latitude, longitude, zoom);
+
+  void setZoom(double zoom) => zoomHandler?.call(zoom);
 
   void zoomBy(double delta) {
     final current = camera;
@@ -70,10 +88,11 @@ class WebMapController {
     double right = 0,
     double bottom = 0,
     double left = 0,
+    double azimuth = 0,
   }) {
     final withInsets = fitBoundsWithInsetsHandler;
     if (withInsets != null) {
-      withInsets(south, west, north, east, top, right, bottom, left);
+      withInsets(south, west, north, east, azimuth, top, right, bottom, left);
     } else {
       fitBoundsHandler?.call(south, west, north, east);
     }
@@ -89,6 +108,26 @@ class WebMapController {
     double left = 0,
   }) => focusHandler?.call(latitude, longitude, zoom, top, right, bottom, left);
 
+  void follow(
+    double latitude,
+    double longitude,
+    double zoom,
+    double azimuth, {
+    double top = 0,
+    double right = 0,
+    double bottom = 0,
+    double left = 0,
+  }) => followHandler?.call(
+    latitude,
+    longitude,
+    zoom,
+    azimuth,
+    top,
+    right,
+    bottom,
+    left,
+  );
+
   void retry() => retryHandler?.call();
 
   void resetNorth() => resetNorthHandler?.call();
@@ -102,6 +141,7 @@ class WebMapController {
     fitBoundsHandler = null;
     fitBoundsWithInsetsHandler = null;
     focusHandler = null;
+    followHandler = null;
     resetNorthHandler = null;
     requestHeadingHandler = null;
     retryHandler = null;

@@ -59,6 +59,18 @@ void main() {
     expect(results.contextIds, {4});
   });
 
+  test('keeps selection mode when selected zone is outside the viewport', () {
+    final results = resolveParkingMarkerState(
+      allIds: {1, 3, 4},
+      resultIds: const {},
+      selectedId: 2,
+    );
+
+    expect(results.activeIds, isEmpty);
+    expect(results.mutedResultIds, isEmpty);
+    expect(results.contextIds, {1, 3, 4});
+  });
+
   test('mutes zones outside results and keeps result zones active', () {
     final objects = buildZoneMapObjects(
       zones: [_zone(1), _zone(2)],
@@ -128,8 +140,8 @@ void main() {
 
     expect(active.fillColor, const Color(0xAA16A34A));
     expect(active.strokeColor, const Color(0xFF155E2A));
-    expect(dimmed.fillColor.toARGB32() >>> 24, 0x2E);
-    expect(dimmed.strokeColor.toARGB32() >>> 24, 0x5C);
+    expect(dimmed.fillColor.toARGB32() >>> 24, 0x66);
+    expect(dimmed.strokeColor.toARGB32() >>> 24, 0xB3);
   });
 
   test('matches every light and dark semantic palette color', () {
@@ -190,13 +202,13 @@ void main() {
   });
 
   test('splits a connected group recursively when it exceeds the zoom cap', () {
-    final degreesPerTwentyPixels = 20 * 360 / (256 * (1 << 6));
+    final degreesPerTwentyOnePixels = 21.5 * 360 / (256 * (1 << 6));
     final zones = List.generate(
       8,
       (index) => _zoneAt(
         index + 1,
         latitude: 0,
-        longitude: index * degreesPerTwentyPixels,
+        longitude: index * degreesPerTwentyOnePixels,
         freeCount: 400,
       ),
     );
@@ -234,18 +246,30 @@ void main() {
     expect(result.clusters.single.totalFree, 400);
   });
 
-  test('one cluster tap finds the first split and adds a zoom buffer', () {
+  test('cluster tap expands to the first display bucket that splits it', () {
     final zones = [
-      _zoneAt(1, latitude: 61.7890, longitude: 34.3590),
-      _zoneAt(2, latitude: 61.7891, longitude: 34.3591),
-      _zoneAt(3, latitude: 61.7940, longitude: 34.3650),
+      _zoneAt(1, latitude: 0, longitude: 0),
+      _zoneAt(2, latitude: 0, longitude: 0.002),
     ];
-    final cluster = clusterParkingZones(zones, 13).clusters.first;
-    final zoom = parkingClusterExpansionZoom(zones, cluster.zoneIds, 13);
+    final cluster = clusterParkingZones(zones, 13.7).clusters.single;
+    final zoom = parkingClusterExpansionZoom(zones, cluster.zoneIds, 13.7);
 
-    expect(zoom, greaterThan(13));
-    expect(zoom, lessThanOrEqualTo(21));
+    expect(zoom, 14);
+    expect(clusterParkingZones(zones, zoom).singletonIds, {1, 2});
   });
+
+  test(
+    'cluster expansion keeps zooming until singleton badges are visible',
+    () {
+      final zones = [
+        _zoneAt(1, latitude: 0, longitude: 0),
+        _zoneAt(2, latitude: 0, longitude: 0.004),
+      ];
+      final cluster = clusterParkingZones(zones, 12).clusters.single;
+
+      expect(parkingClusterExpansionZoom(zones, cluster.zoneIds, 12), 14);
+    },
+  );
 
   test('coincident centroids can only expand to maximum zoom', () {
     final zones = [
@@ -270,38 +294,55 @@ void main() {
     ]);
   });
 
-  test('uses the palette cluster sizes and the original native icon scale', () {
-    expect(parkingClusterSize(2), 28);
-    expect(parkingClusterSize(4), 32);
-    expect(parkingClusterSize(8), 36);
-    expect(parkingClusterSize(12), 40);
-    expect(parkingClusterSize(16), 44);
-    expect(parkingClusterSize(100), 44);
-    expect(parkingClusterIconScale, 1);
+  test('allows zone taps only for ungrouped parking zones', () {
+    final tappedIds = <int>[];
+    final objects = buildZoneMapObjects(
+      zones: [_zone(1), _zone(2)],
+      tappableIds: {2},
+      onTap: (zone) => tappedIds.add(zone.zoneId),
+    ).cast<PolygonMapObject>().toList();
 
-    final zones = [
-      _zoneAt(1, latitude: 0, longitude: 0),
-      _zoneAt(2, latitude: 0, longitude: 0.0001),
-    ];
-    final clustering = clusterParkingZones(zones, 14);
-    final cluster = clustering.clusters.single;
-    final key = parkingClusterBitmapKey(cluster);
-    final labels = buildZoneLabels(
-      zones: zones,
-      clustering: clustering,
-      zoom: 14,
-      bitmapCache: const {},
-      clusterBitmapCache: {
-        key: Uint8List.fromList([0]),
-      },
-      zonesById: {for (final zone in zones) zone.zoneId: zone},
-    );
-    final placemark = labels.single as PlacemarkMapObject;
-    final style = placemark.icon!.toJson()['style'] as Map<String, dynamic>;
-
-    expect(style['scale'], 1);
-    expect(style['anchor'], {'dx': 0.5, 'dy': 0.5});
+    expect(objects[0].onTap, isNull);
+    expect(objects[1].onTap, isNotNull);
+    objects[1].onTap!(objects[1], const Point(latitude: 1, longitude: 1));
+    expect(tappedIds, [2]);
   });
+
+  test(
+    'uses 30 percent larger palette cluster sizes and native icon scale',
+    () {
+      expect(parkingClusterSize(2), 28 * parkingMarkerScaleFactor);
+      expect(parkingClusterSize(4), 32 * parkingMarkerScaleFactor);
+      expect(parkingClusterSize(8), 36 * parkingMarkerScaleFactor);
+      expect(parkingClusterSize(12), 40 * parkingMarkerScaleFactor);
+      expect(parkingClusterSize(16), 44 * parkingMarkerScaleFactor);
+      expect(parkingClusterSize(100), 44 * parkingMarkerScaleFactor);
+      expect(parkingClusterIconScale, 1);
+
+      final zones = [
+        _zoneAt(1, latitude: 0, longitude: 0),
+        _zoneAt(2, latitude: 0, longitude: 0.0001),
+      ];
+      final clustering = clusterParkingZones(zones, 14);
+      final cluster = clustering.clusters.single;
+      final key = parkingClusterBitmapKey(cluster);
+      final labels = buildZoneLabels(
+        zones: zones,
+        clustering: clustering,
+        zoom: 14,
+        bitmapCache: const {},
+        clusterBitmapCache: {
+          key: Uint8List.fromList([0]),
+        },
+        zonesById: {for (final zone in zones) zone.zoneId: zone},
+      );
+      final placemark = labels.single as PlacemarkMapObject;
+      final style = placemark.icon!.toJson()['style'] as Map<String, dynamic>;
+
+      expect(style['scale'], 1);
+      expect(style['anchor'], {'dx': 0.5, 'dy': 0.5});
+    },
+  );
 
   test('shows a singleton badge only from zoom 14', () {
     final zone = _zone(1);
@@ -338,15 +379,18 @@ void main() {
     );
   });
 
-  test('selected-zone isolation respects current zoom and adds 0.5 buffer', () {
-    final zoom = parkingIsolationZoom(
-      const Point(latitude: 0, longitude: 0),
-      const [Point(latitude: 1, longitude: 1)],
-      currentZoom: 17.25,
-    );
+  test(
+    'selected-zone isolation respects current zoom without extra buffer',
+    () {
+      final zoom = parkingIsolationZoom(
+        const Point(latitude: 0, longitude: 0),
+        const [Point(latitude: 1, longitude: 1)],
+        currentZoom: 17.25,
+      );
 
-    expect(zoom, 17.75);
-  });
+      expect(zoom, 17.25);
+    },
+  );
 
   test('uses the documented clustering constants and zoom caps', () {
     expect(parkingClusterMergePx, 22);

@@ -8,17 +8,17 @@ import '../../../../core/constants.dart';
 
 final Map<ParkingClusterBitmapKey, Future<Uint8List>> _clusterBitmapCache = {};
 
-const double parkingCounterDimmedOpacity = 0.38;
+const double parkingCounterDimmedOpacity = 0.64;
+const double parkingMarkerScaleFactor = 1.3;
 const double parkingClusterMergePx = 22;
 const double parkingClusterZoomStep = 0.5;
 const double parkingZoneBadgeMinZoom = 14;
-const double parkingSelectedZoneZoom = 16;
+const double parkingSelectedZoneZoom = 17;
 const double parkingMapMaxZoom = 21;
 const double parkingClusterExpansionSearchStep = 0.25;
-const double parkingClusterExpansionZoomBuffer = 0.25;
 const double parkingClusterIconScale = 1;
-const int _dimmedFillAlpha = 0x2E;
-const int _dimmedStrokeAlpha = 0x5C;
+const int _dimmedFillAlpha = 0x66;
+const int _dimmedStrokeAlpha = 0xB3;
 
 typedef ParkingClusterBitmapKey = ({
   int totalFree,
@@ -100,12 +100,15 @@ ParkingMarkerState resolveParkingMarkerState({
   required Set<int> resultIds,
   int? selectedId,
 }) {
-  if (selectedId != null && allIds.contains(selectedId)) {
+  if (selectedId != null) {
+    final selectedIds = allIds.intersection({selectedId});
     return ParkingMarkerState(
-      activeIds: Set.unmodifiable({selectedId}),
-      mutedResultIds: Set.unmodifiable(resultIds.difference({selectedId})),
+      activeIds: Set.unmodifiable(selectedIds),
+      mutedResultIds: Set.unmodifiable(
+        resultIds.intersection(allIds).difference(selectedIds),
+      ),
       contextIds: Set.unmodifiable(
-        allIds.difference({selectedId}).difference(resultIds),
+        allIds.difference(selectedIds).difference(resultIds),
       ),
     );
   }
@@ -348,6 +351,7 @@ ParkingCluster _parkingClusterFromPoints(List<_ParkingClusterPoint> points) {
 List<MapObject> buildZoneMapObjects({
   required List<Zone> zones,
   required void Function(Zone) onTap,
+  Set<int>? tappableIds,
   Set<int> resultIds = const {},
   int? selectedId,
   Brightness brightness = Brightness.light,
@@ -365,18 +369,26 @@ List<MapObject> buildZoneMapObjects({
     final displayedColors = markerState.activeIds.contains(zone.zoneId)
         ? colors
         : colors.dimmed();
+    final zoneOnTap = tappableIds == null || tappableIds.contains(zone.zoneId)
+        ? onTap
+        : null;
     if (zone.zoneType == ZoneType.parallel) {
       result.add(
         _buildParallelLine(
           zone,
           displayedColors,
-          onTap,
+          zoneOnTap,
           highlighted: isSelected,
         ),
       );
     } else {
       result.add(
-        _buildPolygon(zone, displayedColors, onTap, highlighted: isSelected),
+        _buildPolygon(
+          zone,
+          displayedColors,
+          zoneOnTap,
+          highlighted: isSelected,
+        ),
       );
     }
   }
@@ -546,20 +558,23 @@ Future<Uint8List> buildCountBitmap(
   Color color, {
   Color textColor = Colors.white,
 }) async {
-  const height = 40.0;
+  const height = 40.0 * parkingMarkerScaleFactor;
   final label = count == null ? '' : '$count';
   final textPainter = TextPainter(
     text: TextSpan(
       text: label,
       style: TextStyle(
         color: textColor,
-        fontSize: 24,
+        fontSize: 24 * parkingMarkerScaleFactor,
         fontWeight: FontWeight.w600,
       ),
     ),
     textDirection: TextDirection.ltr,
   )..layout();
-  final width = math.max(height, textPainter.width + 24);
+  final width = math.max(
+    height,
+    textPainter.width + 24 * parkingMarkerScaleFactor,
+  );
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder);
   canvas.drawRRect(
@@ -715,7 +730,8 @@ Color parkingClusterColor(
 }
 
 double parkingClusterSize(int zoneCount) =>
-    math.min(28 + (zoneCount ~/ 4) * 4, 44).toDouble();
+    math.min(28 + (zoneCount ~/ 4) * 4, 44).toDouble() *
+    parkingMarkerScaleFactor;
 
 double parkingClusterExpansionZoom(
   List<Zone> zones,
@@ -723,21 +739,22 @@ double parkingClusterExpansionZoom(
   double currentZoom, {
   double maxZoom = parkingMapMaxZoom,
 }) {
+  final firstZoom =
+      parkingClusterZoomBucket(currentZoom) + parkingClusterZoomStep;
   if (clusterZoneIds.length < 2) {
-    return math.min(maxZoom, currentZoom + parkingClusterZoomStep);
+    return math.min(maxZoom, firstZoom);
   }
-  for (
-    var zoom = currentZoom + parkingClusterExpansionSearchStep;
-    zoom <= maxZoom;
-    zoom += parkingClusterExpansionSearchStep
-  ) {
-    final result = clusterParkingZones(zones, zoom, quantizeZoom: false);
+  for (var zoom = firstZoom; zoom <= maxZoom; zoom += parkingClusterZoomStep) {
+    final result = clusterParkingZones(zones, zoom);
     final remainsOneCluster = result.clusters.any(
       (cluster) =>
           clusterZoneIds.every((zoneId) => cluster.zoneIds.contains(zoneId)),
     );
-    if (!remainsOneCluster) {
-      return math.min(maxZoom, zoom + parkingClusterExpansionZoomBuffer);
+    final hasHiddenSingleton =
+        zoom < parkingZoneBadgeMinZoom &&
+        clusterZoneIds.any(result.singletonIds.contains);
+    if (!remainsOneCluster && !hasHiddenSingleton) {
+      return zoom;
     }
   }
   return maxZoom;
@@ -759,7 +776,7 @@ double parkingIsolationZoom(
       final pixel = _worldPixel(point, zoom);
       return (pixel - selectedPixel).distance > radius;
     });
-    if (isolated) return math.min(maximumZoom, zoom + 0.5);
+    if (isolated) return math.min(maximumZoom, zoom);
     zoom += parkingClusterExpansionSearchStep;
   }
   return maximumZoom;
@@ -779,7 +796,7 @@ Offset _worldPixel(Point point, double zoom) {
 MapObject _buildPolygon(
   Zone zone,
   ParkingZoneColors colors,
-  void Function(Zone) onTap, {
+  void Function(Zone)? onTap, {
   bool highlighted = false,
 }) {
   return PolygonMapObject(
@@ -791,14 +808,14 @@ MapObject _buildPolygon(
     fillColor: colors.fill,
     strokeColor: colors.stroke,
     strokeWidth: highlighted ? 3 : 1,
-    onTap: (_, _) => onTap(zone),
+    onTap: onTap == null ? null : (_, _) => onTap(zone),
   );
 }
 
 MapObject _buildParallelLine(
   Zone zone,
   ParkingZoneColors colors,
-  void Function(Zone) onTap, {
+  void Function(Zone)? onTap, {
   bool highlighted = false,
 }) {
   final points = zone.geometry;
@@ -825,7 +842,7 @@ MapObject _buildParallelLine(
     polyline: Polyline(points: [mid1, mid2]),
     strokeColor: colors.stroke,
     strokeWidth: highlighted ? 8 : 6,
-    onTap: (_, _) => onTap(zone),
+    onTap: onTap == null ? null : (_, _) => onTap(zone),
   );
 }
 

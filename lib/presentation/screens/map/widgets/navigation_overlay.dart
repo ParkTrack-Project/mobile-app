@@ -211,7 +211,7 @@ class _NavBottomBar extends ConsumerWidget {
               value: formatNavDuration(nav.remainingSeconds, s),
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
           Expanded(
             child: _StatCell(
               icon: Icons.route_rounded,
@@ -219,7 +219,7 @@ class _NavBottomBar extends ConsumerWidget {
               value: formatNavDistance(nav.remainingMeters, s),
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
           Expanded(
             child: _StatCell(
               icon: Icons.speed_rounded,
@@ -263,19 +263,22 @@ class _StatCell extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 18, color: color),
-          const SizedBox(width: 5),
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 4),
           Flexible(
-            child: Text(
-              value,
-              maxLines: 1,
-              softWrap: false,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: color,
-                height: 1,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                value,
+                maxLines: 1,
+                softWrap: false,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                  height: 1,
+                ),
               ),
             ),
           ),

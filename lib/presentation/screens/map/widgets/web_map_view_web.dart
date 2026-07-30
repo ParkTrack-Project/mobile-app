@@ -58,6 +58,7 @@ external void _fitYandexMapBounds(
   JSNumber west,
   JSNumber north,
   JSNumber east,
+  JSNumber azimuth,
   JSNumber top,
   JSNumber right,
   JSNumber bottom,
@@ -70,6 +71,19 @@ external void _focusYandexMap(
   JSNumber latitude,
   JSNumber longitude,
   JSNumber zoom,
+  JSNumber top,
+  JSNumber right,
+  JSNumber bottom,
+  JSNumber left,
+);
+
+@JS('parkTrackYandexMaps.follow')
+external void _followYandexMap(
+  JSString elementId,
+  JSNumber latitude,
+  JSNumber longitude,
+  JSNumber zoom,
+  JSNumber azimuth,
   JSNumber top,
   JSNumber right,
   JSNumber bottom,
@@ -96,6 +110,7 @@ class WebMapView extends StatefulWidget {
     this.userLatitude,
     this.userLongitude,
     this.userHeading,
+    this.userAccuracy,
     this.navigationLatitude,
     this.navigationLongitude,
     this.navigationHeading,
@@ -117,6 +132,7 @@ class WebMapView extends StatefulWidget {
   final double? userLatitude;
   final double? userLongitude;
   final double? userHeading;
+  final double? userAccuracy;
   final double? navigationLatitude;
   final double? navigationLongitude;
   final double? navigationHeading;
@@ -205,6 +221,7 @@ class _WebMapViewState extends State<WebMapView> {
     return oldWidget.userLatitude != widget.userLatitude ||
         oldWidget.userLongitude != widget.userLongitude ||
         oldWidget.userHeading != widget.userHeading ||
+        oldWidget.userAccuracy != widget.userAccuracy ||
         oldWidget.navigationLatitude != widget.navigationLatitude ||
         oldWidget.navigationLongitude != widget.navigationLongitude ||
         oldWidget.navigationHeading != widget.navigationHeading ||
@@ -222,13 +239,14 @@ class _WebMapViewState extends State<WebMapView> {
       _setYandexMapZoom(_elementId.toJS, zoom.toJS);
     };
     widget.controller.fitBoundsWithInsetsHandler =
-        (south, west, north, east, top, right, bottom, left) {
+        (south, west, north, east, azimuth, top, right, bottom, left) {
           _fitYandexMapBounds(
             _elementId.toJS,
             south.toJS,
             west.toJS,
             north.toJS,
             east.toJS,
+            azimuth.toJS,
             top.toJS,
             right.toJS,
             bottom.toJS,
@@ -242,6 +260,20 @@ class _WebMapViewState extends State<WebMapView> {
             latitude.toJS,
             longitude.toJS,
             zoom.toJS,
+            top.toJS,
+            right.toJS,
+            bottom.toJS,
+            left.toJS,
+          );
+        };
+    widget.controller.followHandler =
+        (latitude, longitude, zoom, azimuth, top, right, bottom, left) {
+          _followYandexMap(
+            _elementId.toJS,
+            latitude.toJS,
+            longitude.toJS,
+            zoom.toJS,
+            azimuth.toJS,
             top.toJS,
             right.toJS,
             bottom.toJS,
@@ -278,6 +310,8 @@ class _WebMapViewState extends State<WebMapView> {
           east: (data['east'] as num).toDouble(),
           north: (data['north'] as num).toDouble(),
           azimuth: (data['azimuth'] as num?)?.toDouble() ?? 0,
+          cameraUpdateFinished: data['cameraUpdateFinished'] as bool? ?? true,
+          userGesture: data['userGesture'] as bool? ?? false,
         );
         final firstCamera = !widget.controller.isReady;
         widget.controller.camera = camera;
@@ -327,7 +361,20 @@ class _WebMapViewState extends State<WebMapView> {
 
   Map<String, Object?> _positionState() => {
     'user': widget.userLatitude != null && widget.userLongitude != null
-        ? [widget.userLatitude, widget.userLongitude, widget.userHeading ?? 0]
+        ? [
+            widget.userLatitude,
+            widget.userLongitude,
+            widget.userHeading != null &&
+                    widget.userHeading!.isFinite &&
+                    widget.userHeading! >= 0
+                ? widget.userHeading
+                : null,
+            widget.userAccuracy != null &&
+                    widget.userAccuracy!.isFinite &&
+                    widget.userAccuracy! > 0
+                ? widget.userAccuracy
+                : null,
+          ]
         : null,
     'navigation':
         widget.navigationLatitude != null && widget.navigationLongitude != null

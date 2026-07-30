@@ -14,7 +14,7 @@ class RoutingSearchRequestDto with _$RoutingSearchRequestDto {
     double? minConfidence,
     int? maxDistanceToDestinationMeters,
     bool? useForecast,
-    @Default(5) int limit,
+    @Default(10) int limit,
   }) = _RoutingSearchRequestDto;
 
   factory RoutingSearchRequestDto.fromJson(Map<String, dynamic> json) =>

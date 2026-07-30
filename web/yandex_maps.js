@@ -9,9 +9,8 @@
   let routerApiConfigured = false;
   const searchConfigPromises = new Map();
   let searchJsonpSequence = 0;
-  const cameraEmitIntervalMs = 100;
   const yandexRouteTimeoutMs = 4000;
-  const osrmRouteTimeoutMs = 5000;
+  const osrmRouteTimeoutMs = 30000;
   const promoSelectors = [
     '[class*="-gotoymaps"]',
     '[class*="-gototech"]',
@@ -25,6 +24,23 @@
     const script = document.querySelector('script[src*="api-maps.yandex.ru/2.1/"]');
     if (!script || !script.src) return null;
     return new URL(script.src).searchParams.get('apikey');
+  }
+
+  function routerApiKey() {
+    const meta = document.querySelector('meta[name="yandex-router-api-key"]');
+    const value = meta && typeof meta.content === 'string'
+      ? meta.content.trim()
+      : '';
+    return value || null;
+  }
+
+  function configureRouterApi(api) {
+    if (routerApiConfigured) return true;
+    const routerKey = routerApiKey();
+    if (!routerKey) return false;
+    api.getDefaultConfig().setApikeys({ router: routerKey });
+    routerApiConfigured = true;
+    return true;
   }
 
   function serviceSearchLocale(locale) {
@@ -56,7 +72,7 @@
         `${encodeURIComponent(tLon)},${encodeURIComponent(tLat)}`;
       const response = await fetch(
         `https://router.project-osrm.org/route/v1/driving/${coordinates}` +
-          '?overview=full&geometries=geojson&steps=false',
+          '?overview=simplified&geometries=geojson&steps=false',
         { signal: controller.signal }
       );
       if (!response.ok) throw new Error(`osrm_route_http_${response.status}`);
@@ -209,12 +225,9 @@
         try {
           if (!window.ymaps3) throw new Error('rendering_api_unavailable');
           await window.ymaps3.ready;
-          if (!routerApiConfigured) {
+          if (routerApiKey() && !routerApiConfigured) {
             try {
-              window.ymaps3
-                .getDefaultConfig()
-                .setApikeys({ router: apiKey });
-              routerApiConfigured = true;
+              configureRouterApi(window.ymaps3);
             } catch (error) {
               console.warn('Yandex Router API configuration failed:', error);
             }
@@ -236,9 +249,13 @@
   }
 
   function destroyMapInstance(entry) {
-    if (entry.cameraTimer != null) {
-      clearTimeout(entry.cameraTimer);
-      entry.cameraTimer = null;
+    if (entry.cameraFrame != null) {
+      cancelAnimationFrame(entry.cameraFrame);
+      entry.cameraFrame = null;
+    }
+    if (entry.userAnimationFrame != null) {
+      cancelAnimationFrame(entry.userAnimationFrame);
+      entry.userAnimationFrame = null;
     }
     if (entry.promoFrame != null) {
       cancelAnimationFrame(entry.promoFrame);
@@ -258,6 +275,17 @@
     entry.zoneFeatures = new Map();
     entry.routeObjects = [];
     entry.positionObjects = [];
+    entry.userAccuracyObject = null;
+    entry.userMarkerObject = null;
+    entry.userMarkerElement = null;
+    entry.userMarkerHasHeading = false;
+    entry.userMarkerCoordinates = null;
+    entry.userAnimationFrame = null;
+    entry.userAnimation = null;
+    entry.navigationMarkerObject = null;
+    entry.navigationMarkerElement = null;
+    entry.destinationMarkerObject = null;
+    entry.destinationMarkerElement = null;
     entry.zoneRenderSignature = null;
     entry.renderedZoomBucket = null;
     entry.routeSignature = null;
@@ -265,7 +293,7 @@
     entry.lastCameraKey = null;
   }
 
-  function emitCamera(entry) {
+  function emitCamera(entry, mapInAction = false) {
     if (!entry.map || !entry.map.center || !entry.map.bounds) return false;
 
     const center = entry.map.center;
@@ -282,10 +310,13 @@
       bounds[1][0],
       bounds[1][1],
       azimuth,
+      mapInAction ? 1 : 0,
+      entry.userGestureActive ? 1 : 0,
     ]
       .map((value) => Number(value).toFixed(7))
       .join('|');
 
+    const userGesture = Boolean(entry.userGestureActive);
     entry.center = [...center];
     entry.zoom = zoom;
     if (cameraKey === entry.lastCameraKey) return true;
@@ -299,16 +330,21 @@
       east: bounds[1][0],
       north: bounds[1][1],
       azimuth,
+      cameraUpdateFinished: !mapInAction,
+      userGesture,
     }));
+    if (!mapInAction) entry.userGestureActive = false;
     return true;
   }
 
-  function scheduleCameraEmit(entry) {
-    if (entry.destroyed || entry.cameraTimer != null) return;
-    entry.cameraTimer = setTimeout(() => {
-      entry.cameraTimer = null;
-      emitCamera(entry);
-    }, cameraEmitIntervalMs);
+  function scheduleCameraEmit(entry, mapInAction) {
+    if (entry.destroyed) return;
+    entry.cameraInAction = Boolean(mapInAction);
+    if (entry.cameraFrame != null) return;
+    entry.cameraFrame = requestAnimationFrame(() => {
+      entry.cameraFrame = null;
+      emitCamera(entry, entry.cameraInAction);
+    });
   }
 
   function scheduleZoneRender(entry) {
@@ -381,11 +417,12 @@
     return [midpoint(points[1], points[2]), midpoint(points[3], points[0])];
   }
 
+  const parkingMarkerScaleFactor = 1.3;
   function parkingMarkerElement(zone, onTap) {
     const el = document.createElement('div');
     el.className = 'parktrack-marker';
     const zIndex = zone.active ? 2300 : zone.candidate ? 2200 : 2100;
-    el.style.cssText = `position:absolute;left:0;top:0;transform:translate(-50%,-50%);min-width:20px;height:20px;box-sizing:border-box;border:0;border-radius:9999px;padding:2px 6px;background:${zone.stroke};display:flex;align-items:center;justify-content:center;color:${zone.markerTextColor};font:600 12px/16px Roboto,Arial,sans-serif;white-space:nowrap;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.1),0 1px 2px rgba(0,0,0,.1);opacity:${zone.markerOpacity ?? 1};z-index:${zIndex}`;
+    el.style.cssText = `position:absolute;left:0;top:0;transform:translate(-50%,-50%);min-width:${20 * parkingMarkerScaleFactor}px;height:${20 * parkingMarkerScaleFactor}px;box-sizing:border-box;border:0;border-radius:9999px;padding:${2 * parkingMarkerScaleFactor}px ${6 * parkingMarkerScaleFactor}px;background:${zone.stroke};display:flex;align-items:center;justify-content:center;color:${zone.markerTextColor};font:600 ${12 * parkingMarkerScaleFactor}px/${16 * parkingMarkerScaleFactor}px Roboto,Arial,sans-serif;white-space:nowrap;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.1),0 1px 2px rgba(0,0,0,.1);opacity:${zone.markerOpacity ?? 1};z-index:${zIndex}`;
     el.textContent = zone.label == null ? '' : String(zone.label);
     el.onclick = (e) => { e.stopPropagation(); onTap(); };
     return el;
@@ -500,7 +537,8 @@
   }
 
   function clusterSize(zoneCount) {
-    return Math.min(28 + Math.floor(zoneCount / 4) * 4, 44);
+    return Math.min(28 + Math.floor(zoneCount / 4) * 4, 44) *
+      parkingMarkerScaleFactor;
   }
 
   function clusterMarkerElement(zones, onTap) {
@@ -520,7 +558,9 @@
         ? zones[0].clusterOne
         : zones[0].clusterFree;
     const size = clusterSize(zones.length);
-    const fontSize = size >= 38 ? 13 : 11;
+    const fontSize = size >= 38 * parkingMarkerScaleFactor
+      ? 13 * parkingMarkerScaleFactor
+      : 11 * parkingMarkerScaleFactor;
     el.style.cssText = `position:absolute;left:0;top:0;transform:translate(-50%,-50%);width:${size}px;height:${size}px;box-sizing:border-box;border:0;border-radius:9999px;background:${color};display:flex;align-items:center;justify-content:center;text-align:center;color:${zones[0].markerTextColor};font:600 ${fontSize}px/1 Roboto,Arial,sans-serif;cursor:pointer;box-shadow:0 4px 6px -1px rgba(0,0,0,.1),0 2px 4px -2px rgba(0,0,0,.1),0 0 0 2px rgba(255,255,255,.7);opacity:${opacity};z-index:2100`;
     el.textContent = String(freeCount);
     el.onclick = (e) => { e.stopPropagation(); onTap(); };
@@ -713,13 +753,18 @@
     return { zoom: effectiveZoom, clusters, singletonIds };
   }
 
+  const parkingCounterMinZoom = 14;
+
   function clusterExpansionZoom(zones, clusterZoneIds, currentZoom) {
-    for (let zoom = currentZoom + 0.25; zoom <= 21; zoom += 0.25) {
-      const result = clusterParkingZones(zones, zoom, false);
+    const firstZoom = clusterZoomBucket(currentZoom) + 0.5;
+    for (let zoom = firstZoom; zoom <= 21; zoom += 0.5) {
+      const result = clusterParkingZones(zones, zoom);
       const remainsOneCluster = result.clusters.some(cluster =>
         clusterZoneIds.every(zoneId => cluster.zoneIds.includes(zoneId))
       );
-      if (!remainsOneCluster) return Math.min(21, zoom + 0.25);
+      const hasHiddenSingleton = zoom < parkingCounterMinZoom &&
+        clusterZoneIds.some(zoneId => result.singletonIds.has(zoneId));
+      if (!remainsOneCluster && !hasHiddenSingleton) return zoom;
     }
     return 21;
   }
@@ -727,9 +772,21 @@
   function zonesInsideBounds(zones, bounds) {
     if (!bounds || !bounds[0] || !bounds[1]) return zones;
     const west = Number(bounds[0][0]);
-    const south = Number(bounds[0][1]);
     const east = Number(bounds[1][0]);
-    const north = Number(bounds[1][1]);
+    const firstLatitude = Number(bounds[0][1]);
+    const secondLatitude = Number(bounds[1][1]);
+    if (
+      !Number.isFinite(west) ||
+      !Number.isFinite(east) ||
+      !Number.isFinite(firstLatitude) ||
+      !Number.isFinite(secondLatitude)
+    ) {
+      return zones;
+    }
+    // YMap bounds use [west, north], [east, south]. Normalize the latitude
+    // values as a guard against API/version-specific corner ordering.
+    const south = Math.min(firstLatitude, secondLatitude);
+    const north = Math.max(firstLatitude, secondLatitude);
     return zones.filter(zone => {
       if (!Array.isArray(zone.center) || zone.center.length !== 2) return false;
       const latitude = Number(zone.center[0]);
@@ -758,50 +815,305 @@
     };
   }
 
+  function accuracyCircleCoordinates(latitude, longitude, radiusMeters) {
+    const earthRadiusMeters = 6378137;
+    const angularDistance = radiusMeters / earthRadiusMeters;
+    const latitudeRadians = latitude * Math.PI / 180;
+    const longitudeRadians = longitude * Math.PI / 180;
+    const ring = [];
+    const segments = 48;
+
+    for (let index = 0; index <= segments; index += 1) {
+      const bearing = index * 2 * Math.PI / segments;
+      const targetLatitude = Math.asin(
+        Math.sin(latitudeRadians) * Math.cos(angularDistance) +
+        Math.cos(latitudeRadians) * Math.sin(angularDistance) *
+          Math.cos(bearing)
+      );
+      const targetLongitude = longitudeRadians + Math.atan2(
+        Math.sin(bearing) * Math.sin(angularDistance) *
+          Math.cos(latitudeRadians),
+        Math.cos(angularDistance) -
+          Math.sin(latitudeRadians) * Math.sin(targetLatitude)
+      );
+      const normalizedLongitude =
+        ((targetLongitude * 180 / Math.PI + 540) % 360) - 180;
+      ring.push([normalizedLongitude, targetLatitude * 180 / Math.PI]);
+    }
+
+    return ring;
+  }
+
+  function removeMapObject(entry, object) {
+    if (!entry.map || !object) return;
+    try { entry.map.removeChild(object); } catch (_) {}
+  }
+
+  function updateMapObject(object, props) {
+    if (!object || typeof object.update !== 'function') return false;
+    try {
+      object.update(props);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function interpolateCoordinates(from, to, t) {
+    const clamped = Math.max(0, Math.min(1, t));
+    let deltaLon = to[0] - from[0];
+    if (deltaLon > 180) deltaLon -= 360;
+    if (deltaLon < -180) deltaLon += 360;
+    const lon = ((((from[0] + deltaLon * clamped) + 180) % 360) + 360) % 360 - 180;
+    return [
+      lon,
+      from[1] + (to[1] - from[1]) * clamped,
+    ];
+  }
+
+  function updateUserMarkerHeading(entry, heading) {
+    if (!entry.userMarkerElement) return;
+    if (Number.isFinite(heading)) {
+      const azimuth = entry.map ? Number(entry.map.azimuth || 0) : 0;
+      entry.userMarkerElement.style.setProperty(
+        '--heading',
+        `${heading - azimuth - 90}deg`
+      );
+    }
+  }
+
+  function userAccuracyFeature(latitude, longitude, radiusMeters) {
+    return {
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[
+          ...accuracyCircleCoordinates(latitude, longitude, radiusMeters),
+        ]],
+      },
+      style: {
+        stroke: [{ color: 'rgba(255, 59, 48, 0.60)', width: 2 }],
+        fill: 'rgba(255, 59, 48, 0.14)',
+      },
+    };
+  }
+
+  function updateUserAccuracy(entry, latitude, longitude, userAccuracy) {
+    const { YMapFeature } = renderingApi;
+    if (userAccuracy == null) {
+      removeMapObject(entry, entry.userAccuracyObject);
+      entry.userAccuracyObject = null;
+      return;
+    }
+    const props = userAccuracyFeature(latitude, longitude, userAccuracy);
+    if (entry.userAccuracyObject) {
+      if (!updateMapObject(entry.userAccuracyObject, props)) {
+        removeMapObject(entry, entry.userAccuracyObject);
+        entry.userAccuracyObject = addObject(
+          entry,
+          new YMapFeature(props),
+          'positionObjects'
+        );
+      }
+      return;
+    }
+    entry.userAccuracyObject = addObject(
+      entry,
+      new YMapFeature(props),
+      'positionObjects'
+    );
+  }
+
+  function createUserMarkerElement(hasUserHeading, heading) {
+    ensureUserLocationStyles();
+    const el = document.createElement('div');
+    el.className = 'parktrack-user-location';
+    el.setAttribute('aria-label', 'Your location');
+    el.innerHTML =
+      (hasUserHeading
+        ? '<span class="parktrack-user-location__direction"></span>'
+        : '') +
+      '<span class="parktrack-user-location__point"></span>';
+    if (hasUserHeading) {
+      el.style.setProperty('--heading', `${heading - 90}deg`);
+    }
+    return el;
+  }
+
+  function setUserMarkerCoordinates(entry, coordinates, heading, userAccuracy) {
+    if (!entry.userMarkerObject) return;
+    if (!updateMapObject(entry.userMarkerObject, { coordinates })) {
+      const { YMapMarker } = renderingApi;
+      removeMapObject(entry, entry.userMarkerObject);
+      entry.userMarkerObject = addObject(
+        entry,
+        new YMapMarker({ coordinates }, entry.userMarkerElement),
+        'positionObjects'
+      );
+    }
+    entry.userMarkerCoordinates = coordinates;
+    updateUserMarkerHeading(entry, heading);
+    updateUserAccuracy(entry, coordinates[1], coordinates[0], userAccuracy);
+  }
+
+  function animateUserMarker(entry, to, heading, userAccuracy) {
+    const from = entry.userMarkerCoordinates || to;
+    if (entry.userAnimationFrame != null) {
+      cancelAnimationFrame(entry.userAnimationFrame);
+      entry.userAnimationFrame = null;
+    }
+    const distance =
+      Math.abs(from[0] - to[0]) + Math.abs(from[1] - to[1]);
+    if (distance < 0.000001) {
+      setUserMarkerCoordinates(entry, to, heading, userAccuracy);
+      return;
+    }
+    entry.userAnimation = {
+      from,
+      to,
+      startedAt: performance.now(),
+      duration: 950,
+      heading,
+      userAccuracy,
+    };
+    const tick = (now) => {
+      if (!entry.userAnimation || entry.destroyed) {
+        entry.userAnimationFrame = null;
+        return;
+      }
+      const animation = entry.userAnimation;
+      const rawT = (now - animation.startedAt) / animation.duration;
+      const t = Math.max(0, Math.min(1, rawT));
+      const eased = t < 0.5
+        ? 4 * t * t * t
+        : 1 - Math.pow(-2 * t + 2, 3) / 2;
+      const coordinates = interpolateCoordinates(
+        animation.from,
+        animation.to,
+        eased
+      );
+      setUserMarkerCoordinates(
+        entry,
+        coordinates,
+        animation.heading,
+        animation.userAccuracy
+      );
+      if (t < 1) {
+        entry.userAnimationFrame = requestAnimationFrame(tick);
+      } else {
+        entry.userAnimationFrame = null;
+        entry.userAnimation = null;
+      }
+    };
+    entry.userAnimationFrame = requestAnimationFrame(tick);
+  }
+
   function renderPositions(entry, state) {
     if (!entry.map || !renderingApi) return;
     const { YMapMarker } = renderingApi;
-    const effectiveUserHeading = entry.deviceHeading ?? state.user?.[2] ?? 0;
+    const stateUserHeading =
+      state.user && Number.isFinite(Number(state.user[2]))
+        ? Number(state.user[2])
+        : null;
+    const effectiveUserHeading = entry.deviceHeading ?? stateUserHeading;
+    const hasUserHeading = Number.isFinite(effectiveUserHeading);
+    const userAccuracy =
+      state.user && Number.isFinite(Number(state.user[3])) &&
+      Number(state.user[3]) > 0
+        ? Number(state.user[3])
+        : null;
     const positionSignature = JSON.stringify([
       state.navigation || null,
       state.user
-        ? [state.user[0], state.user[1], effectiveUserHeading]
+        ? [
+            state.user[0],
+            state.user[1],
+            hasUserHeading ? effectiveUserHeading : null,
+            userAccuracy,
+          ]
         : null,
       state.destination || null,
+      Number(entry.map.azimuth || 0),
     ]);
     if (positionSignature === entry.positionSignature) return;
     entry.positionSignature = positionSignature;
-    clearObjectGroup(entry, 'positionObjects');
 
     if (state.navigation) {
       const angle = state.navigation[2] || 0;
-      const el = document.createElement('div');
-      el.style.cssText = `position:absolute;left:-14px;top:-14px;width:28px;height:28px;z-index:2400`;
-      el.innerHTML = `<svg viewBox="0 0 80 80" width="28" height="28" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,0.45));transform:rotate(${angle}deg)"><path d="M40 4 L62.4 57.6 L40 44.8 L17.6 57.6 Z" fill="#007aff" stroke="#fff" stroke-width="3" stroke-linejoin="round"/></svg>`;
-      addObject(entry, new YMapMarker({
-        coordinates: [state.navigation[1], state.navigation[0]]
-      }, el), 'positionObjects');
+      const coordinates = [state.navigation[1], state.navigation[0]];
+      if (!entry.navigationMarkerElement) {
+        entry.navigationMarkerElement = document.createElement('div');
+        entry.navigationMarkerElement.style.cssText = `position:absolute;left:-14px;top:-14px;width:28px;height:28px;z-index:2400`;
+      }
+      entry.navigationMarkerElement.innerHTML = `<svg viewBox="0 0 80 80" width="28" height="28" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,0.45));transform:rotate(${angle}deg)"><path d="M40 4 L62.4 57.6 L40 44.8 L17.6 57.6 Z" fill="#007aff" stroke="#fff" stroke-width="3" stroke-linejoin="round"/></svg>`;
+      if (entry.navigationMarkerObject) {
+        updateMapObject(entry.navigationMarkerObject, { coordinates });
+      } else {
+        entry.navigationMarkerObject = addObject(entry, new YMapMarker({
+          coordinates
+        }, entry.navigationMarkerElement), 'positionObjects');
+      }
+    } else {
+      removeMapObject(entry, entry.navigationMarkerObject);
+      entry.navigationMarkerObject = null;
     }
     if (state.user) {
-      ensureUserLocationStyles();
-      const el = document.createElement('div');
-      el.className = 'parktrack-user-location';
-      el.setAttribute('aria-label', 'Your location');
-      el.style.setProperty('--heading', `${effectiveUserHeading - 90}deg`);
-      el.innerHTML =
-        '<span class="parktrack-user-location__direction"></span>' +
-        '<span class="parktrack-user-location__point"></span>';
-      addObject(entry, new YMapMarker({
-        coordinates: [state.user[1], state.user[0]]
-      }, el), 'positionObjects');
+      const coordinates = [Number(state.user[1]), Number(state.user[0])];
+      if (userAccuracy != null) {
+        updateUserAccuracy(entry, coordinates[1], coordinates[0], userAccuracy);
+      }
+      if (entry.userMarkerObject) {
+        if (entry.userMarkerHasHeading !== hasUserHeading) {
+          entry.userMarkerElement.innerHTML =
+            (hasUserHeading
+              ? '<span class="parktrack-user-location__direction"></span>'
+              : '') +
+            '<span class="parktrack-user-location__point"></span>';
+          entry.userMarkerHasHeading = hasUserHeading;
+        }
+        animateUserMarker(entry, coordinates, effectiveUserHeading, userAccuracy);
+      } else {
+        entry.userMarkerElement = createUserMarkerElement(
+          hasUserHeading,
+          effectiveUserHeading
+        );
+        entry.userMarkerHasHeading = hasUserHeading;
+        entry.userMarkerObject = addObject(entry, new YMapMarker({
+          coordinates
+        }, entry.userMarkerElement), 'positionObjects');
+        entry.userMarkerCoordinates = coordinates;
+        updateUserMarkerHeading(entry, effectiveUserHeading);
+      }
+    } else {
+      if (entry.userAnimationFrame != null) {
+        cancelAnimationFrame(entry.userAnimationFrame);
+        entry.userAnimationFrame = null;
+      }
+      entry.userAnimation = null;
+      removeMapObject(entry, entry.userAccuracyObject);
+      removeMapObject(entry, entry.userMarkerObject);
+      entry.userAccuracyObject = null;
+      entry.userMarkerObject = null;
+      entry.userMarkerElement = null;
+      entry.userMarkerHasHeading = false;
+      entry.userMarkerCoordinates = null;
     }
     if (state.destination) {
-      const el = document.createElement('div');
-      el.style.cssText = 'position:absolute;left:-16px;top:-40px;width:32px;height:40px;z-index:2300';
-      el.innerHTML = '<svg viewBox="0 0 32 40" width="32" height="40" style="filter:drop-shadow(0 2px 2px rgba(0,0,0,.35))"><path d="M16 39C13 32 4 24 4 14A12 12 0 0 1 28 14C28 24 19 32 16 39Z" fill="#2e7d32" stroke="#fff" stroke-width="2"/><circle cx="16" cy="14" r="4" fill="#fff"/></svg>';
-      addObject(entry, new YMapMarker({
-        coordinates: [state.destination[1], state.destination[0]]
-      }, el), 'positionObjects');
+      const coordinates = [state.destination[1], state.destination[0]];
+      if (!entry.destinationMarkerElement) {
+        entry.destinationMarkerElement = document.createElement('div');
+        entry.destinationMarkerElement.style.cssText = 'position:absolute;left:-16px;top:-40px;width:32px;height:40px;z-index:2300';
+        entry.destinationMarkerElement.innerHTML = '<svg viewBox="0 0 32 40" width="32" height="40" style="filter:drop-shadow(0 2px 2px rgba(0,0,0,.35))"><path d="M16 39C13 32 4 24 4 14A12 12 0 0 1 28 14C28 24 19 32 16 39Z" fill="#2e7d32" stroke="#fff" stroke-width="2"/><circle cx="16" cy="14" r="4" fill="#fff"/></svg>';
+      }
+      if (entry.destinationMarkerObject) {
+        updateMapObject(entry.destinationMarkerObject, { coordinates });
+      } else {
+        entry.destinationMarkerObject = addObject(entry, new YMapMarker({
+          coordinates
+        }, entry.destinationMarkerElement), 'positionObjects');
+      }
+    } else {
+      removeMapObject(entry, entry.destinationMarkerObject);
+      entry.destinationMarkerObject = null;
     }
   }
 
@@ -861,16 +1173,18 @@
             ? { type: 'LineString', coordinates: coords }
             : { type: 'Polygon', coordinates: [coords] },
           style: zoneFeatureStyle(zone),
-          onClick: () => {
-            entry.zoneTapAt = performance.now();
-            entry.onZoneTap(zone.id);
-          }
+          onClick: clustering.singletonIds.has(zone.id)
+            ? () => {
+                entry.zoneTapAt = performance.now();
+                entry.onZoneTap(zone.id);
+              }
+            : undefined
         });
         entry.zoneFeatures.set(zone.id, feature);
         addObject(entry, feature, 'zoneGeometryObjects');
       }
 
-      if (zoomBucket >= 14) {
+      if (zoomBucket >= parkingCounterMinZoom) {
         for (const zone of singletonZones) {
           addObject(entry, new YMapMarker(
             { coordinates: [zone.center[1], zone.center[0]] },
@@ -936,9 +1250,10 @@
       entry.map.addChild(entry.schemeLayer);
       entry.map.addChild(new api.YMapDefaultFeaturesLayer());
       entry.map.addChild(new api.YMapListener({
-        onUpdate: () => {
-          scheduleCameraEmit(entry);
+        onUpdate: ({ mapInAction }) => {
+          scheduleCameraEmit(entry, mapInAction);
           scheduleZoneRender(entry);
+          if (entry.latestState) renderPositions(entry, entry.latestState);
           const zoomBucket = clusterZoomBucket(entry.map.zoom);
           if (
             entry.latestState &&
@@ -983,17 +1298,54 @@
         zoneFeatures: new Map(),
         routeObjects: [],
         positionObjects: [],
+        userAccuracyObject: null,
+        userMarkerObject: null,
+        userMarkerElement: null,
+        userMarkerHasHeading: false,
+        userMarkerCoordinates: null,
+        userAnimationFrame: null,
+        userAnimation: null,
+        navigationMarkerObject: null,
+        navigationMarkerElement: null,
+        destinationMarkerObject: null,
+        destinationMarkerElement: null,
         center: [...defaultCenter],
         zoom: defaultZoom,
         pendingPromoRoots: new Set(),
-        cameraTimer: null,
+        cameraFrame: null,
+        cameraInAction: false,
         zoneRenderTimer: null,
         promoFrame: null,
         zoneTapAt: 0,
+        userGestureActive: false,
         latestStateJson: null,
         destroyed: false,
       };
       entries.set(elementId, entry);
+
+      let pointerTracking = false;
+      const markUserGesture = () => { entry.userGestureActive = true; };
+      const startPointerTracking = () => { pointerTracking = true; };
+      const stopPointerTracking = () => { pointerTracking = false; };
+      const markPointerMove = () => {
+        if (pointerTracking) markUserGesture();
+      };
+      element.addEventListener('pointerdown', startPointerTracking, { passive: true });
+      element.addEventListener('pointermove', markPointerMove, { passive: true });
+      element.addEventListener('pointerup', stopPointerTracking, { passive: true });
+      element.addEventListener('pointercancel', stopPointerTracking, { passive: true });
+      element.addEventListener('touchmove', markUserGesture, { passive: true });
+      element.addEventListener('wheel', markUserGesture, { passive: true });
+      element.addEventListener('dblclick', markUserGesture, { passive: true });
+      entry.detachGestureListeners = () => {
+        element.removeEventListener('pointerdown', startPointerTracking);
+        element.removeEventListener('pointermove', markPointerMove);
+        element.removeEventListener('pointerup', stopPointerTracking);
+        element.removeEventListener('pointercancel', stopPointerTracking);
+        element.removeEventListener('touchmove', markUserGesture);
+        element.removeEventListener('wheel', markUserGesture);
+        element.removeEventListener('dblclick', markUserGesture);
+      };
 
       const observer = new MutationObserver((mutations) => {
         const addedRoots = [];
@@ -1042,7 +1394,7 @@
       const entry = entries.get(id);
       if (entry) requestDeviceHeading(entry);
     },
-    fitBounds(id, south, west, north, east, top, right, bottom, left) {
+    fitBounds(id, south, west, north, east, azimuth, top, right, bottom, left) {
       const entry = entries.get(id);
       if (entry && entry.map) {
         entry.map.update({
@@ -1050,6 +1402,7 @@
         });
         entry.map.setLocation({
           bounds: [[west, south], [east, north]],
+          azimuth,
           duration: 600
         });
       }
@@ -1064,6 +1417,20 @@
           center: [lon, lat],
           zoom,
           duration: 300
+        });
+      }
+    },
+    follow(id, lat, lon, zoom, azimuth, top, right, bottom, left) {
+      const entry = entries.get(id);
+      if (entry && entry.map) {
+        entry.map.update({
+          margin: [top || 0, right || 0, bottom || 0, left || 0]
+        });
+        entry.map.setLocation({
+          center: [lon, lat],
+          zoom,
+          azimuth,
+          duration: 180
         });
       }
     },
@@ -1093,54 +1460,58 @@
           );
         }
         if (entry.observer) entry.observer.disconnect();
+        if (entry.detachGestureListeners) entry.detachGestureListeners();
         destroyMapInstance(entry);
         entries.delete(id);
       }
     },
     async route(fLat, fLon, tLat, tLon) {
-      try {
-        const api = await loadRenderingApi(renderingLocale || 'ru_RU');
-        if (typeof api.route !== 'function') {
-          throw new Error('ymaps3_route_unavailable');
+      if (routerApiKey()) {
+        try {
+          const api = await loadRenderingApi(renderingLocale || 'ru_RU');
+          if (typeof api.route !== 'function') {
+            throw new Error('ymaps3_route_unavailable');
+          }
+          configureRouterApi(api);
+          const responses = await withTimeout(
+            api.route({
+              points: [[fLon, fLat], [tLon, tLat]],
+              type: 'driving',
+            }),
+            yandexRouteTimeoutMs,
+            'ymaps3_route_timeout'
+          );
+          const response = Array.isArray(responses) ? responses[0] : null;
+          const feature =
+            response && typeof response.toRoute === 'function'
+              ? response.toRoute()
+              : null;
+          const coordinates =
+            feature &&
+            feature.geometry &&
+            Array.isArray(feature.geometry.coordinates)
+              ? feature.geometry.coordinates
+              : [];
+          const points = coordinates
+            .filter(coordinate =>
+              Array.isArray(coordinate) &&
+              coordinate.length >= 2 &&
+              Number.isFinite(Number(coordinate[0])) &&
+              Number.isFinite(Number(coordinate[1]))
+            )
+            .map(coordinate => [Number(coordinate[1]), Number(coordinate[0])]);
+          if (points.length >= 2) {
+            const properties = feature.properties || {};
+            return JSON.stringify({
+              points,
+              duration: Number(properties.duration) || 0,
+              distance: Number(properties.length) || 0,
+            });
+          }
+          throw new Error('ymaps3_route_empty');
+        } catch (error) {
+          console.warn('Yandex Maps v3 route failed, using OSRM:', error);
         }
-        const responses = await withTimeout(
-          api.route({
-            points: [[fLon, fLat], [tLon, tLat]],
-            type: 'driving',
-          }),
-          yandexRouteTimeoutMs,
-          'ymaps3_route_timeout'
-        );
-        const response = Array.isArray(responses) ? responses[0] : null;
-        const feature =
-          response && typeof response.toRoute === 'function'
-            ? response.toRoute()
-            : null;
-        const coordinates =
-          feature &&
-          feature.geometry &&
-          Array.isArray(feature.geometry.coordinates)
-            ? feature.geometry.coordinates
-            : [];
-        const points = coordinates
-          .filter(coordinate =>
-            Array.isArray(coordinate) &&
-            coordinate.length >= 2 &&
-            Number.isFinite(Number(coordinate[0])) &&
-            Number.isFinite(Number(coordinate[1]))
-          )
-          .map(coordinate => [Number(coordinate[1]), Number(coordinate[0])]);
-        if (points.length >= 2) {
-          const properties = feature.properties || {};
-          return JSON.stringify({
-            points,
-            duration: Number(properties.duration) || 0,
-            distance: Number(properties.length) || 0,
-          });
-        }
-        throw new Error('ymaps3_route_empty');
-      } catch (error) {
-        console.warn('Yandex Maps v3 route failed, using OSRM:', error);
       }
       try {
         return JSON.stringify(await routeViaOsrm(fLat, fLon, tLat, tLon));

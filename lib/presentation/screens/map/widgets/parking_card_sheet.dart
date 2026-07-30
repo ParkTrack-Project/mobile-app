@@ -33,7 +33,7 @@ class ParkingCardSheet extends ConsumerWidget {
   final RouteCandidate? candidate;
   final VoidCallback onBuildRoute;
   final VoidCallback onClose;
-  final VoidCallback? onShare;
+  final ValueChanged<String?>? onShare;
   final VoidCallback? onOpenExternal;
   final double? originLatitude;
   final double? originLongitude;
@@ -103,26 +103,39 @@ class ParkingCardSheet extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Text(
+                        '${s.parkingNumber}${currentZone.zoneId}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w700),
+                      ),
                       address.when(
-                        data: (value) => Text(
-                          [
-                            '${s.parkingNumber}${currentZone.zoneId}',
-                            if (value != null && value.trim().isNotEmpty) value,
-                          ].join(' · '),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.w700),
+                        data: (value) => value == null || value.trim().isEmpty
+                            ? const SizedBox.shrink()
+                            : Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text(
+                                  value.trim(),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(
+                                        color: colors.onSurfaceVariant,
+                                      ),
+                                ),
+                              ),
+                        loading: () => Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            s.addressLoading,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: colors.onSurfaceVariant),
+                          ),
                         ),
-                        loading: () => Text(
-                          '${s.parkingNumber}${currentZone.zoneId} · ${s.addressLoading}',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        error: (_, _) => Text(
-                          '${s.parkingNumber}${currentZone.zoneId}',
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.w700),
-                        ),
+                        error: (_, _) => const SizedBox.shrink(),
                       ),
                     ],
                   ),
@@ -136,7 +149,7 @@ class ParkingCardSheet extends ConsumerWidget {
                   IconButton(
                     key: const Key('parking_share'),
                     tooltip: s.share,
-                    onPressed: onShare,
+                    onPressed: () => onShare?.call(address.valueOrNull),
                     icon: const Icon(Icons.share_outlined),
                   ),
                 IconButton(
@@ -303,8 +316,8 @@ class _CandidateFacts extends StatelessWidget {
         _Fact(
           icon: Icons.auto_graph,
           text: eta == null
-              ? '${s.forecast}: $predicted'
-              : '${s.forecast}: $predicted ${s.expectedAvailability} $eta',
+              ? predicted
+              : '$predicted ${s.expectedAvailability} $eta',
         ),
       );
     }

@@ -30,6 +30,7 @@ class RoutingRepository {
       minFreeCount: minFreeCount,
       minConfidence: minConfidence,
       useForecast: useForecast,
+      limit: 10,
     );
     final response = await _api.searchParking(
       request,
@@ -54,6 +55,7 @@ class RoutingRepository {
           ? LocationDto(latitude: destinationLat, longitude: destinationLon!)
           : null,
       useForecast: useForecast,
+      limit: 10,
     );
     final dto = await _api.createRoute(
       request,

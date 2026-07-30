@@ -424,6 +424,46 @@ class _CandidateTile extends ConsumerWidget {
       ParkingResultTier.average => const Color(0xFFB48409),
       ParkingResultTier.poor => isDark ? const Color(0xFFF44336) : colors.error,
     };
+    final factWidgets = <Widget>[
+      if (useAndroidCandidateLayout)
+        _ParkingNumberBadge(
+          key: Key('parking_candidate_number_${candidate.zoneId}'),
+          zoneId: candidate.zoneId,
+        ),
+      if (!useAndroidCandidateLayout && spacesText != null)
+        _Fact(
+          icon: Icons.local_parking,
+          text: spacesText,
+          color: switch (displayedFreeCount) {
+            null => null,
+            <= 0 => colors.error,
+            1 => const Color(0xFFB48409),
+            _ => AppColors.primary,
+          },
+        ),
+      if (priceText != null)
+        _Fact(icon: Icons.payments_outlined, text: priceText),
+      if (predictedSpacesText != null)
+        _Fact(
+          icon: Icons.auto_graph,
+          text: arrivalText == null
+              ? predictedSpacesText
+              : '$predictedSpacesText ${s.expectedAvailability} $arrivalText',
+        ),
+      if (drivingDistanceText != null || durationText != null)
+        _Fact(
+          icon: Icons.directions_car_outlined,
+          text: [
+            ?drivingDistanceText,
+            if (durationText != null) '($durationText)',
+            s.fromYou,
+          ].join(' '),
+        ),
+      if (zone?.isPrivate == true)
+        _Fact(icon: Icons.lock_outline, text: s.private),
+      if (zone?.isAccessible == true)
+        _Fact(icon: Icons.accessible, text: s.accessibleParking),
+    ];
 
     return InkWell(
       onTap: onTap,
@@ -433,75 +473,78 @@ class _CandidateTile extends ConsumerWidget {
             ? colors.primaryContainer.withValues(alpha: 0.35)
             : Colors.transparent,
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Column(
-              mainAxisSize: MainAxisSize.min,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if ((hasDestination && destinationDistanceText != null) ||
-                    (!hasDestination && durationText != null))
-                  Container(
-                    constraints: BoxConstraints(minWidth: badgeWidth),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: timeColor.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if ((hasDestination &&
-                                destinationDistanceText != null) ||
-                            (!hasDestination && durationText != null))
-                          Text(
-                            hasDestination
-                                ? destinationDistanceText!
-                                : durationText!,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: timeColor,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        const SizedBox(height: 2),
-                        Text(
-                          hasDestination
-                              ? '${walkingText ?? ''} ${s.walkingTime}'.trim()
-                              : s.drivingTime,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: timeColor,
-                            fontSize: 9,
-                            fontWeight: FontWeight.w600,
-                          ),
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if ((hasDestination && destinationDistanceText != null) ||
+                        (!hasDestination && durationText != null))
+                      Container(
+                        constraints: BoxConstraints(minWidth: badgeWidth),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 6,
                         ),
-                      ],
-                    ),
-                  ),
-                if (useAndroidCandidateLayout && spacesText != null) ...[
-                  const SizedBox(height: 6),
-                  _AvailabilityBadge(
-                    key: Key('parking_candidate_spaces_${candidate.zoneId}'),
-                    text: spacesText,
-                    freeCount: displayedFreeCount,
-                  ),
-                ],
-              ],
-            ),
-            if ((hasDestination && destinationDistanceText != null) ||
-                (!hasDestination && durationText != null) ||
-                (useAndroidCandidateLayout && spacesText != null))
-              const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  address.when(
+                        decoration: BoxDecoration(
+                          color: timeColor.withValues(alpha: 0.14),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if ((hasDestination &&
+                                    destinationDistanceText != null) ||
+                                (!hasDestination && durationText != null))
+                              Text(
+                                hasDestination
+                                    ? destinationDistanceText!
+                                    : durationText!,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: timeColor,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            const SizedBox(height: 2),
+                            Text(
+                              hasDestination
+                                  ? '${walkingText ?? ''} ${s.walkingTime}'
+                                        .trim()
+                                  : s.drivingTime,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: timeColor,
+                                fontSize: 9,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    if (useAndroidCandidateLayout && spacesText != null) ...[
+                      const SizedBox(height: 6),
+                      _AvailabilityBadge(
+                        key: Key(
+                          'parking_candidate_spaces_${candidate.zoneId}',
+                        ),
+                        text: spacesText,
+                        freeCount: displayedFreeCount,
+                      ),
+                    ],
+                  ],
+                ),
+                if ((hasDestination && destinationDistanceText != null) ||
+                    (!hasDestination && durationText != null) ||
+                    (useAndroidCandidateLayout && spacesText != null))
+                  const SizedBox(width: 10),
+                Expanded(
+                  child: address.when(
                     data: (value) => Text(
                       useAndroidCandidateLayout
                           ? (value?.trim().isNotEmpty == true
@@ -560,92 +603,39 @@ class _CandidateTile extends ConsumerWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 5),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 4,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      if (useAndroidCandidateLayout)
-                        _ParkingNumberBadge(
-                          key: Key(
-                            'parking_candidate_number_${candidate.zoneId}',
-                          ),
-                          zoneId: candidate.zoneId,
-                        ),
-                      if (!useAndroidCandidateLayout && spacesText != null)
-                        _Fact(
-                          icon: Icons.local_parking,
-                          text: spacesText,
-                          color: switch (displayedFreeCount) {
-                            null => null,
-                            <= 0 => colors.error,
-                            1 => const Color(0xFFB48409),
-                            _ => AppColors.primary,
-                          },
-                        ),
-                      if (priceText != null)
-                        _Fact(icon: Icons.payments_outlined, text: priceText),
-                      if (predictedSpacesText != null)
-                        _Fact(
-                          icon: Icons.auto_graph,
-                          text: arrivalText == null
-                              ? '${s.forecast}: $predictedSpacesText'
-                              : '${s.forecast}: $predictedSpacesText '
-                                    '${s.expectedAvailability} $arrivalText',
-                        ),
-                      if (drivingDistanceText != null || durationText != null)
-                        _Fact(
-                          icon: Icons.directions_car_outlined,
-                          text: [
-                            ?drivingDistanceText,
-                            if (durationText != null) '($durationText)',
-                            s.fromYou,
-                          ].join(' '),
-                        ),
-                      if (zone?.isPrivate == true)
-                        _Fact(icon: Icons.lock_outline, text: s.private),
-                      if (zone?.isAccessible == true)
-                        _Fact(
-                          icon: Icons.accessible,
-                          text: s.accessibleParking,
-                        ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton.filledTonal(
-                  key: Key('parking_candidate_go_${candidate.zoneId}'),
-                  tooltip: s.goAction,
-                  constraints: const BoxConstraints.tightFor(
-                    width: 46,
-                    height: 46,
-                  ),
-                  onPressed: () => onAction(CandidateAction.go),
-                  icon: const Icon(Icons.navigation_rounded),
                 ),
-                const SizedBox(width: 4),
-                IconButton.outlined(
-                  key: Key('parking_candidate_yandex_${candidate.zoneId}'),
-                  tooltip: s.openInYandexMaps,
-                  constraints: const BoxConstraints.tightFor(
-                    width: 46,
-                    height: 46,
-                  ),
-                  onPressed: zone?.geometry.isNotEmpty == true
-                      ? () => onAction(CandidateAction.openExternal)
-                      : null,
-                  icon: const Icon(
-                    Icons.open_in_new_rounded,
-                    color: Color(0xFFE53935),
-                  ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      key: Key('parking_candidate_go_${candidate.zoneId}'),
+                      tooltip: s.goAction,
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => onAction(CandidateAction.go),
+                      icon: const Icon(Icons.navigation_rounded),
+                    ),
+                    IconButton(
+                      key: Key('parking_candidate_yandex_${candidate.zoneId}'),
+                      tooltip: s.openInYandexMaps,
+                      visualDensity: VisualDensity.compact,
+                      onPressed: zone == null
+                          ? null
+                          : () => onAction(CandidateAction.openExternal),
+                      icon: const Icon(Icons.open_in_new_rounded),
+                    ),
+                  ],
                 ),
               ],
             ),
+            if (factWidgets.isNotEmpty) ...[
+              const SizedBox(height: 5),
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: factWidgets,
+              ),
+            ],
           ],
         ),
       ),

@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart'
     show
         TargetPlatform,
         defaultTargetPlatform,
+        kDebugMode,
         kIsWeb,
         setEquals,
         visibleForTesting;
@@ -29,10 +30,15 @@ import '../../../core/utils/navigation_deeplink.dart';
 import '../../../core/utils/app_share.dart';
 import '../../../core/utils/error_snackbar.dart';
 import '../../../core/localization/app_localizations.dart';
+import '../../../core/services/android_heading_source.dart';
+import '../../../core/services/preferred_location_service.dart';
 import '../../../core/services/yandex_web_route.dart';
+import '../../providers/parking_address_provider.dart';
+import 'my_location_camera_state.dart';
 import 'route_camera.dart';
 import 'widgets/candidates_sheet.dart';
 import 'widgets/destination_marker.dart';
+import 'widgets/location_follow_icon.dart';
 import 'widgets/map_compass_button.dart';
 import 'widgets/navigation_overlay.dart'
     show NavigationTurnCard, NavigationBottomBar;
@@ -53,6 +59,67 @@ const double _tapZoomStep = 1;
 const double _holdZoomStep = 0.224;
 const double _tapZoomDurationSeconds = 0.18;
 const double _holdZoomDurationSeconds = 0.05;
+const Duration _userLocationMoveDuration = Duration(milliseconds: 950);
+const Duration _userLocationFreshnessDuration = Duration(seconds: 20);
+const Duration _androidLocationRetryInitialDelay = Duration(seconds: 2);
+const Duration _androidLocationRetryMaxDelay = Duration(seconds: 30);
+const double userLocationAccuracyCircleThresholdMeters = 20;
+
+enum UserLocationFreshness { current, stale }
+
+enum _AndroidLocationRefreshResult { updated, unavailable, permissionDenied }
+
+@visibleForTesting
+double userLocationMarkerOpacity(UserLocationFreshness freshness) =>
+    freshness == UserLocationFreshness.current ? 1 : 0.6;
+
+@visibleForTesting
+bool shouldShowUserLocationAccuracyCircle({
+  required double accuracy,
+  required UserLocationFreshness freshness,
+}) =>
+    freshness == UserLocationFreshness.current &&
+    accuracy.isFinite &&
+    accuracy > userLocationAccuracyCircleThresholdMeters;
+
+@visibleForTesting
+bool isUserPositionFresh(Position position, DateTime now) {
+  final age = now.difference(position.timestamp);
+  return !age.isNegative && age <= _userLocationFreshnessDuration;
+}
+
+@visibleForTesting
+bool isMapNorthUp(double azimuth, {double tolerance = 1.0}) {
+  if (!azimuth.isFinite) return false;
+  final normalized = ((azimuth % 360) + 360) % 360;
+  return math.min(normalized, 360 - normalized) <= tolerance;
+}
+
+@visibleForTesting
+Point interpolateMapPoint(Point from, Point to, double t) {
+  final clamped = t.clamp(0.0, 1.0);
+  final longitudeDelta = shortestLongitudeDelta(from.longitude, to.longitude);
+  return Point(
+    latitude: from.latitude + (to.latitude - from.latitude) * clamped,
+    longitude: normalizeLongitude(from.longitude + longitudeDelta * clamped),
+  );
+}
+
+@visibleForTesting
+double shortestLongitudeDelta(double from, double to) {
+  final normalizedFrom = normalizeLongitude(from);
+  final normalizedTo = normalizeLongitude(to);
+  var delta = normalizedTo - normalizedFrom;
+  if (delta > 180) delta -= 360;
+  if (delta < -180) delta += 360;
+  return delta;
+}
+
+@visibleForTesting
+double normalizeLongitude(double longitude) {
+  if (!longitude.isFinite) return longitude;
+  return ((longitude + 180) % 360 + 360) % 360 - 180;
+}
 
 @visibleForTesting
 double resolveZoomControlsBottom({
@@ -114,19 +181,39 @@ class MapScreen extends ConsumerStatefulWidget {
   ConsumerState<MapScreen> createState() => _MapScreenState();
 }
 
-class _MapScreenState extends ConsumerState<MapScreen> {
+class _MapScreenState extends ConsumerState<MapScreen>
+    with WidgetsBindingObserver, TickerProviderStateMixin {
   YandexMapController? _mapController;
   final WebMapController _webMapController = WebMapController();
   bool _webMapReady = false;
   Timer? _debounce;
   Timer? _timeDebounce;
+  final ValueNotifier<double> _compassAzimuth = ValueNotifier(0);
   Position? _userPosition;
+  Point? _displayedUserPoint;
+  AnimationController? _userLocationAnimation;
+  Point? _userLocationAnimationStart;
+  Point? _userLocationAnimationEnd;
+  UserLocationFreshness _userLocationFreshness = UserLocationFreshness.stale;
+  StreamSubscription<Position>? _userPositionSubscription;
+  StreamSubscription<double>? _headingSubscription;
+  Timer? _userLocationStaleTimer;
+  Timer? _locationRetryTimer;
+  bool _locationRefreshInFlight = false;
+  int? _locationRefreshInFlightGeneration;
+  int _locationTrackingGeneration = 0;
+  int _locationRetryAttempt = 0;
+  DateTime? _lastLiveLocationAt;
+  double? _deviceHeading;
+  bool _androidLocationTrackingStarted = false;
   Point? _lastCameraTarget;
   double _currentZoom = 14;
   double _currentAzimuth = 0;
   double _currentTilt = 0;
-  bool _isUserCentered = false;
-  bool _zoomUpdateInFlight = false;
+  bool _showCompass = false;
+  MyLocationCameraMode _myLocationCameraMode = MyLocationCameraMode.free;
+  double? _queuedZoomTarget;
+  int _zoomMoveGeneration = 0;
   ({double west, double south, double east, double north})?
   _nativeVisibleBounds;
   List<Zone>? _cachedViewportZonesSource;
@@ -138,6 +225,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   UserLocationMarkerBitmaps? _userLocationMarkerBitmaps;
   double? _userLocationMarkerDpr;
   bool _markerBitmapsLoading = false;
+  Future<void>? _markerBitmapsFuture;
 
   bool _parkingDetailsLoading = false;
   Zone? _standaloneSelectedZone;
@@ -146,6 +234,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   double _searchPanelHeight = 360;
   double _detailsPanelHeight = 300;
   double _routePreviewPanelHeight = 260;
+  double _destinationPanelHeight = 168;
   Brightness? _markerBrightness;
 
   Map<int, Uint8List> _zoneLabelCache = {};
@@ -167,6 +256,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   List<Zone>? _cachedMapZones;
   Set<int> _cachedCandidateIds = const {};
+  Set<int> _cachedTappableZoneIds = const {};
   int? _cachedSelectedZoneId;
   Brightness? _cachedZoneObjectBrightness;
   List<MapObject> _cachedZoneObjects = const [];
@@ -183,6 +273,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (widget.initialDestination != null) {
@@ -205,24 +296,30 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final dpr = MediaQuery.devicePixelRatioOf(context);
     if (!_markerBitmapsLoading && _userLocationMarkerDpr != dpr) {
       _userLocationMarkerDpr = dpr;
-      unawaited(_loadMarkerBitmaps(dpr));
+      _markerBitmapsFuture = _loadMarkerBitmaps(dpr);
+      unawaited(_markerBitmapsFuture);
     }
   }
 
   Future<void> _loadMarkerBitmaps(double devicePixelRatio) async {
     _markerBitmapsLoading = true;
-    final bitmaps = await Future.wait<Object>([
-      buildDestinationPinBitmap(),
-      _buildNavArrowBitmap(),
-      buildUserLocationMarkerBitmaps(devicePixelRatio: devicePixelRatio),
-    ]);
-    if (!mounted) return;
-    setState(() {
-      _destinationPinBytes = bitmaps[0] as Uint8List;
-      _navArrowBytes = bitmaps[1] as Uint8List;
-      _userLocationMarkerBitmaps = bitmaps[2] as UserLocationMarkerBitmaps;
-    });
-    _markerBitmapsLoading = false;
+    try {
+      final bitmaps = await Future.wait<Object>([
+        buildDestinationPinBitmap(),
+        _buildNavArrowBitmap(),
+        buildUserLocationMarkerBitmaps(devicePixelRatio: devicePixelRatio),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _destinationPinBytes = bitmaps[0] as Uint8List;
+        _navArrowBytes = bitmaps[1] as Uint8List;
+        _userLocationMarkerBitmaps = bitmaps[2] as UserLocationMarkerBitmaps;
+      });
+    } catch (error, stackTrace) {
+      debugPrint('Failed to prepare map marker bitmaps: $error\n$stackTrace');
+    } finally {
+      _markerBitmapsLoading = false;
+    }
   }
 
   Future<void> _loadAndShowParking(int id) async {
@@ -230,18 +327,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       final repo = ref.read(zonesRepositoryProvider);
       final zone = await repo.getZoneDetails(id);
       if (!mounted) return;
-      _onZoneTap(zone);
-      final center = centroid(zone.geometry);
-      if (kIsWeb) {
-        _webMapController.move(center.latitude, center.longitude, 17);
-      } else {
-        _mapController?.moveCamera(
-          CameraUpdate.newCameraPosition(
-            CameraPosition(target: center, zoom: 17),
-          ),
-          animation: const MapAnimation(duration: 0.8),
-        );
-      }
+      await _openParkingDetails(zone);
     } catch (e) {
       debugPrint('Failed to load deep-link zone $id: $e');
     }
@@ -253,8 +339,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _debounce?.cancel();
     _timeDebounce?.cancel();
+    _userLocationStaleTimer?.cancel();
+    _locationRetryTimer?.cancel();
+    _locationTrackingGeneration++;
+    _userPositionSubscription?.cancel();
+    _headingSubscription?.cancel();
+    _userLocationAnimation?.dispose();
+    _compassAzimuth.dispose();
     _drivingSession?.close();
     super.dispose();
   }
@@ -324,9 +418,331 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
   }
 
+  bool get _usesManagedAndroidLocation =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _usesManagedAndroidLocation) {
+      unawaited(_startAndroidLocationTracking(restart: true));
+      unawaited(_startAndroidHeadingTracking(restart: true));
+    }
+  }
+
+  Future<void> _startAndroidLocationTracking({bool restart = false}) async {
+    if (!_usesManagedAndroidLocation ||
+        (_androidLocationTrackingStarted && !restart)) {
+      return;
+    }
+    _androidLocationTrackingStarted = true;
+    final generation = ++_locationTrackingGeneration;
+    await _userPositionSubscription?.cancel();
+    _userPositionSubscription = null;
+    _locationRetryTimer?.cancel();
+    _locationRetryTimer = null;
+    _locationRetryAttempt = 0;
+
+    final service = ref.read(preferredLocationServiceProvider);
+    try {
+      final cached = await service.getLastKnownPosition();
+      if (!mounted || generation != _locationTrackingGeneration) return;
+      if (cached != null && _shouldApplyCachedUserPosition(cached)) {
+        _applyUserPosition(cached, freshness: UserLocationFreshness.stale);
+      }
+    } catch (_) {
+      // Cached lookup is best-effort; the displayed marker must stay as-is.
+    }
+
+    final refreshResult = await _refreshAndroidLocation(generation);
+    if (!mounted || generation != _locationTrackingGeneration) return;
+    if (refreshResult == _AndroidLocationRefreshResult.permissionDenied) {
+      _androidLocationTrackingStarted = false;
+      return;
+    }
+
+    _subscribeAndroidLocationStream(service, generation);
+  }
+
+  bool _shouldApplyCachedUserPosition(Position position) {
+    final current = _userPosition;
+    if (current == null) return true;
+    if (_userLocationFreshness == UserLocationFreshness.current) return false;
+    return position.timestamp.isAfter(current.timestamp);
+  }
+
+  Future<_AndroidLocationRefreshResult> _refreshAndroidLocation(
+    int generation, {
+    bool showDeniedDialog = false,
+    bool showError = false,
+  }) async {
+    if (!_usesManagedAndroidLocation ||
+        !mounted ||
+        generation != _locationTrackingGeneration) {
+      return _AndroidLocationRefreshResult.unavailable;
+    }
+    if (_locationRefreshInFlight) {
+      return _AndroidLocationRefreshResult.unavailable;
+    }
+    _locationRefreshInFlight = true;
+    _locationRefreshInFlightGeneration = generation;
+    try {
+      final position = await ref
+          .read(preferredLocationServiceProvider)
+          .getCurrentPosition();
+      if (!mounted || generation != _locationTrackingGeneration) {
+        return _AndroidLocationRefreshResult.unavailable;
+      }
+      _locationRetryAttempt = 0;
+      _applyUserPosition(
+        position,
+        freshness: isUserPositionFresh(position, DateTime.now())
+            ? UserLocationFreshness.current
+            : UserLocationFreshness.stale,
+      );
+      return _AndroidLocationRefreshResult.updated;
+    } on PermissionDeniedException {
+      if (mounted && generation == _locationTrackingGeneration) {
+        _markUserPositionStale();
+        _pauseAndroidLocationTrackingForPermissionDenied(generation);
+        if (showDeniedDialog) _showLocationDeniedDialog();
+      }
+      return _AndroidLocationRefreshResult.permissionDenied;
+    } catch (error, stackTrace) {
+      if (mounted && generation == _locationTrackingGeneration) {
+        _markUserPositionStale();
+        if (showError) {
+          showErrorSnackBar(
+            context,
+            ref.read(l10nProvider).unknownError,
+            error: error,
+            stackTrace: stackTrace,
+            s: ref.read(l10nProvider),
+            onRetry: _goToMyLocation,
+          );
+        }
+      }
+      return _AndroidLocationRefreshResult.unavailable;
+    } finally {
+      if (_locationRefreshInFlightGeneration == generation) {
+        _locationRefreshInFlight = false;
+        _locationRefreshInFlightGeneration = null;
+      }
+    }
+  }
+
+  void _subscribeAndroidLocationStream(
+    PreferredLocationService service,
+    int generation,
+  ) {
+    if (!mounted || generation != _locationTrackingGeneration) return;
+    _userPositionSubscription = service.watchCurrentPosition().listen(
+      (position) {
+        if (!mounted || generation != _locationTrackingGeneration) return;
+        _locationRetryAttempt = 0;
+        _applyUserPosition(position, freshness: UserLocationFreshness.current);
+      },
+      onError: (Object error) {
+        if (!mounted || generation != _locationTrackingGeneration) return;
+        _markUserPositionStale();
+        unawaited(_userPositionSubscription?.cancel());
+        _userPositionSubscription = null;
+        if (error is PermissionDeniedException) {
+          _pauseAndroidLocationTrackingForPermissionDenied(generation);
+          return;
+        }
+        _scheduleAndroidLocationRetry(generation);
+      },
+      onDone: () {
+        if (!mounted || generation != _locationTrackingGeneration) return;
+        _markUserPositionStale();
+        _userPositionSubscription = null;
+        _scheduleAndroidLocationRetry(generation);
+      },
+      cancelOnError: true,
+    );
+  }
+
+  void _scheduleAndroidLocationRetry(int generation) {
+    if (!mounted ||
+        generation != _locationTrackingGeneration ||
+        (_locationRetryTimer?.isActive ?? false)) {
+      return;
+    }
+    final delay = _nextAndroidLocationRetryDelay();
+    _locationRetryTimer = Timer(delay, () {
+      if (!mounted || generation != _locationTrackingGeneration) return;
+      unawaited(_startAndroidLocationTracking(restart: true));
+    });
+  }
+
+  Duration _nextAndroidLocationRetryDelay() {
+    final multiplier = 1 << math.min(_locationRetryAttempt, 4);
+    final seconds = math.min(
+      _androidLocationRetryMaxDelay.inSeconds,
+      _androidLocationRetryInitialDelay.inSeconds * multiplier,
+    );
+    _locationRetryAttempt++;
+    return Duration(seconds: seconds);
+  }
+
+  void _pauseAndroidLocationTrackingForPermissionDenied(int generation) {
+    if (generation != _locationTrackingGeneration) return;
+    _androidLocationTrackingStarted = false;
+    _locationRetryTimer?.cancel();
+    _locationRetryTimer = null;
+    unawaited(_userPositionSubscription?.cancel());
+    _userPositionSubscription = null;
+  }
+
+  Future<void> _startAndroidHeadingTracking({bool restart = false}) async {
+    if (!_usesManagedAndroidLocation ||
+        (_headingSubscription != null && !restart)) {
+      return;
+    }
+    await _headingSubscription?.cancel();
+    _headingSubscription = ref.read(headingSourceProvider).headings.listen((
+      heading,
+    ) {
+      if (!mounted) return;
+      final nextHeading =
+          _myLocationCameraMode == MyLocationCameraMode.following
+          ? heading
+          : smoothCircularHeading(heading, _deviceHeading);
+      setState(() => _deviceHeading = nextHeading);
+      unawaited(_syncFollowingCamera(durationSeconds: 0));
+    }, onError: (_) {});
+  }
+
+  void _applyUserPosition(
+    Position position, {
+    required UserLocationFreshness freshness,
+  }) {
+    if (!mounted) return;
+    if (!_shouldApplyUserPosition(position, freshness: freshness)) return;
+    _userLocationStaleTimer?.cancel();
+    final point = Point(
+      latitude: position.latitude,
+      longitude: position.longitude,
+    );
+    setState(() {
+      _userPosition = position;
+      _userLocationFreshness = freshness;
+    });
+    if (_usesManagedAndroidLocation) {
+      _animateDisplayedUserPoint(point);
+    } else if (_displayedUserPoint != point) {
+      setState(() => _displayedUserPoint = point);
+      unawaited(_syncFollowingCamera(target: point, durationSeconds: 0));
+    }
+    if (freshness == UserLocationFreshness.current) {
+      _lastLiveLocationAt = DateTime.now();
+      if (_usesManagedAndroidLocation) {
+        if (kDebugMode) {
+          debugPrint(
+            '[ParkTrackLocation] marker freshness=current '
+            'reason=live_android_fix opacity=${userLocationMarkerOpacity(freshness)}',
+          );
+        }
+      } else {
+        _userLocationStaleTimer = Timer(
+          _userLocationFreshnessDuration,
+          _markUserPositionStale,
+        );
+      }
+    }
+  }
+
+  void _animateDisplayedUserPoint(Point target) {
+    final start = _displayedUserPoint;
+    if (start == null) {
+      setState(() => _displayedUserPoint = target);
+      unawaited(_syncFollowingCamera(target: target, durationSeconds: 0.3));
+      return;
+    }
+    if ((start.latitude - target.latitude).abs() < 0.000001 &&
+        (start.longitude - target.longitude).abs() < 0.000001) {
+      return;
+    }
+    _userLocationAnimation?.dispose();
+    _userLocationAnimationStart = start;
+    _userLocationAnimationEnd = target;
+    _userLocationAnimation =
+        AnimationController(vsync: this, duration: _userLocationMoveDuration)
+          ..addListener(_tickDisplayedUserPoint)
+          ..addStatusListener((status) {
+            if (status == AnimationStatus.completed ||
+                status == AnimationStatus.dismissed) {
+              _userLocationAnimation?.dispose();
+              _userLocationAnimation = null;
+              _userLocationAnimationStart = null;
+              _userLocationAnimationEnd = null;
+            }
+          })
+          ..forward();
+  }
+
+  void _tickDisplayedUserPoint() {
+    final animation = _userLocationAnimation;
+    final start = _userLocationAnimationStart;
+    final end = _userLocationAnimationEnd;
+    if (animation == null || start == null || end == null || !mounted) return;
+    final eased = Curves.easeInOutCubic.transform(animation.value);
+    final point = interpolateMapPoint(start, end, eased);
+    setState(() => _displayedUserPoint = point);
+    unawaited(_syncFollowingCamera(target: point, durationSeconds: 0));
+  }
+
+  bool _shouldApplyUserPosition(
+    Position position, {
+    required UserLocationFreshness freshness,
+  }) {
+    final current = _userPosition;
+    if (current == null) return true;
+    if (freshness == UserLocationFreshness.current) return true;
+    return position.timestamp.isAfter(current.timestamp);
+  }
+
+  void _markUserPositionStale() {
+    if (!mounted ||
+        _userPosition == null ||
+        _userLocationFreshness == UserLocationFreshness.stale) {
+      return;
+    }
+    final lastLiveLocationAt = _lastLiveLocationAt;
+    if (lastLiveLocationAt != null) {
+      final liveAge = DateTime.now().difference(lastLiveLocationAt);
+      if (!liveAge.isNegative && liveAge < _userLocationFreshnessDuration) {
+        _userLocationStaleTimer?.cancel();
+        _userLocationStaleTimer = Timer(
+          _userLocationFreshnessDuration - liveAge,
+          _markUserPositionStale,
+        );
+        return;
+      }
+    }
+    if (kDebugMode) {
+      debugPrint(
+        '[ParkTrackLocation] marker freshness=stale '
+        'reason=timer_or_provider_error opacity=${userLocationMarkerOpacity(UserLocationFreshness.stale)}',
+      );
+    }
+    setState(() => _userLocationFreshness = UserLocationFreshness.stale);
+  }
+
   Future<void> _syncNativeUserLayer({required bool visible}) async {
     if (kIsWeb) return;
     final controller = _mapController;
+    if (_usesManagedAndroidLocation) {
+      if (controller != null) {
+        await controller.toggleUserLayer(
+          visible: false,
+          headingEnabled: false,
+          autoZoomEnabled: false,
+        );
+      }
+      _nativeUserLayerVisible = false;
+      return;
+    }
     if (controller == null || _nativeUserLayerVisible == visible) return;
     _nativeUserLayerVisible = visible;
     await controller.toggleUserLayer(
@@ -337,7 +753,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   Future<UserLocationView> _onUserLocationAdded(UserLocationView view) async {
-    if (defaultTargetPlatform != TargetPlatform.android) return view;
     final marker = _userLocationMarkerBitmaps;
     if (marker == null) return view;
     return view.copyWith(
@@ -363,12 +778,75 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         ),
       ),
       accuracyCircle: view.accuracyCircle.copyWith(
-        isVisible: false,
-        fillColor: Colors.transparent,
-        strokeColor: Colors.transparent,
-        strokeWidth: 0,
+        isVisible: true,
+        fillColor: userLocationAccuracyFillColor,
+        strokeColor: userLocationAccuracyStrokeColor,
+        strokeWidth: userLocationAccuracyStrokeWidth,
       ),
     );
+  }
+
+  double? _validUserHeading(Position? position) {
+    if (position == null) return null;
+    final heading = position.heading;
+    if (!heading.isFinite || heading < 0) return null;
+    return heading;
+  }
+
+  double? _currentUserHeading() =>
+      _deviceHeading ?? _validUserHeading(_userPosition);
+
+  Future<void> _syncFollowingCamera({
+    Point? target,
+    double durationSeconds = 0.25,
+    double? zoom,
+  }) async {
+    if (_myLocationCameraMode != MyLocationCameraMode.following) return;
+    final point =
+        target ??
+        _displayedUserPoint ??
+        (_userPosition == null
+            ? null
+            : Point(
+                latitude: _userPosition!.latitude,
+                longitude: _userPosition!.longitude,
+              ));
+    if (point == null) return;
+    final heading = _currentUserHeading();
+    final azimuth = heading != null && heading.isFinite
+        ? heading
+        : _currentAzimuth;
+    final targetZoom = zoom ?? _currentZoom;
+    if (kIsWeb) {
+      final margins = _getCurrentMapMargins();
+      _webMapController.follow(
+        point.latitude,
+        point.longitude,
+        targetZoom,
+        azimuth,
+        top: margins.top,
+        right: margins.right,
+        bottom: margins.bottom,
+        left: margins.left,
+      );
+      return;
+    }
+    await _mapController?.moveCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(
+          target: point,
+          zoom: targetZoom,
+          azimuth: azimuth,
+          tilt: _currentTilt,
+        ),
+      ),
+      animation: MapAnimation(duration: durationSeconds),
+    );
+  }
+
+  void _resetMyLocationCameraMode() {
+    if (_myLocationCameraMode == MyLocationCameraMode.free || !mounted) return;
+    setState(() => _myLocationCameraMode = MyLocationCameraMode.free);
   }
 
   Future<Uint8List> _buildNavArrowBitmap() async {
@@ -421,19 +899,38 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   ) {
     final previousZoomBucket = parkingClusterZoomBucket(_currentZoom);
     final nextZoomBucket = parkingClusterZoomBucket(position.zoom);
+    final previousAzimuth = _currentAzimuth;
     _lastCameraTarget = position.target;
     _currentZoom = position.zoom;
     _currentTilt = position.tilt;
-    final centered = _isCameraCenteredOnUser(position.target);
+    _currentAzimuth = position.azimuth;
+    _compassAzimuth.value = position.azimuth;
+    final nextLocationMode = locationCameraModeAfterMapCameraUpdate(
+      mode: _myLocationCameraMode,
+      userGesture: reason == CameraUpdateReason.gestures,
+    );
+    final showCompass =
+        !isMapNorthUp(position.azimuth) ||
+        (!cameraUpdateFinished && _showCompass);
+    final followingAzimuthChanged =
+        nextLocationMode == MyLocationCameraMode.following &&
+        (position.azimuth - previousAzimuth).abs() > 0.01;
     if (previousZoomBucket != nextZoomBucket ||
-        (position.azimuth - _currentAzimuth).abs() > 0.5 ||
-        centered != _isUserCentered) {
+        showCompass != _showCompass ||
+        nextLocationMode != _myLocationCameraMode ||
+        followingAzimuthChanged) {
       setState(() {
-        _currentAzimuth = position.azimuth;
-        _isUserCentered = centered;
+        _showCompass = showCompass;
+        _myLocationCameraMode = nextLocationMode;
       });
     }
-    if (!cameraUpdateFinished) return;
+    if (!cameraUpdateFinished) {
+      if (previousZoomBucket != nextZoomBucket) {
+        _debounce?.cancel();
+        _debounce = Timer(const Duration(milliseconds: 80), _fetchZones);
+      }
+      return;
+    }
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 400), _fetchZones);
   }
@@ -537,20 +1034,30 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   Future<void> _focusZone(Zone zone) async {
     if (zone.geometry.isEmpty) return;
+    _resetMyLocationCameraMode();
     final target = centroid(zone.geometry);
-    final isolationZoom = parkingIsolationZoom(
-      target,
-      _zonesById.values
-          .where((other) => other.zoneId != zone.zoneId)
-          .where((other) => other.geometry.isNotEmpty)
-          .map((other) => centroid(other.geometry)),
-      currentZoom: _currentZoom,
-    );
+    final knownZones = _mergeResultZones(ref.read(filteredZonesProvider));
+    final otherCenters = knownZones
+        .where((item) => item.zoneId != zone.zoneId && item.geometry.isNotEmpty)
+        .map((item) => centroid(item.geometry));
+    final targetZoom = math
+        .max(
+          _currentZoom,
+          parkingIsolationZoom(
+            target,
+            otherCenters,
+            currentZoom: _currentZoom,
+            minimumZoom: _myLocationZoom,
+          ),
+        )
+        .clamp(_minMapZoom, _maxMapZoom)
+        .toDouble();
+    _queuedZoomTarget = targetZoom;
     if (kIsWeb) {
       _webMapController.focus(
         target.latitude,
         target.longitude,
-        isolationZoom,
+        targetZoom,
         top: 88,
         right: 24,
         bottom: _detailsPanelHeight + 20,
@@ -560,10 +1067,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
     await _mapController?.moveCamera(
       CameraUpdate.newCameraPosition(
-        CameraPosition(target: target, zoom: isolationZoom),
+        CameraPosition(
+          target: target,
+          zoom: targetZoom,
+          azimuth: _currentAzimuth,
+          tilt: _currentTilt,
+        ),
       ),
       animation: const MapAnimation(duration: 0.65),
     );
+    _queuedZoomTarget = null;
   }
 
   Future<void> _onCandidateAction(
@@ -613,9 +1126,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
   }
 
-  Future<void> _shareLink(Uri uri, String title) async {
+  Future<void> _shareLink(Uri uri, String title, {String? text}) async {
     try {
-      await shareParkTrackLink(context, uri: uri, title: title);
+      await shareParkTrackLink(context, uri: uri, title: title, text: text);
     } catch (error, stackTrace) {
       if (!mounted) return;
       showErrorSnackBar(
@@ -626,6 +1139,43 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         s: ref.read(l10nProvider),
       );
     }
+  }
+
+  String _parkingShareText(Zone zone, String? address) {
+    final title = '${ref.read(l10nProvider).parkingNumber}${zone.zoneId}';
+    final cleanAddress = address?.trim();
+    if (cleanAddress == null || cleanAddress.isEmpty) return title;
+    return '$title\n$cleanAddress';
+  }
+
+  Future<void> _shareRouteLink(ActiveRoute route, Point? target) async {
+    String? address;
+    if (target != null) {
+      try {
+        address = await ref.read(
+          parkingAddressProvider((
+            latitude: target.latitude,
+            longitude: target.longitude,
+          )).future,
+        );
+      } catch (_) {
+        address = null;
+      }
+    }
+    if (!mounted) return;
+    final s = ref.read(l10nProvider);
+    final cleanAddress = address?.trim();
+    final ruText = cleanAddress == null || cleanAddress.isEmpty
+        ? 'Маршрут до парковки №${route.selectedZoneId}'
+        : 'Маршрут до парковки №${route.selectedZoneId} ($cleanAddress)';
+    final enText = cleanAddress == null || cleanAddress.isEmpty
+        ? 'Route to parking #${route.selectedZoneId}'
+        : 'Route to parking #${route.selectedZoneId} ($cleanAddress)';
+    await _shareLink(
+      routeShareUri(route.routeId),
+      s.routeReady,
+      text: identical(s, AppStrings.ru) ? ruText : enText,
+    );
   }
 
   Future<void> _onClusterTap(ParkingCluster cluster) async {
@@ -716,20 +1266,24 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   List<MapObject> _zoneObjectsFor(
     List<Zone> zones,
+    Set<int> tappableZoneIds,
     Set<int> candidateIds,
     int? selectedZoneId,
     Brightness brightness,
   ) {
     if (!identical(_cachedMapZones, zones) ||
+        !setEquals(_cachedTappableZoneIds, tappableZoneIds) ||
         !setEquals(_cachedCandidateIds, candidateIds) ||
         _cachedSelectedZoneId != selectedZoneId ||
         _cachedZoneObjectBrightness != brightness) {
       _cachedMapZones = zones;
+      _cachedTappableZoneIds = Set.unmodifiable(tappableZoneIds);
       _cachedCandidateIds = Set.unmodifiable(candidateIds);
       _cachedSelectedZoneId = selectedZoneId;
       _cachedZoneObjectBrightness = brightness;
       _cachedZoneObjects = buildZoneMapObjects(
         zones: zones,
+        tappableIds: tappableZoneIds,
         resultIds: candidateIds,
         selectedId: selectedZoneId,
         brightness: brightness,
@@ -818,20 +1372,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
     _cachedViewportZonesSource = zones;
     _cachedViewportBounds = bounds;
-    _cachedViewportZones = zones
-        .where((zone) {
-          if (zone.geometry.isEmpty) return false;
-          final center = centroid(zone.geometry);
-          final insideLongitude = bounds.west <= bounds.east
-              ? center.longitude >= bounds.west &&
-                    center.longitude <= bounds.east
-              : center.longitude >= bounds.west ||
-                    center.longitude <= bounds.east;
-          return center.latitude >= bounds.south &&
-              center.latitude <= bounds.north &&
-              insideLongitude;
-        })
-        .toList(growable: false);
+    _cachedViewportZones = zones;
     return _cachedViewportZones;
   }
 
@@ -855,68 +1396,59 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   void _onWebCameraChanged(WebMapCamera camera) {
     final previousZoomBucket = parkingClusterZoomBucket(_currentZoom);
     final nextZoomBucket = parkingClusterZoomBucket(camera.zoom);
+    final previousAzimuth = _currentAzimuth;
     _lastCameraTarget = Point(
       latitude: camera.latitude,
       longitude: camera.longitude,
     );
     _currentZoom = camera.zoom;
-    final centered = _isCameraCenteredOnUser(
-      Point(latitude: camera.latitude, longitude: camera.longitude),
+    _currentAzimuth = camera.azimuth;
+    _compassAzimuth.value = camera.azimuth;
+    final nextLocationMode = locationCameraModeAfterMapCameraUpdate(
+      mode: _myLocationCameraMode,
+      userGesture: camera.userGesture,
     );
+    final showCompass =
+        !isMapNorthUp(camera.azimuth) ||
+        (!camera.cameraUpdateFinished && _showCompass);
+    final followingAzimuthChanged =
+        nextLocationMode == MyLocationCameraMode.following &&
+        (camera.azimuth - previousAzimuth).abs() > 0.01;
     if (previousZoomBucket != nextZoomBucket ||
-        (camera.azimuth - _currentAzimuth).abs() > 0.5 ||
-        centered != _isUserCentered) {
+        showCompass != _showCompass ||
+        nextLocationMode != _myLocationCameraMode ||
+        followingAzimuthChanged) {
       setState(() {
-        _currentAzimuth = camera.azimuth;
-        _isUserCentered = centered;
+        _showCompass = showCompass;
+        _myLocationCameraMode = nextLocationMode;
       });
     }
     _debounce?.cancel();
     _debounce = Timer(
-      const Duration(milliseconds: 400),
+      previousZoomBucket != nextZoomBucket
+          ? const Duration(milliseconds: 80)
+          : const Duration(milliseconds: 400),
       () => _fetchWebZones(camera),
     );
   }
 
-  bool _isCameraCenteredOnUser(Point target) {
-    final user = _userPosition;
-    if (user == null) return false;
-    return (target.latitude - user.latitude).abs() < 0.00002 &&
-        (target.longitude - user.longitude).abs() < 0.00002;
-  }
-
   Future<Position?> _getCurrentPosition({bool showDeniedDialog = true}) async {
     try {
-      if (!await Geolocator.isLocationServiceEnabled()) {
-        throw const LocationServiceDisabledException();
-      }
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.deniedForever ||
-          permission == LocationPermission.denied) {
-        if (showDeniedDialog) _showLocationDeniedDialog();
-        return null;
-      }
-      try {
-        final cached = await Geolocator.getLastKnownPosition();
-        if (cached != null) {
-          _userPosition = cached;
-          return cached;
-        }
-      } catch (_) {
-        // Browsers may not implement last-known position; request a fresh fix.
-      }
-      final pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          timeLimit: Duration(seconds: 5),
-        ),
+      final pos = await ref
+          .read(preferredLocationServiceProvider)
+          .getCurrentPosition();
+      _applyUserPosition(
+        pos,
+        freshness: isUserPositionFresh(pos, DateTime.now())
+            ? UserLocationFreshness.current
+            : UserLocationFreshness.stale,
       );
-      _userPosition = pos;
       return pos;
     } catch (error, stackTrace) {
-      if (showDeniedDialog && error is! PermissionDeniedException && mounted) {
+      _markUserPositionStale();
+      if (error is PermissionDeniedException) {
+        if (showDeniedDialog) _showLocationDeniedDialog();
+      } else if (showDeniedDialog && mounted) {
         showErrorSnackBar(
           context,
           ref.read(l10nProvider).unknownError,
@@ -995,18 +1527,57 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   Future<void> _goToMyLocation() async {
-    final pos = await _getCurrentPosition();
+    Position? pos;
+    if (_usesManagedAndroidLocation) {
+      pos = _userPosition;
+      if (pos != null) {
+        final generation = _locationTrackingGeneration;
+        if (generation == 0 || !_androidLocationTrackingStarted) {
+          unawaited(_startAndroidLocationTracking(restart: true));
+        }
+      } else {
+        if (!_androidLocationTrackingStarted) {
+          await _startAndroidLocationTracking(restart: true);
+          pos = _userPosition;
+        }
+        pos ??= await _getCurrentPosition();
+      }
+    } else {
+      pos = await _getCurrentPosition();
+    }
     if (pos == null) return;
-    if (mounted) setState(() => _isUserCentered = true);
 
     final margins = _getCurrentMapMargins();
+    final target =
+        _displayedUserPoint ??
+        Point(latitude: pos.latitude, longitude: pos.longitude);
+    final action = nextMyLocationButtonAction(
+      mode: _myLocationCameraMode,
+      currentZoom: _currentZoom,
+      targetZoom: _myLocationZoom,
+    );
+    final nextMode = switch (action) {
+      MyLocationButtonAction.centerWithoutZoom => MyLocationCameraMode.centered,
+      MyLocationButtonAction.enableFollowing => MyLocationCameraMode.following,
+      MyLocationButtonAction.disableFollowing => MyLocationCameraMode.centered,
+      MyLocationButtonAction.disableFollowingAndZoom =>
+        MyLocationCameraMode.centered,
+    };
+    if (mounted) setState(() => _myLocationCameraMode = nextMode);
+
+    if (action == MyLocationButtonAction.enableFollowing) {
+      if (kIsWeb) _webMapController.requestHeading();
+      await _syncFollowingCamera(target: target, durationSeconds: 0);
+      return;
+    }
 
     if (kIsWeb) {
-      _webMapController.requestHeading();
       _webMapController.focus(
-        pos.latitude,
-        pos.longitude,
-        _myLocationZoom,
+        target.latitude,
+        target.longitude,
+        action == MyLocationButtonAction.disableFollowingAndZoom
+            ? _myLocationZoom
+            : _currentZoom,
         top: margins.top,
         right: margins.right,
         bottom: margins.bottom,
@@ -1020,8 +1591,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     await _mapController?.moveCamera(
       CameraUpdate.newCameraPosition(
         CameraPosition(
-          target: Point(latitude: pos.latitude, longitude: pos.longitude),
-          zoom: _myLocationZoom,
+          target: target,
+          zoom: action == MyLocationButtonAction.disableFollowingAndZoom
+              ? _myLocationZoom
+              : _currentZoom,
           azimuth: _currentAzimuth,
           tilt: _currentTilt,
         ),
@@ -1049,16 +1622,26 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     double delta, {
     required double durationSeconds,
   }) async {
-    if (!kIsWeb && _zoomUpdateInFlight) return;
-    final targetZoom = (_currentZoom + delta).clamp(_minMapZoom, _maxMapZoom);
-    if ((targetZoom - _currentZoom).abs() < 0.001) return;
+    final baseZoom = _queuedZoomTarget ?? _currentZoom;
+    final targetZoom = (baseZoom + delta).clamp(_minMapZoom, _maxMapZoom);
+    if ((targetZoom - baseZoom).abs() < 0.001) return;
+    _queuedZoomTarget = targetZoom;
     _currentZoom = targetZoom;
+    final generation = ++_zoomMoveGeneration;
+    if (_myLocationCameraMode == MyLocationCameraMode.following) {
+      await _syncFollowingCamera(
+        zoom: targetZoom,
+        durationSeconds: durationSeconds,
+      );
+      if (generation == _zoomMoveGeneration) _queuedZoomTarget = null;
+      return;
+    }
     if (kIsWeb) {
-      _webMapController.zoomBy(delta);
+      _webMapController.setZoom(targetZoom);
+      if (generation == _zoomMoveGeneration) _queuedZoomTarget = null;
       return;
     }
     if (_mapController == null) return;
-    _zoomUpdateInFlight = true;
     try {
       final target = _lastCameraTarget;
       if (target == null) return;
@@ -1074,7 +1657,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         animation: MapAnimation(duration: durationSeconds),
       );
     } finally {
-      _zoomUpdateInFlight = false;
+      if (generation == _zoomMoveGeneration) _queuedZoomTarget = null;
     }
   }
 
@@ -1255,6 +1838,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
     final bounds = calculateRouteBounds(points);
     if (bounds == null) return;
+    _resetMyLocationCameraMode();
     if (kIsWeb) {
       _webMapController.fitBounds(
         bounds.south,
@@ -1284,8 +1868,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   Future<void> _fitRoutePreview(List<Point>? polyline) async {
-    final bounds = calculateRouteBounds(polyline);
+    final routePoints = validRoutePoints(polyline);
+    final bounds = calculateRouteBounds(routePoints);
     if (bounds == null) return;
+    final azimuth = calculateRouteAzimuth(polyline) ?? 0;
+    _resetMyLocationCameraMode();
     if (kIsWeb) {
       _webMapController.fitBounds(
         bounds.south,
@@ -1296,16 +1883,22 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         right: 32,
         bottom: _routePreviewPanelHeight + 32,
         left: 32,
+        azimuth: azimuth,
       );
       return;
     }
     final mediaQuery = MediaQuery.of(context);
+    final mapViewport = Size(
+      math.max(1, mediaQuery.size.width - mediaQuery.padding.horizontal),
+      math.max(1, mediaQuery.size.height - mediaQuery.padding.vertical),
+    );
     await _mapController?.moveCamera(
-      CameraUpdate.newGeometry(
-        Geometry.fromBoundingBox(bounds.boundingBox),
+      CameraUpdate.newTiltAzimuthGeometry(
+        Geometry.fromPolyline(Polyline(points: routePoints)),
+        azimuth: azimuth,
         focusRect: routeFocusRect(
-          viewport: mediaQuery.size,
-          safePadding: mediaQuery.padding,
+          viewport: mapViewport,
+          safePadding: EdgeInsets.zero,
           bottomPanelHeight: _routePreviewPanelHeight,
           devicePixelRatio: mediaQuery.devicePixelRatio,
         ),
@@ -1536,6 +2129,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           .startNavigation(
             zoneId: zoneId,
             route: route,
+            initialPosition: origin,
             totalSeconds: totalSeconds,
             totalMeters: totalMeters,
             destLat: toLat,
@@ -1665,6 +2259,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       if (prev?.route != nav.route) {
         setState(() => _routePolyline = nav.route);
       }
+      _resetMyLocationCameraMode();
       if (kIsWeb) {
         _webMapController.move(
           nav.currentPosition.latitude,
@@ -1720,6 +2315,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
     ref.listen(destinationProvider, (_, dest) {
       if (dest == null) return;
+      _resetMyLocationCameraMode();
       if (shouldDismissParkingDetailsForDestination(
         destination: dest,
         hasStandaloneParkingDetails: _standaloneSelectedZone != null,
@@ -1838,6 +2434,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         : _clusteringFor(renderedZones);
     final zoneObjects = _zoneObjectsFor(
       renderedZones,
+      clustering.singletonIds,
       candidateIds,
       selectedMarkerZoneId,
       Theme.of(context).brightness,
@@ -1865,6 +2462,22 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       });
     }
 
+    final managedAndroidPosition = _usesManagedAndroidLocation && !isNavigating
+        ? _userPosition
+        : null;
+    final managedAndroidPoint = managedAndroidPosition == null
+        ? null
+        : _displayedUserPoint ??
+              Point(
+                latitude: managedAndroidPosition.latitude,
+                longitude: managedAndroidPosition.longitude,
+              );
+    final managedAndroidAccuracy = managedAndroidPosition?.accuracy;
+    final managedAndroidHeading =
+        _myLocationCameraMode == MyLocationCameraMode.following
+        ? _currentAzimuth
+        : _deviceHeading ?? _validUserHeading(managedAndroidPosition) ?? 0;
+
     final mapObjects = <MapObject>[
       ...zoneObjects,
       if (_routePolyline != null && _routePolyline!.length >= 2)
@@ -1882,6 +2495,41 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           brightness: Theme.of(context).brightness,
         ),
       ...zoneLabels,
+      if (managedAndroidPoint != null &&
+          managedAndroidAccuracy != null &&
+          shouldShowUserLocationAccuracyCircle(
+            accuracy: managedAndroidAccuracy,
+            freshness: _userLocationFreshness,
+          ))
+        CircleMapObject(
+          mapId: const MapObjectId('android_user_location_accuracy'),
+          circle: Circle(
+            center: managedAndroidPoint,
+            radius: managedAndroidAccuracy,
+          ),
+          zIndex: 40,
+          strokeColor: userLocationAccuracyStrokeColor,
+          strokeWidth: userLocationAccuracyStrokeWidth,
+          fillColor: userLocationAccuracyFillColor,
+        ),
+      if (managedAndroidPoint != null && _userLocationMarkerBitmaps != null)
+        PlacemarkMapObject(
+          mapId: const MapObjectId('android_user_location_marker'),
+          point: managedAndroidPoint,
+          zIndex: 50,
+          opacity: userLocationMarkerOpacity(_userLocationFreshness),
+          direction: managedAndroidHeading,
+          icon: PlacemarkIcon.single(
+            PlacemarkIconStyle(
+              image: BitmapDescriptor.fromBytes(
+                _userLocationMarkerBitmaps!.arrow,
+              ),
+              anchor: const Offset(0.5, 0.5),
+              scale: _userLocationMarkerBitmaps!.scale,
+              rotationType: RotationType.rotate,
+            ),
+          ),
+        ),
       if (isNavigating && _navArrowBytes != null)
         PlacemarkMapObject(
           mapId: const MapObjectId('nav_arrow'),
@@ -1983,7 +2631,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         : isNavigating
         ? 86.0 + MediaQuery.paddingOf(context).bottom
         : destinationCardVisible
-        ? 168.0
+        ? _destinationPanelHeight
         : 0.0;
     final mapControlsBottom =
         mapPanelHeight + (parkingFabVisible ? 82.0 : 0.0) + 12;
@@ -1996,7 +2644,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       viewportHeight: viewportHeight,
       mapControlsBottom: mapControlsBottom,
     );
-    final showCompass = _currentAzimuth.abs() > 1.0;
     final mapFocusMargins = EdgeInsets.only(
       top: 88,
       right: 24,
@@ -2025,7 +2672,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 activeRouteZoneId: _activeRouteZoneId,
                 userLatitude: isNavigating ? null : _userPosition?.latitude,
                 userLongitude: isNavigating ? null : _userPosition?.longitude,
-                userHeading: isNavigating ? null : _userPosition?.heading,
+                userHeading: isNavigating
+                    ? null
+                    : _validUserHeading(_userPosition),
+                userAccuracy: isNavigating ? null : _userPosition?.accuracy,
                 navigationLatitude: isNavigating
                     ? navState.currentPosition.latitude
                     : null,
@@ -2069,7 +2719,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     longitude: 34.359757,
                   );
                   _lastCameraTarget = fallback;
-                  await _syncNativeUserLayer(visible: true);
+                  await (_markerBitmapsFuture ??
+                      _loadMarkerBitmaps(
+                        MediaQuery.devicePixelRatioOf(context),
+                      ));
+                  if (_usesManagedAndroidLocation) {
+                    await _syncNativeUserLayer(visible: false);
+                    unawaited(_startAndroidHeadingTracking());
+                    unawaited(_startAndroidLocationTracking());
+                  } else {
+                    await _syncNativeUserLayer(visible: true);
+                  }
                   await controller.moveCamera(
                     CameraUpdate.newCameraPosition(
                       const CameraPosition(target: fallback, zoom: 14),
@@ -2083,27 +2743,29 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               ),
             if (searchResultsVisible)
               Positioned.fill(
-                child: CandidatesSheet(
-                  candidates: parkingSearchState.candidates,
-                  zones: zones,
-                  hasDestination: destination != null,
-                  originLatitude: _userPosition?.latitude,
-                  originLongitude: _userPosition?.longitude,
-                  panelState: resultsPanelState,
-                  lastViewedZoneId: parkingSearchState.lastViewedZoneId,
-                  initialScrollOffset: parkingSearchState.scrollOffset,
-                  onSelect: _openCandidateById,
-                  onAction: _onCandidateAction,
-                  onPanelHeightChanged: (height) {
-                    if ((_searchPanelHeight - height).abs() < 1 || !mounted) {
-                      return;
-                    }
-                    setState(() => _searchPanelHeight = height);
-                  },
-                  onScrollOffsetChanged: ref
-                      .read(parkingSearchProvider.notifier)
-                      .saveScrollOffset,
-                  onClose: ref.read(routingProvider.notifier).reset,
+                child: _BottomPanelTransition(
+                  child: CandidatesSheet(
+                    candidates: parkingSearchState.candidates,
+                    zones: zones,
+                    hasDestination: destination != null,
+                    originLatitude: _userPosition?.latitude,
+                    originLongitude: _userPosition?.longitude,
+                    panelState: resultsPanelState,
+                    lastViewedZoneId: parkingSearchState.lastViewedZoneId,
+                    initialScrollOffset: parkingSearchState.scrollOffset,
+                    onSelect: _openCandidateById,
+                    onAction: _onCandidateAction,
+                    onPanelHeightChanged: (height) {
+                      if ((_searchPanelHeight - height).abs() < 1 || !mounted) {
+                        return;
+                      }
+                      setState(() => _searchPanelHeight = height);
+                    },
+                    onScrollOffsetChanged: ref
+                        .read(parkingSearchProvider.notifier)
+                        .saveScrollOffset,
+                    onClose: ref.read(routingProvider.notifier).reset,
+                  ),
                 ),
               ),
             if (searchDetailsVisible && selectedDetailZone != null)
@@ -2124,49 +2786,55 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         if (mounted) unawaited(_focusZone(selectedDetailZone));
                       });
                     },
-                    child: PointerInterceptor(
-                      intercepting: kIsWeb,
-                      child: ParkingCardSheet(
-                        zone: selectedDetailZone,
-                        candidate: selectedCandidate,
-                        resultIndex: selectedCandidateIndex,
-                        resultCount: parkingSearchState.candidates.length,
-                        onBack: () {
-                          ref
-                              .read(parkingSearchProvider.notifier)
-                              .backToResults();
-                        },
-                        onPrevious: selectedCandidateIndex > 0
-                            ? () => _openAdjacentCandidate(-1)
-                            : null,
-                        onNext:
-                            selectedCandidateIndex >= 0 &&
-                                selectedCandidateIndex <
-                                    parkingSearchState.candidates.length - 1
-                            ? () => _openAdjacentCandidate(1)
-                            : null,
-                        onBuildRoute: () => _buildRouteFromSearchCard(
-                          selectedDetailZone,
-                          selectedCandidate,
+                    child: _BottomPanelTransition(
+                      child: PointerInterceptor(
+                        intercepting: kIsWeb,
+                        child: ParkingCardSheet(
+                          zone: selectedDetailZone,
+                          candidate: selectedCandidate,
+                          resultIndex: selectedCandidateIndex,
+                          resultCount: parkingSearchState.candidates.length,
+                          onBack: () {
+                            ref
+                                .read(parkingSearchProvider.notifier)
+                                .backToResults();
+                          },
+                          onPrevious: selectedCandidateIndex > 0
+                              ? () => _openAdjacentCandidate(-1)
+                              : null,
+                          onNext:
+                              selectedCandidateIndex >= 0 &&
+                                  selectedCandidateIndex <
+                                      parkingSearchState.candidates.length - 1
+                              ? () => _openAdjacentCandidate(1)
+                              : null,
+                          onBuildRoute: () => _buildRouteFromSearchCard(
+                            selectedDetailZone,
+                            selectedCandidate,
+                          ),
+                          onShare: (address) => _shareLink(
+                            parkingShareUri(selectedDetailZone.zoneId),
+                            '${s.parkingNumber}${selectedDetailZone.zoneId}',
+                            text: _parkingShareText(
+                              selectedDetailZone,
+                              address,
+                            ),
+                          ),
+                          onOpenExternal: selectedDetailZone.geometry.isEmpty
+                              ? null
+                              : () {
+                                  final point = centroid(
+                                    selectedDetailZone.geometry,
+                                  );
+                                  _openExternalMap(
+                                    point.latitude,
+                                    point.longitude,
+                                  );
+                                },
+                          originLatitude: _userPosition?.latitude,
+                          originLongitude: _userPosition?.longitude,
+                          onClose: ref.read(routingProvider.notifier).reset,
                         ),
-                        onShare: () => _shareLink(
-                          parkingShareUri(selectedDetailZone.zoneId),
-                          '${s.parkingNumber}${selectedDetailZone.zoneId}',
-                        ),
-                        onOpenExternal: selectedDetailZone.geometry.isEmpty
-                            ? null
-                            : () {
-                                final point = centroid(
-                                  selectedDetailZone.geometry,
-                                );
-                                _openExternalMap(
-                                  point.latitude,
-                                  point.longitude,
-                                );
-                              },
-                        originLatitude: _userPosition?.latitude,
-                        originLongitude: _userPosition?.longitude,
-                        onClose: ref.read(routingProvider.notifier).reset,
                       ),
                     ),
                   ),
@@ -2193,32 +2861,39 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         });
                       }
                     },
-                    child: PointerInterceptor(
-                      intercepting: kIsWeb,
-                      child: ParkingCardSheet(
-                        zone: _standaloneSelectedZone!,
-                        onBuildRoute: () =>
-                            _buildRouteForZone(_standaloneSelectedZone!.zoneId),
-                        onShare: () => _shareLink(
-                          parkingShareUri(_standaloneSelectedZone!.zoneId),
-                          '${s.parkingNumber}'
-                          '${_standaloneSelectedZone!.zoneId}',
+                    child: _BottomPanelTransition(
+                      child: PointerInterceptor(
+                        intercepting: kIsWeb,
+                        child: ParkingCardSheet(
+                          zone: _standaloneSelectedZone!,
+                          onBuildRoute: () => _buildRouteForZone(
+                            _standaloneSelectedZone!.zoneId,
+                          ),
+                          onShare: (address) => _shareLink(
+                            parkingShareUri(_standaloneSelectedZone!.zoneId),
+                            '${s.parkingNumber}'
+                            '${_standaloneSelectedZone!.zoneId}',
+                            text: _parkingShareText(
+                              _standaloneSelectedZone!,
+                              address,
+                            ),
+                          ),
+                          onOpenExternal:
+                              _standaloneSelectedZone!.geometry.isEmpty
+                              ? null
+                              : () {
+                                  final point = centroid(
+                                    _standaloneSelectedZone!.geometry,
+                                  );
+                                  _openExternalMap(
+                                    point.latitude,
+                                    point.longitude,
+                                  );
+                                },
+                          originLatitude: _userPosition?.latitude,
+                          originLongitude: _userPosition?.longitude,
+                          onClose: _closeStandaloneParkingDetails,
                         ),
-                        onOpenExternal:
-                            _standaloneSelectedZone!.geometry.isEmpty
-                            ? null
-                            : () {
-                                final point = centroid(
-                                  _standaloneSelectedZone!.geometry,
-                                );
-                                _openExternalMap(
-                                  point.latitude,
-                                  point.longitude,
-                                );
-                              },
-                        originLatitude: _userPosition?.latitude,
-                        originLongitude: _userPosition?.longitude,
-                        onClose: _closeStandaloneParkingDetails,
                       ),
                     ),
                   ),
@@ -2246,24 +2921,25 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         }
                       });
                     },
-                    child: PointerInterceptor(
-                      intercepting: kIsWeb,
-                      child: RoutePreviewSheet(
-                        route: routePreview,
-                        onShare: () => _shareLink(
-                          routeShareUri(routePreview.routeId),
-                          s.routeReady,
+                    child: _BottomPanelTransition(
+                      child: PointerInterceptor(
+                        intercepting: kIsWeb,
+                        child: RoutePreviewSheet(
+                          route: routePreview,
+                          onShare: () => unawaited(
+                            _shareRouteLink(routePreview, routePreviewTarget),
+                          ),
+                          zoneLat: routePreviewTarget?.latitude,
+                          zoneLon: routePreviewTarget?.longitude,
+                          onNavigateInApp: routePreviewTarget == null
+                              ? null
+                              : () => _startInAppNavigation(
+                                  zoneId: routePreview.selectedZoneId,
+                                  toLat: routePreviewTarget!.latitude,
+                                  toLon: routePreviewTarget.longitude,
+                                ),
+                          onClose: ref.read(routingProvider.notifier).reset,
                         ),
-                        zoneLat: routePreviewTarget?.latitude,
-                        zoneLon: routePreviewTarget?.longitude,
-                        onNavigateInApp: routePreviewTarget == null
-                            ? null
-                            : () => _startInAppNavigation(
-                                zoneId: routePreview.selectedZoneId,
-                                toLat: routePreviewTarget!.latitude,
-                                toLon: routePreviewTarget.longitude,
-                              ),
-                        onClose: ref.read(routingProvider.notifier).reset,
                       ),
                     ),
                   ),
@@ -2356,51 +3032,77 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 ),
               ),
             ),
-            if (showLowerMapControls)
-              Positioned(
-                right: 12,
-                bottom: mapControlsBottom,
-                child: PointerInterceptor(
-                  intercepting: kIsWeb,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 180),
-                        child: showCompass
-                            ? Padding(
-                                key: const ValueKey('compass_visible'),
-                                padding: const EdgeInsets.only(right: 8),
-                                child: MapCompassButton(
-                                  azimuth: _currentAzimuth,
-                                  onPressed: _resetNorth,
-                                  tooltip: s.map,
-                                ),
-                              )
-                            : const SizedBox.shrink(
-                                key: ValueKey('compass_hidden'),
+            Positioned(
+              right: 12,
+              bottom: mapControlsBottom,
+              child: PointerInterceptor(
+                intercepting: kIsWeb,
+                child: IgnorePointer(
+                  ignoring: !showLowerMapControls,
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 180),
+                    transitionBuilder: (child, animation) => FadeTransition(
+                      opacity: animation,
+                      child: ScaleTransition(scale: animation, child: child),
+                    ),
+                    child: showLowerMapControls
+                        ? Row(
+                            key: const ValueKey('lower_map_controls'),
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 180),
+                                child: _showCompass
+                                    ? Padding(
+                                        key: const ValueKey('compass_visible'),
+                                        padding: const EdgeInsets.only(
+                                          right: 8,
+                                        ),
+                                        child: ValueListenableBuilder<double>(
+                                          valueListenable: _compassAzimuth,
+                                          builder: (context, azimuth, _) =>
+                                              MapCompassButton(
+                                                azimuth: azimuth,
+                                                onPressed: _resetNorth,
+                                                tooltip: s.map,
+                                              ),
+                                        ),
+                                      )
+                                    : const SizedBox.shrink(
+                                        key: ValueKey('compass_hidden'),
+                                      ),
                               ),
-                      ),
-                      _RoundMapControl(
-                        onTap: _goToMyLocation,
-                        tooltip: s.myLocation,
-                        child: Transform.rotate(
-                          angle: math.pi / 4,
-                          child: Icon(
-                            Icons.navigation_rounded,
-                            size: 26,
-                            color: _isUserCentered
-                                ? const Color(0xFF1967D2)
-                                : Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
+                              _RoundMapControl(
+                                onTap: _goToMyLocation,
+                                tooltip: s.myLocation,
+                                child:
+                                    _myLocationCameraMode ==
+                                        MyLocationCameraMode.following
+                                    ? const LocationFollowIcon()
+                                    : Transform.rotate(
+                                        angle: math.pi / 4,
+                                        child: Icon(
+                                          Icons.navigation_rounded,
+                                          size: 26,
+                                          color:
+                                              _myLocationCameraMode ==
+                                                  MyLocationCameraMode.centered
+                                              ? const Color(0xFF1967D2)
+                                              : Theme.of(
+                                                  context,
+                                                ).colorScheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                              ),
+                            ],
+                          )
+                        : const SizedBox.shrink(
+                            key: ValueKey('lower_map_controls_hidden'),
                           ),
-                        ),
-                      ),
-                    ],
                   ),
                 ),
               ),
+            ),
             // ─── Селектор времени: всегда левый край ──────────────
             if (parkingFabVisible)
               Positioned(
@@ -2438,30 +3140,41 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 right: 12,
                 child: PointerInterceptor(
                   intercepting: kIsWeb,
-                  child: _DestinationCard(
-                    destination: destination,
-                    onShare: () => _shareLink(
-                      destinationShareUri(
-                        latitude: destination.latitude,
-                        longitude: destination.longitude,
-                        name: destination.name,
+                  child: _BottomPanelTransition(
+                    child: _PanelSizeReporter(
+                      onSizeChanged: (height) {
+                        if ((_destinationPanelHeight - height).abs() < 1 ||
+                            !mounted) {
+                          return;
+                        }
+                        setState(() => _destinationPanelHeight = height);
+                      },
+                      child: _DestinationCard(
+                        destination: destination,
+                        onShare: () => _shareLink(
+                          destinationShareUri(
+                            latitude: destination.latitude,
+                            longitude: destination.longitude,
+                            name: destination.name,
+                          ),
+                          destination.name ?? s.selectedPlace,
+                        ),
+                        onFindParking: isRoutingLoading ? null : _findParking,
+                        onNavigate: () => _openExternalMap(
+                          destination.latitude,
+                          destination.longitude,
+                        ),
+                        onNavigateInApp: () => _startInAppNavigation(
+                          zoneId: 0,
+                          toLat: destination.latitude,
+                          toLon: destination.longitude,
+                        ),
+                        onClear: () {
+                          ref.read(destinationProvider.notifier).state = null;
+                          ref.read(routingProvider.notifier).reset();
+                        },
                       ),
-                      destination.name ?? s.selectedPlace,
                     ),
-                    onFindParking: isRoutingLoading ? null : _findParking,
-                    onNavigate: () => _openExternalMap(
-                      destination.latitude,
-                      destination.longitude,
-                    ),
-                    onNavigateInApp: () => _startInAppNavigation(
-                      zoneId: 0,
-                      toLat: destination.latitude,
-                      toLon: destination.longitude,
-                    ),
-                    onClear: () {
-                      ref.read(destinationProvider.notifier).state = null;
-                      ref.read(routingProvider.notifier).reset();
-                    },
                   ),
                 ),
               ),
@@ -2784,6 +3497,29 @@ class _PanelSizeReporterState extends State<_PanelSizeReporter> {
 
 // ───────────────────────────────────────────────────────────────────────────
 
+class _BottomPanelTransition extends StatelessWidget {
+  const _BottomPanelTransition({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => TweenAnimationBuilder<double>(
+    tween: Tween(begin: 0, end: 1),
+    duration: const Duration(milliseconds: 240),
+    curve: Curves.easeOutCubic,
+    builder: (context, value, child) => Opacity(
+      opacity: value,
+      child: Transform.translate(
+        offset: Offset(0, (1 - value) * 18),
+        child: child,
+      ),
+    ),
+    child: child,
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+
 class _MapButton extends StatelessWidget {
   const _MapButton({
     required this.icon,
@@ -2844,7 +3580,7 @@ class _ZoomControlGroup extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: mapControlSurfaceColor,
+      color: mapControlSurfaceColor(context),
       elevation: 3,
       shadowColor: Colors.black.withValues(alpha: 0.22),
       borderRadius: BorderRadius.circular(16),
@@ -2860,7 +3596,12 @@ class _ZoomControlGroup extends StatelessWidget {
               onTap: onZoomIn,
               onHoldTick: onZoomInHold,
             ),
-            Divider(height: 1, indent: 10, endIndent: 10),
+            Divider(
+              height: 1,
+              indent: 10,
+              endIndent: 10,
+              color: mapControlDividerColor(context),
+            ),
             _ZoomButton(
               icon: Icons.remove_rounded,
               tooltip: '−',
@@ -3002,7 +3743,7 @@ class _RoundMapControl extends StatelessWidget {
       button: true,
       label: tooltip,
       child: Material(
-        color: mapControlSurfaceColor,
+        color: mapControlSurfaceColor(context),
         elevation: 3,
         shadowColor: Colors.black.withValues(alpha: 0.22),
         shape: const CircleBorder(),

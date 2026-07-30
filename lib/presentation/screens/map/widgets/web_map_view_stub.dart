@@ -21,6 +21,7 @@ class WebMapView extends StatelessWidget {
     this.userLatitude,
     this.userLongitude,
     this.userHeading,
+    this.userAccuracy,
     this.navigationLatitude,
     this.navigationLongitude,
     this.navigationHeading,
@@ -42,6 +43,7 @@ class WebMapView extends StatelessWidget {
   final double? userLatitude;
   final double? userLongitude;
   final double? userHeading;
+  final double? userAccuracy;
   final double? navigationLatitude;
   final double? navigationLongitude;
   final double? navigationHeading;

@@ -23,18 +23,8 @@ class RouteMapBounds {
 }
 
 RouteMapBounds? calculateRouteBounds(List<Point>? points) {
-  final valid = points
-      ?.where(
-        (point) =>
-            point.latitude.isFinite &&
-            point.longitude.isFinite &&
-            point.latitude >= -90 &&
-            point.latitude <= 90 &&
-            point.longitude >= -180 &&
-            point.longitude <= 180,
-      )
-      .toList(growable: false);
-  if (valid == null || valid.length < 2) return null;
+  final valid = validRoutePoints(points);
+  if (valid.length < 2) return null;
 
   var south = valid.first.latitude;
   var north = south;
@@ -56,6 +46,51 @@ RouteMapBounds? calculateRouteBounds(List<Point>? points) {
   }
   return RouteMapBounds(south: south, west: west, north: north, east: east);
 }
+
+double? calculateRouteAzimuth(List<Point>? points) {
+  final valid = validRoutePoints(points);
+  if (valid.length < 2) return null;
+  final start = valid.first;
+  final finish = valid.last;
+  if ((start.latitude - finish.latitude).abs() < 1e-12 &&
+      _longitudeDelta(start.longitude, finish.longitude).abs() < 1e-12) {
+    return null;
+  }
+
+  final startLatitude = _radians(start.latitude);
+  final finishLatitude = _radians(finish.latitude);
+  final longitudeDelta = _radians(
+    _longitudeDelta(start.longitude, finish.longitude),
+  );
+  final y = math.sin(longitudeDelta) * math.cos(finishLatitude);
+  final x =
+      math.cos(startLatitude) * math.sin(finishLatitude) -
+      math.sin(startLatitude) *
+          math.cos(finishLatitude) *
+          math.cos(longitudeDelta);
+  return (_degrees(math.atan2(y, x)) + 360) % 360;
+}
+
+List<Point> validRoutePoints(List<Point>? points) =>
+    points
+        ?.where(
+          (point) =>
+              point.latitude.isFinite &&
+              point.longitude.isFinite &&
+              point.latitude >= -90 &&
+              point.latitude <= 90 &&
+              point.longitude >= -180 &&
+              point.longitude <= 180,
+        )
+        .toList(growable: false) ??
+    const [];
+
+double _longitudeDelta(double from, double to) =>
+    ((to - from + 540) % 360) - 180;
+
+double _radians(double degrees) => degrees * math.pi / 180;
+
+double _degrees(double radians) => radians * 180 / math.pi;
 
 RouteMapBounds padRouteBoundsForPanel(
   RouteMapBounds bounds, {

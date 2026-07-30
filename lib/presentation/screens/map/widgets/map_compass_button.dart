@@ -2,7 +2,28 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-const Color mapControlSurfaceColor = Color(0xF2FFFFFF);
+const Color _lightMapControlSurface = Color(0xF2FFFFFF);
+const Color _darkMapControlSurface = Color(0xF22B2D31);
+const Color _lightMapControlDivider = Color(0x1F000000);
+const Color _darkMapControlDivider = Color(0xFF62656B);
+
+Color mapControlSurfaceColor(BuildContext context) =>
+    mapControlSurfaceColorFor(Theme.of(context).brightness);
+
+Color mapControlDividerColor(BuildContext context) =>
+    mapControlDividerColorFor(Theme.of(context).brightness);
+
+@visibleForTesting
+Color mapControlSurfaceColorFor(Brightness brightness) =>
+    brightness == Brightness.dark
+    ? _darkMapControlSurface
+    : _lightMapControlSurface;
+
+@visibleForTesting
+Color mapControlDividerColorFor(Brightness brightness) =>
+    brightness == Brightness.dark
+    ? _darkMapControlDivider
+    : _lightMapControlDivider;
 
 class MapCompassButton extends StatefulWidget {
   const MapCompassButton({
@@ -41,8 +62,9 @@ class _MapCompassButtonState extends State<MapCompassButton> {
         duration: const Duration(milliseconds: 80),
         curve: Curves.linear,
         child: DecoratedBox(
+          key: const Key('map_compass_button_surface'),
           decoration: BoxDecoration(
-            color: mapControlSurfaceColor,
+            color: mapControlSurfaceColor(context),
             shape: BoxShape.circle,
             boxShadow: [
               BoxShadow(
@@ -80,15 +102,9 @@ class _CompassIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final reducedMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
-    return TweenAnimationBuilder<double>(
-      tween: Tween<double>(end: -azimuth * math.pi / 180),
-      duration: reducedMotion
-          ? Duration.zero
-          : const Duration(milliseconds: 140),
-      curve: Curves.linear,
-      builder: (context, angle, child) =>
-          Transform.rotate(angle: angle, child: child),
+    return Transform.rotate(
+      key: const Key('map_compass_rotation'),
+      angle: -azimuth * math.pi / 180,
       child: const CustomPaint(
         key: Key('map_compass_icon'),
         size: Size(18, 24),

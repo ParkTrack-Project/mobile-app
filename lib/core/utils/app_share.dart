@@ -23,16 +23,21 @@ Future<void> shareParkTrackLink(
   BuildContext context, {
   required Uri uri,
   required String title,
+  String? text,
 }) async {
   final overlay = Overlay.maybeOf(context)?.context.findRenderObject();
   final origin = overlay is RenderBox
       ? overlay.localToGlobal(Offset.zero) & overlay.size
       : null;
+  final body = [
+    if (text != null && text.trim().isNotEmpty) text.trim(),
+    uri.toString(),
+  ].join('\n');
   await SharePlus.instance.share(
     ShareParams(
       title: title,
       subject: title,
-      text: uri.toString(),
+      text: body,
       sharePositionOrigin: origin,
     ),
   );

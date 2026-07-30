@@ -49,6 +49,39 @@ void main() {
     expect(speedIcon.color, Colors.red.shade600);
     expect(speedText.style?.color, Colors.red.shade600);
   });
+
+  testWidgets('long navigation stats fit without ellipsis on narrow screens', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await _pumpBottomBar(
+      tester,
+      const NavigationData(
+        zoneId: 1,
+        route: [],
+        remainingMeters: 9999,
+        remainingSeconds: 35400,
+        speedKmh: 999,
+        currentPosition: Point(latitude: 0, longitude: 0),
+        heading: 0,
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    for (final text in ['9 ч 50 мин', '9,9 км', '999 км/ч']) {
+      final widget = tester.widget<Text>(find.text(text));
+      expect(widget.style?.fontSize, 14);
+      expect(widget.overflow, isNot(TextOverflow.ellipsis));
+      final fitted = tester.widget<FittedBox>(
+        find.ancestor(of: find.text(text), matching: find.byType(FittedBox)),
+      );
+      expect(fitted.fit, BoxFit.scaleDown);
+    }
+  });
 }
 
 Future<void> _pumpBottomBar(WidgetTester tester, NavigationData data) async {
