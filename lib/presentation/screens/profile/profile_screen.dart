@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../providers/app_version_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../../core/localization/app_localizations.dart';
@@ -23,6 +24,7 @@ class ProfileScreen extends ConsumerWidget {
     final s = ref.watch(l10nProvider);
     final authState = ref.watch(authStateProvider);
     final settings = ref.watch(settingsProvider);
+    final appVersion = ref.watch(appVersionProvider);
 
     final user = authState.maybeWhen(
       authenticated: (u) => u,
@@ -114,11 +116,14 @@ class ProfileScreen extends ConsumerWidget {
               ),
 
             const SizedBox(height: 24),
-            Center(
-              child: Text(
-                'ParkTrack v1.3.0+3',
-                style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+            appVersion.maybeWhen(
+              data: (version) => Center(
+                child: Text(
+                  version.label,
+                  style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                ),
               ),
+              orElse: () => const SizedBox.shrink(),
             ),
             const SizedBox(height: 16),
           ],
