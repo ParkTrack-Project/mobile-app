@@ -17,10 +17,11 @@ class LocationFollowIcon extends StatelessWidget {
       alignment: Alignment.center,
       children: [
         Positioned(
-          top: size * 0.03,
+          key: const Key('location_follow_top_line'),
+          top: size * 0.02,
           child: Container(
             width: size * 0.1,
-            height: size * 0.16,
+            height: size * 0.21,
             decoration: BoxDecoration(
               color: color,
               borderRadius: BorderRadius.circular(size * 0.05),
@@ -28,10 +29,23 @@ class LocationFollowIcon extends StatelessWidget {
           ),
         ),
         Positioned(
-          top: size * 0.38,
+          key: const Key('location_follow_bottom_line'),
+          top: size * 0.77,
+          child: Container(
+            width: size * 0.1,
+            height: size * 0.2,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(size * 0.05),
+            ),
+          ),
+        ),
+        Positioned(
+          key: const Key('location_follow_arrow'),
+          top: size * 0.18,
           child: Icon(
             Icons.navigation_rounded,
-            size: size * 0.76,
+            size: size * 0.68,
             color: color,
           ),
         ),

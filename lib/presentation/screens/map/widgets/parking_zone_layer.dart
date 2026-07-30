@@ -625,9 +625,9 @@ Future<Uint8List> buildClusterBitmap(
       text: label,
       style: TextStyle(
         color: textColor,
-        fontSize: logicalSize >= 38 ? 26 : 22,
-        fontWeight: FontWeight.w600,
-        height: 1.2,
+        fontSize: parkingClusterFontSize(clusterSize) * 2,
+        fontWeight: FontWeight.w800,
+        height: 1,
       ),
     ),
     textDirection: TextDirection.ltr,
@@ -733,6 +733,9 @@ double parkingClusterSize(int zoneCount) =>
     math.min(28 + (zoneCount ~/ 4) * 4, 44).toDouble() *
     parkingMarkerScaleFactor;
 
+double parkingClusterFontSize(int zoneCount) =>
+    parkingClusterSize(zoneCount) >= 38 * parkingMarkerScaleFactor ? 19 : 17;
+
 double parkingClusterExpansionZoom(
   List<Zone> zones,
   Set<int> clusterZoneIds,
@@ -778,6 +781,37 @@ double parkingIsolationZoom(
     });
     if (isolated) return math.min(maximumZoom, zoom);
     zoom += parkingClusterExpansionSearchStep;
+  }
+  return maximumZoom;
+}
+
+double parkingZoneIsolationZoom(
+  List<Zone> zones,
+  int selectedZoneId, {
+  required double currentZoom,
+  double minimumZoom = parkingSelectedZoneZoom,
+  double maximumZoom = parkingMapMaxZoom,
+}) {
+  final selectedIsRenderable = zones.any(
+    (zone) => zone.zoneId == selectedZoneId && isParkingZoneRenderable(zone),
+  );
+  if (!selectedIsRenderable) {
+    return math.max(minimumZoom, currentZoom).clamp(0, maximumZoom).toDouble();
+  }
+
+  var zoom = math
+      .max(minimumZoom, currentZoom)
+      .clamp(0, maximumZoom)
+      .toDouble();
+  while (zoom <= maximumZoom) {
+    final clustering = clusterParkingZones(zones, zoom);
+    if (clustering.singletonIds.contains(selectedZoneId) &&
+        !clustering.clusters.any(
+          (cluster) => cluster.zoneIds.contains(selectedZoneId),
+        )) {
+      return zoom.toDouble();
+    }
+    zoom = parkingClusterZoomBucket(zoom) + parkingClusterZoomStep;
   }
   return maximumZoom;
 }
