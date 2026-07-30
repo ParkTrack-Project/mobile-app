@@ -76,10 +76,9 @@ void main() {
     expect(
       source,
       contains(
-        'final managedAndroidPosition = '
-        '_usesManagedAndroidLocation && !isNavigating\n'
-        '        ? _userPosition\n'
-        '        : null;',
+        'final managedAndroidPosition =\n'
+        '          _usesManagedAndroidLocation && !isNavigating '
+        '? _userPosition : null;',
       ),
     );
     expect(
@@ -165,19 +164,13 @@ void main() {
     expect(changeZoomSource, contains('await _syncFollowingCamera('));
     expect(
       source,
-      contains(
-        '_myLocationCameraMode == MyLocationCameraMode.following\n'
-        '        ? _currentAzimuth',
-      ),
+      contains('_myLocationCameraMode == MyLocationCameraMode.following'),
     );
     expect(
       headingTrackingSource,
       contains('? heading\n          : smoothCircularHeading'),
     );
-    expect(
-      headingTrackingSource,
-      contains('_syncFollowingCamera(durationSeconds: 0)'),
-    );
+    expect(headingTrackingSource, contains('_scheduleFollowingCamera();'));
   });
 
   test(

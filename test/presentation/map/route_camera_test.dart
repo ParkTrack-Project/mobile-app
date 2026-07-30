@@ -56,6 +56,39 @@ void main() {
     );
   });
 
+  test('builds a rotated web camera plan from the complete route', () {
+    final plan = calculateRouteCameraPlan(
+      const [
+        Point(latitude: 61.78, longitude: 34.34),
+        Point(latitude: 61.80, longitude: 34.42),
+        Point(latitude: 61.82, longitude: 34.36),
+      ],
+      viewport: const Size(360, 800),
+      margins: const EdgeInsets.fromLTRB(32, 112, 32, 292),
+    );
+
+    expect(plan, isNotNull);
+    expect(plan!.zoom, inInclusiveRange(3, 21));
+    expect(plan.azimuth, inInclusiveRange(0, 360));
+    expect(plan.center.latitude, inInclusiveRange(61.78, 61.82));
+    expect(plan.center.longitude, inInclusiveRange(34.34, 34.42));
+  });
+
+  test('route camera plan keeps date-line routes local', () {
+    final plan = calculateRouteCameraPlan(
+      const [
+        Point(latitude: 0, longitude: 179),
+        Point(latitude: 0.2, longitude: -179),
+      ],
+      viewport: const Size(400, 800),
+      margins: const EdgeInsets.fromLTRB(32, 112, 32, 300),
+    );
+
+    expect(plan, isNotNull);
+    expect(plan!.center.longitude.abs(), greaterThan(170));
+    expect(plan.zoom, greaterThan(3));
+  });
+
   test('pads route bounds to keep the route above the preview panel', () {
     const bounds = RouteMapBounds(
       south: 61.70,

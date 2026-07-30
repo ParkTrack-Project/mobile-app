@@ -15,5 +15,12 @@ void main() {
     expect(destinationMarkerAnchor.dy, 1);
     expect(frame.image.width, destinationMarkerSize.width);
     expect(frame.image.height, destinationMarkerSize.height);
+    final pixels = await frame.image.toByteData(
+      format: ui.ImageByteFormat.rawRgba,
+    );
+    final centerAlpha = pixels!.getUint8(
+      ((27 * frame.image.width + 32) * 4) + 3,
+    );
+    expect(centerAlpha, 255);
   });
 }

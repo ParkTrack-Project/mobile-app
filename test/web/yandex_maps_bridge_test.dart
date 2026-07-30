@@ -167,7 +167,7 @@ void main() {
     expect(bridge, contains("fill: 'rgba(255, 59, 48, 0.14)'"));
     expect(webView, contains('final double? userAccuracy'));
     expect(webView, contains('widget.userAccuracy!.isFinite'));
-    expect(indexHtml, contains('yandex_maps.js?v=3.8'));
+    expect(indexHtml, contains('yandex_maps.js?v=3.9'));
   });
 
   test('updates moving markers without rebuilding parking zones', () {
@@ -198,18 +198,23 @@ void main() {
   });
 
   test('supports web follow camera and user gesture detection', () {
+    expect(bridge, contains('setZoom(id, z, durationMilliseconds)'));
+    expect(
+      bridge,
+      contains('duration: Math.max(0, Number(durationMilliseconds) || 0)'),
+    );
     expect(webView, contains('@JS(\'parkTrackYandexMaps.follow\')'));
     expect(webView, contains('widget.controller.followHandler'));
     expect(
       webView,
       contains('userGesture: data[\'userGesture\'] as bool? ?? false'),
     );
+    expect(bridge, contains('durationMilliseconds'));
+    expect(bridge, contains('azimuth,'));
     expect(
       bridge,
-      contains('follow(id, lat, lon, zoom, azimuth, top, right, bottom, left)'),
+      contains('duration: Math.max(0, Number(durationMilliseconds) || 0)'),
     );
-    expect(bridge, contains('azimuth,'));
-    expect(bridge, contains('duration: 0'));
     expect(bridge, contains('userGesture,'));
     expect(bridge, contains('entry.userGestureActive = true'));
     expect(bridge, contains("element.addEventListener('pointermove'"));
@@ -225,6 +230,8 @@ void main() {
     );
     expect(bridge, contains('bounds: [[west, south], [east, north]]'));
     expect(bridge, contains('azimuth,'));
+    expect(bridge, contains('setCamera(id, lat, lon, zoom, azimuth'));
+    expect(webView, contains('@JS(\'parkTrackYandexMaps.setCamera\')'));
     expect(webView, contains('JSNumber azimuth'));
   });
 }

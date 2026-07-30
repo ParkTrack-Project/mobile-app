@@ -317,6 +317,14 @@ void main() {
       expect(parkingClusterSize(12), 40 * parkingMarkerScaleFactor);
       expect(parkingClusterSize(16), 44 * parkingMarkerScaleFactor);
       expect(parkingClusterSize(100), 44 * parkingMarkerScaleFactor);
+      expect(
+        parkingClusterFontSize(2),
+        greaterThan(12 * parkingMarkerScaleFactor),
+      );
+      expect(
+        parkingClusterFontSize(16),
+        greaterThan(parkingClusterFontSize(2)),
+      );
       expect(parkingClusterIconScale, 1);
 
       final zones = [
@@ -379,16 +387,27 @@ void main() {
     );
   });
 
-  test(
-    'selected-zone isolation respects current zoom without extra buffer',
-    () {
-      final zoom = parkingIsolationZoom(
-        const Point(latitude: 0, longitude: 0),
-        const [Point(latitude: 1, longitude: 1)],
-        currentZoom: 17.25,
-      );
+  test('selected-zone isolation uses the actual clustering result', () {
+    final zones = [
+      _zoneAt(1, latitude: 0, longitude: 0),
+      _zoneAt(2, latitude: 0, longitude: 0.0002),
+    ];
+    final zoom = parkingZoneIsolationZoom(zones, 1, currentZoom: 17);
 
-      expect(zoom, 17.25);
+    expect(clusterParkingZones(zones, 17).singletonIds, isEmpty);
+    expect(zoom, 17.5);
+    expect(clusterParkingZones(zones, zoom).singletonIds, {1, 2});
+  });
+
+  test(
+    'selected-zone isolation falls back to max zoom for coincident zones',
+    () {
+      final zones = [
+        _zoneAt(1, latitude: 1, longitude: 1),
+        _zoneAt(2, latitude: 1, longitude: 1),
+      ];
+
+      expect(parkingZoneIsolationZoom(zones, 1, currentZoom: 17), 21);
     },
   );
 

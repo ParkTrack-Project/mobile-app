@@ -83,11 +83,25 @@ void main() {
 
     expect(find.text('Parking nearby'), findsOneWidget);
     expect(find.text('Ranked by time and distance'), findsOneWidget);
+    expect(find.text('Parking #42'), findsOneWidget);
     expect(find.text('42 Test Street'), findsOneWidget);
-    expect(find.text('№42'), findsOneWidget);
+    final addressText = tester.widget<Text>(
+      find.byKey(const Key('parking_candidate_address_42')),
+    );
+    expect(addressText.maxLines, 2);
+    expect(
+      addressText.style?.fontSize,
+      lessThan(
+        tester
+            .widget<Text>(find.byKey(const Key('parking_candidate_title_42')))
+            .style!
+            .fontSize!,
+      ),
+    );
     expect(find.text('450 m'), findsOneWidget);
     expect(find.textContaining('111 m'), findsOneWidget);
     expect(find.textContaining('5 spaces'), findsOneWidget);
+    expect(find.textContaining('Forecast:'), findsNothing);
     expect(find.text('7 spaces'), findsOneWidget);
     expect(find.text('Free'), findsOneWidget);
     expect(find.text('Accessible parking'), findsOneWidget);

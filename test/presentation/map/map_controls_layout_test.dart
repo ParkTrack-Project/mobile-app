@@ -3,6 +3,28 @@ import 'package:mobile/presentation/screens/map/map_screen.dart';
 import 'package:yandex_mapkit/yandex_mapkit.dart';
 
 void main() {
+  test('queued zoom taps accumulate and clamp without losing input', () {
+    final first = nextQueuedMapZoom(
+      currentZoom: 14,
+      queuedZoom: null,
+      delta: 1,
+    );
+    final second = nextQueuedMapZoom(
+      currentZoom: 14,
+      queuedZoom: first,
+      delta: 1,
+    );
+    final clamped = nextQueuedMapZoom(
+      currentZoom: 20,
+      queuedZoom: second,
+      delta: 10,
+    );
+
+    expect(first, 15);
+    expect(second, 16);
+    expect(clamped, 21);
+  });
+
   test('recognizes north across the zero-degree boundary', () {
     expect(isMapNorthUp(0), isTrue);
     expect(isMapNorthUp(0.5), isTrue);
@@ -23,6 +45,25 @@ void main() {
     expect(
       resolveZoomControlsBottom(viewportHeight: 800, mapControlsBottom: 420),
       482,
+    );
+  });
+
+  test('keeps lower controls above the destination card with a gap', () {
+    expect(
+      resolveMapControlsBottom(
+        mapPanelHeight: 168,
+        parkingFabVisible: false,
+        destinationCardVisible: true,
+      ),
+      190,
+    );
+    expect(
+      resolveMapControlsBottom(
+        mapPanelHeight: 168,
+        parkingFabVisible: false,
+        destinationCardVisible: false,
+      ),
+      180,
     );
   });
 
