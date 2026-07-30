@@ -308,49 +308,42 @@ void main() {
     expect(tappedIds, [2]);
   });
 
-  test(
-    'uses 30 percent larger palette cluster sizes and native icon scale',
-    () {
-      expect(parkingClusterSize(2), 28 * parkingMarkerScaleFactor);
-      expect(parkingClusterSize(4), 32 * parkingMarkerScaleFactor);
-      expect(parkingClusterSize(8), 36 * parkingMarkerScaleFactor);
-      expect(parkingClusterSize(12), 40 * parkingMarkerScaleFactor);
-      expect(parkingClusterSize(16), 44 * parkingMarkerScaleFactor);
-      expect(parkingClusterSize(100), 44 * parkingMarkerScaleFactor);
-      expect(
-        parkingClusterFontSize(2),
-        greaterThan(12 * parkingMarkerScaleFactor),
-      );
-      expect(
-        parkingClusterFontSize(16),
-        greaterThan(parkingClusterFontSize(2)),
-      );
-      expect(parkingClusterIconScale, 1);
+  test('keeps larger markers and trims native clusters by three percent', () {
+    expect(parkingMarkerScaleFactor, 1.3);
+    expect(parkingClusterScaleFactor, parkingMarkerScaleFactor * 0.97);
+    expect(parkingClusterSize(2), 28 * parkingClusterScaleFactor);
+    expect(parkingClusterSize(4), 32 * parkingClusterScaleFactor);
+    expect(parkingClusterSize(8), 36 * parkingClusterScaleFactor);
+    expect(parkingClusterSize(12), 40 * parkingClusterScaleFactor);
+    expect(parkingClusterSize(16), 44 * parkingClusterScaleFactor);
+    expect(parkingClusterSize(100), 44 * parkingClusterScaleFactor);
+    expect(parkingClusterFontSize(2), 17 * 0.97);
+    expect(parkingClusterFontSize(16), 19 * 0.97);
+    expect(parkingClusterIconScale, 1);
 
-      final zones = [
-        _zoneAt(1, latitude: 0, longitude: 0),
-        _zoneAt(2, latitude: 0, longitude: 0.0001),
-      ];
-      final clustering = clusterParkingZones(zones, 14);
-      final cluster = clustering.clusters.single;
-      final key = parkingClusterBitmapKey(cluster);
-      final labels = buildZoneLabels(
-        zones: zones,
-        clustering: clustering,
-        zoom: 14,
-        bitmapCache: const {},
-        clusterBitmapCache: {
-          key: Uint8List.fromList([0]),
-        },
-        zonesById: {for (final zone in zones) zone.zoneId: zone},
-      );
-      final placemark = labels.single as PlacemarkMapObject;
-      final style = placemark.icon!.toJson()['style'] as Map<String, dynamic>;
+    final zones = [
+      _zoneAt(1, latitude: 0, longitude: 0),
+      _zoneAt(2, latitude: 0, longitude: 0.0001),
+    ];
+    final clustering = clusterParkingZones(zones, 14);
+    final cluster = clustering.clusters.single;
+    final key = parkingClusterBitmapKey(cluster);
+    final labels = buildZoneLabels(
+      zones: zones,
+      clustering: clustering,
+      zoom: 14,
+      bitmapCache: const {},
+      clusterBitmapCache: {
+        key: Uint8List.fromList([0]),
+      },
+      zonesById: {for (final zone in zones) zone.zoneId: zone},
+    );
+    final placemark = labels.single as PlacemarkMapObject;
+    final style = placemark.icon!.toJson()['style'] as Map<String, dynamic>;
 
-      expect(style['scale'], 1);
-      expect(style['anchor'], {'dx': 0.5, 'dy': 0.5});
-    },
-  );
+    expect(style['scale'], 1);
+    expect(style['anchor'], {'dx': 0.5, 'dy': 0.5});
+  });
 
   test('shows a singleton badge only from zoom 14', () {
     final zone = _zone(1);

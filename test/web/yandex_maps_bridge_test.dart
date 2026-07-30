@@ -116,6 +116,21 @@ void main() {
       bridge,
       contains('Math.min(28 + Math.floor(zoneCount / 4) * 4, 44)'),
     );
+    expect(bridge, contains('const parkingMarkerBaseScaleFactor = 1.3'));
+    expect(bridge, contains('const webParkingMarkerMaxScaleFactor = 0.85'));
+    expect(
+      bridge,
+      contains('2 / Math.max(1, Number(window.devicePixelRatio) || 1)'),
+    );
+    expect(bridge, contains('Math.min(\n    webParkingMarkerMaxScaleFactor,'));
+    expect(
+      bridge,
+      contains('parkingClusterScaleFactor = parkingMarkerScaleFactor * 0.97'),
+    );
+    expect(
+      bridge,
+      contains('parkingClusterScaleFactor / parkingMarkerBaseScaleFactor'),
+    );
     expect(bridge, contains('0 0 0 2px rgba(255,255,255,.7)'));
     expect(bridge, isNot(contains('clusterByGrid')));
     expect(bridge, contains('parktrack-user-location__direction'));
@@ -167,7 +182,7 @@ void main() {
     expect(bridge, contains("fill: 'rgba(255, 59, 48, 0.14)'"));
     expect(webView, contains('final double? userAccuracy'));
     expect(webView, contains('widget.userAccuracy!.isFinite'));
-    expect(indexHtml, contains('yandex_maps.js?v=3.9'));
+    expect(indexHtml, contains('yandex_maps.js?v=3.10'));
   });
 
   test('updates moving markers without rebuilding parking zones', () {

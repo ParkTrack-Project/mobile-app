@@ -10,6 +10,8 @@ final Map<ParkingClusterBitmapKey, Future<Uint8List>> _clusterBitmapCache = {};
 
 const double parkingCounterDimmedOpacity = 0.64;
 const double parkingMarkerScaleFactor = 1.3;
+const double parkingClusterScaleFactor = parkingMarkerScaleFactor * 0.97;
+const double parkingClusterFontScaleFactor = 0.97;
 const double parkingClusterMergePx = 22;
 const double parkingClusterZoomStep = 0.5;
 const double parkingZoneBadgeMinZoom = 14;
@@ -731,10 +733,13 @@ Color parkingClusterColor(
 
 double parkingClusterSize(int zoneCount) =>
     math.min(28 + (zoneCount ~/ 4) * 4, 44).toDouble() *
-    parkingMarkerScaleFactor;
+    parkingClusterScaleFactor;
 
 double parkingClusterFontSize(int zoneCount) =>
-    parkingClusterSize(zoneCount) >= 38 * parkingMarkerScaleFactor ? 19 : 17;
+    (parkingClusterSize(zoneCount) >= 38 * parkingClusterScaleFactor
+        ? 19
+        : 17) *
+    parkingClusterFontScaleFactor;
 
 double parkingClusterExpansionZoom(
   List<Zone> zones,

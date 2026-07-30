@@ -417,7 +417,15 @@
     return [midpoint(points[1], points[2]), midpoint(points[3], points[0])];
   }
 
-  const parkingMarkerScaleFactor = 1.3;
+  const parkingMarkerBaseScaleFactor = 1.3;
+  const webParkingMarkerMaxScaleFactor = 0.85;
+  // Native marker bitmaps are authored at 2x physical size.
+  const parkingMarkerScaleFactor = Math.min(
+    webParkingMarkerMaxScaleFactor,
+    parkingMarkerBaseScaleFactor *
+      2 / Math.max(1, Number(window.devicePixelRatio) || 1)
+  );
+  const parkingClusterScaleFactor = parkingMarkerScaleFactor * 0.97;
   function parkingMarkerElement(zone, onTap) {
     const el = document.createElement('div');
     el.className = 'parktrack-marker';
@@ -538,7 +546,7 @@
 
   function clusterSize(zoneCount) {
     return Math.min(28 + Math.floor(zoneCount / 4) * 4, 44) *
-      parkingMarkerScaleFactor;
+      parkingClusterScaleFactor;
   }
 
   function clusterMarkerElement(zones, onTap) {
@@ -558,7 +566,9 @@
         ? zones[0].clusterOne
         : zones[0].clusterFree;
     const size = clusterSize(zones.length);
-    const fontSize = size >= 38 * parkingMarkerScaleFactor ? 19 : 17;
+    const fontSize =
+      (size >= 38 * parkingClusterScaleFactor ? 19 : 17) *
+      parkingClusterScaleFactor / parkingMarkerBaseScaleFactor;
     el.style.cssText = `position:absolute;left:0;top:0;transform:translate(-50%,-50%);width:${size}px;height:${size}px;box-sizing:border-box;border:0;border-radius:9999px;background:${color};display:flex;align-items:center;justify-content:center;text-align:center;color:${zones[0].markerTextColor};font:800 ${fontSize}px/1 Roboto,Arial,sans-serif;cursor:pointer;box-shadow:0 4px 6px -1px rgba(0,0,0,.1),0 2px 4px -2px rgba(0,0,0,.1),0 0 0 2px rgba(255,255,255,.7);opacity:${opacity};z-index:2100`;
     el.textContent = String(freeCount);
     el.onclick = (e) => { e.stopPropagation(); onTap(); };
