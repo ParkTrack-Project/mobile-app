@@ -33,7 +33,9 @@ dependencies:
   flutter_secure_storage: ^9.2.4
 
   # Map & Location
-  yandex_mapkit: ^3.4.0
+  # Vendored until upstream applies BitmapFactory downsampling on Android.
+  yandex_mapkit:
+    path: third_party/yandex_mapkit-3.4.0
   geolocator: ^13.0.3
 
   # Deeplink

@@ -7,6 +7,11 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+dependencies {
+    implementation("androidx.core:core-ktx:1.17.0")
+    implementation("com.yandex.android:maps.mobile:4.19.0-full")
+}
+
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
 if (keystorePropertiesFile.exists()) {
@@ -30,7 +35,7 @@ android {
         applicationId = "com.parktrack.mobile"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        minSdk = 26
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -56,10 +61,6 @@ android {
             )
         }
     }
-}
-
-dependencies {
-    implementation("com.yandex.android:maps.mobile:4.4.0-full")
 }
 
 flutter {
