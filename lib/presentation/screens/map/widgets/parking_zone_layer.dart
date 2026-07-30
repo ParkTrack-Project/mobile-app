@@ -293,6 +293,11 @@ List<List<_ParkingClusterPoint>> _mergeOverlappingParkingGroups(
     final centers = current
         .map((group) => _worldPixel(_meanParkingCenter(group), zoom))
         .toList(growable: false);
+    final radii = current
+        .map((group) => parkingClusterSize(group.length) / 2 + 2)
+        .toList(growable: false);
+    final cellSize = math.max(1.0, radii.reduce(math.max) * 2);
+    final cells = <(int, int), List<int>>{};
 
     int root(int index) {
       while (parents[index] != index) {
@@ -302,23 +307,31 @@ List<List<_ParkingClusterPoint>> _mergeOverlappingParkingGroups(
       return index;
     }
 
+    void union(int left, int right) {
+      final leftRoot = root(left);
+      final rightRoot = root(right);
+      if (leftRoot != rightRoot) parents[rightRoot] = leftRoot;
+    }
+
     var merged = false;
     for (var left = 0; left < current.length; left++) {
-      for (var right = left + 1; right < current.length; right++) {
-        final minimumDistance =
-            parkingClusterSize(current[left].length) / 2 +
-            2 +
-            parkingClusterSize(current[right].length) / 2 +
-            2;
-        if ((centers[left] - centers[right]).distance < minimumDistance) {
-          final leftRoot = root(left);
-          final rightRoot = root(right);
-          if (leftRoot != rightRoot) {
-            parents[rightRoot] = leftRoot;
-            merged = true;
+      final center = centers[left];
+      final cellX = (center.dx / cellSize).floor();
+      final cellY = (center.dy / cellSize).floor();
+      for (var dx = -1; dx <= 1; dx++) {
+        for (var dy = -1; dy <= 1; dy++) {
+          for (final right
+              in cells[(cellX + dx, cellY + dy)] ?? const <int>[]) {
+            final minimumDistance = radii[left] + radii[right];
+            final delta = center - centers[right];
+            if (delta.distanceSquared < minimumDistance * minimumDistance) {
+              union(left, right);
+              merged = true;
+            }
           }
         }
       }
+      cells.putIfAbsent((cellX, cellY), () => <int>[]).add(left);
     }
     if (!merged) return current;
 

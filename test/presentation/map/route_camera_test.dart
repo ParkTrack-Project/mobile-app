@@ -57,21 +57,59 @@ void main() {
   });
 
   test('builds a rotated web camera plan from the complete route', () {
+    const route = [
+      Point(latitude: 61.78, longitude: 34.34),
+      Point(latitude: 61.80, longitude: 34.42),
+      Point(latitude: 61.82, longitude: 34.36),
+    ];
+    const viewport = Size(360, 800);
+    const margins = EdgeInsets.fromLTRB(32, 112, 32, 292);
     final plan = calculateRouteCameraPlan(
-      const [
-        Point(latitude: 61.78, longitude: 34.34),
-        Point(latitude: 61.80, longitude: 34.42),
-        Point(latitude: 61.82, longitude: 34.36),
-      ],
-      viewport: const Size(360, 800),
-      margins: const EdgeInsets.fromLTRB(32, 112, 32, 292),
+      route,
+      viewport: viewport,
+      margins: margins,
     );
 
     expect(plan, isNotNull);
     expect(plan!.zoom, inInclusiveRange(3, 21));
     expect(plan.azimuth, inInclusiveRange(0, 360));
-    expect(plan.center.latitude, inInclusiveRange(61.78, 61.82));
-    expect(plan.center.longitude, inInclusiveRange(34.34, 34.42));
+    for (final point in route) {
+      final screenPoint = projectRoutePointToViewport(
+        point,
+        plan,
+        viewport: viewport,
+      );
+      expect(screenPoint.dx, inInclusiveRange(margins.left, 328));
+      expect(screenPoint.dy, inInclusiveRange(margins.top, 508));
+    }
+  });
+
+  test('places the route finish above the route start in preview', () {
+    const route = [
+      Point(latitude: 61.78, longitude: 34.34),
+      Point(latitude: 61.79, longitude: 34.38),
+      Point(latitude: 61.82, longitude: 34.36),
+    ];
+    const viewport = Size(360, 800);
+    final plan = calculateRouteCameraPlan(
+      route,
+      viewport: viewport,
+      margins: const EdgeInsets.fromLTRB(32, 112, 32, 292),
+    );
+
+    expect(plan, isNotNull);
+    final start = projectRoutePointToViewport(
+      route.first,
+      plan!,
+      viewport: viewport,
+    );
+    final finish = projectRoutePointToViewport(
+      route.last,
+      plan,
+      viewport: viewport,
+    );
+
+    expect(finish.dy, lessThan(start.dy));
   });
 
   test('route camera plan keeps date-line routes local', () {

@@ -52,16 +52,17 @@ void main() {
     expect(
       resolveMapControlsBottom(
         mapPanelHeight: 168,
+        mapPanelBottom: 12,
         parkingFabVisible: false,
-        destinationCardVisible: true,
+        panelVisible: true,
       ),
-      190,
+      192,
     );
     expect(
       resolveMapControlsBottom(
         mapPanelHeight: 168,
         parkingFabVisible: false,
-        destinationCardVisible: false,
+        panelVisible: true,
       ),
       180,
     );
@@ -75,6 +76,14 @@ void main() {
     expect(
       shouldShowLowerMapControls(viewportHeight: 800, mapControlsBottom: 637),
       isFalse,
+    );
+    expect(
+      shouldShowLowerMapControls(
+        viewportHeight: 800,
+        mapControlsBottom: 700,
+        forceVisible: true,
+      ),
+      isTrue,
     );
   });
 

@@ -34,6 +34,36 @@ class RouteCameraPlan {
   final double azimuth;
 }
 
+@visibleForTesting
+Offset projectRoutePointToViewport(
+  Point point,
+  RouteCameraPlan plan, {
+  required Size viewport,
+}) {
+  final center = _projectMercator(plan.center);
+  final localPoint = _projectMercator(
+    Point(
+      latitude: point.latitude,
+      longitude:
+          plan.center.longitude +
+          _longitudeDelta(plan.center.longitude, point.longitude),
+    ),
+  );
+  final radians = _radians(-plan.azimuth);
+  final cosine = math.cos(radians);
+  final sine = math.sin(radians);
+  final delta = localPoint - center;
+  final rotated = Offset(
+    delta.dx * cosine - delta.dy * sine,
+    delta.dx * sine + delta.dy * cosine,
+  );
+  final scale = math.pow(2, plan.zoom).toDouble();
+  return Offset(
+    viewport.width / 2 + rotated.dx * scale,
+    viewport.height / 2 + rotated.dy * scale,
+  );
+}
+
 RouteMapBounds? calculateRouteBounds(List<Point>? points) {
   final valid = validRoutePoints(points);
   if (valid.length < 2) return null;
@@ -161,12 +191,20 @@ RouteCameraPlan? calculateRouteCameraPlan(
       .toDouble();
 
   final rotatedCenter = Offset((minX + maxX) / 2, (minY + maxY) / 2);
+  final visibleCenter = Offset(
+    margins.left + availableWidth / 2,
+    margins.top + availableHeight / 2,
+  );
+  final viewportCenter = Offset(viewport.width / 2, viewport.height / 2);
+  final screenOffset = visibleCenter - viewportCenter;
+  final scale = math.pow(2, zoom).toDouble();
+  final cameraCenter = rotatedCenter - screenOffset / scale;
   final inverseRadians = -radians;
   final inverseCosine = math.cos(inverseRadians);
   final inverseSine = math.sin(inverseRadians);
   final projectedCenter = Offset(
-    rotatedCenter.dx * inverseCosine - rotatedCenter.dy * inverseSine,
-    rotatedCenter.dx * inverseSine + rotatedCenter.dy * inverseCosine,
+    cameraCenter.dx * inverseCosine - cameraCenter.dy * inverseSine,
+    cameraCenter.dx * inverseSine + cameraCenter.dy * inverseCosine,
   );
   return RouteCameraPlan(
     center: _unprojectMercator(projectedCenter),

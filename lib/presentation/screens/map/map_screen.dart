@@ -152,7 +152,9 @@ double resolveZoomControlsBottom({
 bool shouldShowLowerMapControls({
   required double viewportHeight,
   required double mapControlsBottom,
+  bool forceVisible = false,
 }) {
+  if (forceVisible) return true;
   const controlHeight = 52.0;
   const minimumTop = 112.0;
   final controlTop = viewportHeight - mapControlsBottom - controlHeight;
@@ -162,12 +164,15 @@ bool shouldShowLowerMapControls({
 @visibleForTesting
 double resolveMapControlsBottom({
   required double mapPanelHeight,
+  double mapPanelBottom = 0,
   required bool parkingFabVisible,
-  required bool destinationCardVisible,
-}) =>
-    mapPanelHeight +
-    (parkingFabVisible ? 82.0 : 0.0) +
-    (destinationCardVisible ? 22.0 : 12.0);
+  bool panelVisible = false,
+}) {
+  const controlsGap = 12.0;
+  if (parkingFabVisible) return 82.0;
+  if (panelVisible) return mapPanelBottom + mapPanelHeight + controlsGap;
+  return controlsGap;
+}
 
 @visibleForTesting
 bool shouldIgnoreMapBackgroundTap({
@@ -235,6 +240,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
   bool _showCompass = false;
   MyLocationCameraMode _myLocationCameraMode = MyLocationCameraMode.free;
   double? _queuedZoomTarget;
+  double? _followingZoomTarget;
   double _queuedZoomDurationSeconds = _tapZoomDurationSeconds;
   bool _zoomMoveInFlight = false;
   int _zoomMoveGeneration = 0;
@@ -243,6 +249,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
   final ValueNotifier<int> _dynamicMapRevision = ValueNotifier(0);
   ({double west, double south, double east, double north})?
   _nativeVisibleBounds;
+  String? _lastZoneFetchBbox;
+  String? _zoneFetchInFlightBbox;
   List<Zone>? _cachedViewportZonesSource;
   ({double west, double south, double east, double north})?
   _cachedViewportBounds;
@@ -262,6 +270,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
   double _detailsPanelHeight = 300;
   double _routePreviewPanelHeight = 260;
   double _destinationPanelHeight = 168;
+  double _navigationPanelHeight = 86;
   Brightness? _markerBrightness;
 
   Map<int, Uint8List> _zoneLabelCache = {};
@@ -854,7 +863,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
     final azimuth = heading != null && heading.isFinite
         ? heading
         : _currentAzimuth;
-    final targetZoom = zoom ?? _currentZoom;
+    final targetZoom = (zoom ?? _followingZoomTarget ?? _currentZoom)
+        .clamp(_minMapZoom, _maxMapZoom)
+        .toDouble();
+    _followingZoomTarget = targetZoom;
     if (kIsWeb) {
       final margins = _getCurrentMapMargins();
       _webMapController.follow(
@@ -901,6 +913,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
   }
 
   void _resetMyLocationCameraMode() {
+    _followingZoomTarget = null;
     if (_myLocationCameraMode == MyLocationCameraMode.free || !mounted) return;
     setState(() => _myLocationCameraMode = MyLocationCameraMode.free);
   }
@@ -965,6 +978,13 @@ class _MapScreenState extends ConsumerState<MapScreen>
       mode: _myLocationCameraMode,
       userGesture: reason == CameraUpdateReason.gestures,
     );
+    if (nextLocationMode != MyLocationCameraMode.following) {
+      _followingZoomTarget = null;
+    } else if (cameraUpdateFinished &&
+        !_zoomMoveInFlight &&
+        _queuedZoomTarget == null) {
+      _followingZoomTarget = position.zoom;
+    }
     final showCompass =
         !isMapNorthUp(position.azimuth) ||
         (!cameraUpdateFinished && _showCompass);
@@ -1392,6 +1412,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
     if (clearCache) {
       _zoneLabelCache.clear();
       _zonesById.clear();
+      _lastZoneFetchBbox = null;
+      _zoneFetchInFlightBbox = null;
     }
     if (kIsWeb) {
       final camera = _webMapController.camera;
@@ -1415,13 +1437,37 @@ class _MapScreenState extends ConsumerState<MapScreen>
       }
       final dLon = (topRight.longitude - bottomLeft.longitude) * 0.5;
       final dLat = (topRight.latitude - bottomLeft.latitude) * 0.5;
-      final bbox =
-          '${bottomLeft.longitude - dLon},${bottomLeft.latitude - dLat},'
-          '${topRight.longitude + dLon},${topRight.latitude + dLat}';
-      await ref.read(rawZonesProvider.notifier).fetchZones(bbox);
+      final bbox = _expandedBboxString(
+        west: bottomLeft.longitude - dLon,
+        south: bottomLeft.latitude - dLat,
+        east: topRight.longitude + dLon,
+        north: topRight.latitude + dLat,
+      );
+      await _fetchZonesForBbox(bbox);
     } catch (e, st) {
       ref.read(rawZonesProvider.notifier).setErrorState(e, st);
     }
+  }
+
+  Future<void> _fetchZonesForBbox(String bbox) async {
+    if (bbox == _lastZoneFetchBbox || bbox == _zoneFetchInFlightBbox) return;
+    _zoneFetchInFlightBbox = bbox;
+    try {
+      await ref.read(rawZonesProvider.notifier).fetchZones(bbox);
+      _lastZoneFetchBbox = bbox;
+    } finally {
+      if (_zoneFetchInFlightBbox == bbox) _zoneFetchInFlightBbox = null;
+    }
+  }
+
+  String _expandedBboxString({
+    required double west,
+    required double south,
+    required double east,
+    required double north,
+  }) {
+    String fixed(double value) => value.toStringAsFixed(5);
+    return '${fixed(west)},${fixed(south)},${fixed(east)},${fixed(north)}';
   }
 
   List<Zone> _zonesInsideNativeViewport(List<Zone> zones) {
@@ -1444,11 +1490,14 @@ class _MapScreenState extends ConsumerState<MapScreen>
     }
     final dLon = (camera.east - camera.west) * 0.5;
     final dLat = (camera.north - camera.south) * 0.5;
-    final bbox =
-        '${camera.west - dLon},${camera.south - dLat},'
-        '${camera.east + dLon},${camera.north + dLat}';
+    final bbox = _expandedBboxString(
+      west: camera.west - dLon,
+      south: camera.south - dLat,
+      east: camera.east + dLon,
+      north: camera.north + dLat,
+    );
     try {
-      await ref.read(rawZonesProvider.notifier).fetchZones(bbox);
+      await _fetchZonesForBbox(bbox);
     } catch (e, st) {
       ref.read(rawZonesProvider.notifier).setErrorState(e, st);
     }
@@ -1468,6 +1517,13 @@ class _MapScreenState extends ConsumerState<MapScreen>
       mode: _myLocationCameraMode,
       userGesture: camera.userGesture,
     );
+    if (nextLocationMode != MyLocationCameraMode.following) {
+      _followingZoomTarget = null;
+    } else if (camera.cameraUpdateFinished &&
+        !_zoomMoveInFlight &&
+        _queuedZoomTarget == null) {
+      _followingZoomTarget = camera.zoom;
+    }
     final showCompass =
         !isMapNorthUp(camera.azimuth) ||
         (!camera.cameraUpdateFinished && _showCompass);
@@ -1639,6 +1695,11 @@ class _MapScreenState extends ConsumerState<MapScreen>
       MyLocationButtonAction.disableFollowingAndZoom =>
         MyLocationCameraMode.centered,
     };
+    if (nextMode == MyLocationCameraMode.following) {
+      _followingZoomTarget = _currentZoom;
+    } else {
+      _followingZoomTarget = null;
+    }
     if (mounted) setState(() => _myLocationCameraMode = nextMode);
 
     if (action == MyLocationButtonAction.enableFollowing) {
@@ -1698,9 +1759,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
     double delta, {
     required double durationSeconds,
   }) async {
-    final baseZoom = _queuedZoomTarget ?? _currentZoom;
+    final effectiveCurrentZoom = _followingZoomTarget ?? _currentZoom;
+    final baseZoom = _queuedZoomTarget ?? effectiveCurrentZoom;
     final targetZoom = nextQueuedMapZoom(
-      currentZoom: _currentZoom,
+      currentZoom: effectiveCurrentZoom,
       queuedZoom: _queuedZoomTarget,
       delta: delta,
     );
@@ -1744,10 +1806,12 @@ class _MapScreenState extends ConsumerState<MapScreen>
         zoom: targetZoom,
         durationSeconds: durationSeconds,
       );
+      _currentZoom = targetZoom;
       return;
     }
     if (kIsWeb) {
       _webMapController.setZoom(targetZoom, durationSeconds: durationSeconds);
+      _currentZoom = targetZoom;
       await Future<void>.delayed(
         Duration(milliseconds: math.max(1, (durationSeconds * 1000).round())),
       );
@@ -1767,6 +1831,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
       ),
       animation: MapAnimation(duration: durationSeconds),
     );
+    _currentZoom = targetZoom;
   }
 
   Future<void> _zoomIn() async {
@@ -1978,7 +2043,6 @@ class _MapScreenState extends ConsumerState<MapScreen>
   Future<void> _fitRoutePreview(List<Point>? polyline) async {
     final routePoints = validRoutePoints(polyline);
     if (routePoints.length < 2) return;
-    final azimuth = calculateRouteAzimuth(polyline) ?? 0;
     final mediaQuery = MediaQuery.of(context);
     final mapViewport = Size(
       math.max(1, mediaQuery.size.width - mediaQuery.padding.horizontal),
@@ -2010,18 +2074,26 @@ class _MapScreenState extends ConsumerState<MapScreen>
       );
       return;
     }
+    final nativeVisibleSize = Size(
+      math.max(1, mapViewport.width - routeMargins.horizontal - 16),
+      math.max(1, mapViewport.height - routeMargins.vertical - 16),
+    );
+    final plan = calculateRouteCameraPlan(
+      routePoints,
+      viewport: nativeVisibleSize,
+      margins: EdgeInsets.zero,
+    );
+    if (plan == null) return;
     await _mapController?.moveCamera(
-      CameraUpdate.newTiltAzimuthGeometry(
-        Geometry.fromPolyline(Polyline(points: routePoints)),
-        azimuth: azimuth,
-        focusRect: routeFocusRect(
-          viewport: mapViewport,
-          safePadding: EdgeInsets.zero,
-          bottomPanelHeight: _routePreviewPanelHeight,
-          devicePixelRatio: mediaQuery.devicePixelRatio,
+      CameraUpdate.newCameraPosition(
+        CameraPosition(
+          target: plan.center,
+          zoom: plan.zoom,
+          azimuth: plan.azimuth,
+          tilt: 0,
         ),
       ),
-      animation: const MapAnimation(duration: 0.8),
+      animation: const MapAnimation(duration: 0.7),
     );
   }
 
@@ -2761,14 +2833,16 @@ class _MapScreenState extends ConsumerState<MapScreen>
         : routePreviewVisible
         ? _routePreviewPanelHeight
         : isNavigating
-        ? 86.0 + MediaQuery.paddingOf(context).bottom
+        ? _navigationPanelHeight
         : destinationCardVisible
         ? _destinationPanelHeight
         : 0.0;
+    final mapPanelBottom = destinationCardVisible ? 12.0 : 0.0;
     final mapControlsBottom = resolveMapControlsBottom(
       mapPanelHeight: mapPanelHeight,
+      mapPanelBottom: mapPanelBottom,
       parkingFabVisible: parkingFabVisible,
-      destinationCardVisible: destinationCardVisible,
+      panelVisible: mapPanelHeight > 0,
     );
     final showZoomControls =
         !routePreviewVisible && viewportHeight - mapControlsBottom >= 280;
@@ -2781,11 +2855,14 @@ class _MapScreenState extends ConsumerState<MapScreen>
         shouldShowLowerMapControls(
           viewportHeight: viewportHeight,
           mapControlsBottom: mapControlsBottom,
+          forceVisible: destinationCardVisible || isNavigating,
         );
     final mapFocusMargins = EdgeInsets.only(
-      top: 88,
+      top: routePreviewVisible ? 112 : 88,
       right: 24,
-      bottom: mapPanelHeight > 0 ? mapPanelHeight + 20 : 0,
+      bottom: mapPanelHeight > 0
+          ? mapPanelHeight + (routePreviewVisible ? 32 : 20)
+          : 0,
       left: 24,
     );
     final nativeFocusRect = visibleMapFocusRect(
@@ -2894,248 +2971,205 @@ class _MapScreenState extends ConsumerState<MapScreen>
             Positioned.fill(
               child: MapBottomPanelSwitcher(
                 transitionKey: bottomPanelKey,
-                expand: true,
                 child: bottomPanelKey == 'bottom_panel_hidden'
                     ? null
-                    : Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          if (searchResultsVisible)
-                            Positioned.fill(
-                              child: CandidatesSheet(
-                                candidates: parkingSearchState.candidates,
-                                zones: zones,
-                                hasDestination: destination != null,
+                    : searchResultsVisible
+                    ? SizedBox.expand(
+                        child: CandidatesSheet(
+                          candidates: parkingSearchState.candidates,
+                          zones: zones,
+                          hasDestination: destination != null,
+                          originLatitude: _userPosition?.latitude,
+                          originLongitude: _userPosition?.longitude,
+                          panelState: resultsPanelState,
+                          lastViewedZoneId: parkingSearchState.lastViewedZoneId,
+                          initialScrollOffset: parkingSearchState.scrollOffset,
+                          onSelect: _openCandidateById,
+                          onAction: _onCandidateAction,
+                          onPanelHeightChanged: (height) {
+                            if ((_searchPanelHeight - height).abs() < 1 ||
+                                !mounted) {
+                              return;
+                            }
+                            setState(() => _searchPanelHeight = height);
+                          },
+                          onScrollOffsetChanged: ref
+                              .read(parkingSearchProvider.notifier)
+                              .saveScrollOffset,
+                          onClose: ref.read(routingProvider.notifier).reset,
+                        ),
+                      )
+                    : searchDetailsVisible && selectedDetailZone != null
+                    ? SizedBox(
+                        width: double.infinity,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxHeight: maxDetailsPanelHeight,
+                          ),
+                          child: _PanelSizeReporter(
+                            onSizeChanged: (height) {
+                              if ((_detailsPanelHeight - height).abs() < 1 ||
+                                  !mounted) {
+                                return;
+                              }
+                              setState(() => _detailsPanelHeight = height);
+                            },
+                            child: PointerInterceptor(
+                              intercepting: kIsWeb,
+                              child: ParkingCardSheet(
+                                zone: selectedDetailZone,
+                                candidate: selectedCandidate,
+                                resultIndex: selectedCandidateIndex,
+                                resultCount:
+                                    parkingSearchState.candidates.length,
+                                onBack: () {
+                                  ref
+                                      .read(parkingSearchProvider.notifier)
+                                      .backToResults();
+                                },
+                                onPrevious: selectedCandidateIndex > 0
+                                    ? () => _openAdjacentCandidate(-1)
+                                    : null,
+                                onNext:
+                                    selectedCandidateIndex >= 0 &&
+                                        selectedCandidateIndex <
+                                            parkingSearchState
+                                                    .candidates
+                                                    .length -
+                                                1
+                                    ? () => _openAdjacentCandidate(1)
+                                    : null,
+                                onBuildRoute: () => _buildRouteFromSearchCard(
+                                  selectedDetailZone,
+                                  selectedCandidate,
+                                ),
+                                onShare: (address) => _shareLink(
+                                  parkingShareUri(selectedDetailZone.zoneId),
+                                  '${s.parkingNumber}${selectedDetailZone.zoneId}',
+                                  text: _parkingShareText(
+                                    selectedDetailZone,
+                                    address,
+                                  ),
+                                ),
+                                onOpenExternal:
+                                    selectedDetailZone.geometry.isEmpty
+                                    ? null
+                                    : () {
+                                        final point = centroid(
+                                          selectedDetailZone.geometry,
+                                        );
+                                        _openExternalMap(
+                                          point.latitude,
+                                          point.longitude,
+                                        );
+                                      },
                                 originLatitude: _userPosition?.latitude,
                                 originLongitude: _userPosition?.longitude,
-                                panelState: resultsPanelState,
-                                lastViewedZoneId:
-                                    parkingSearchState.lastViewedZoneId,
-                                initialScrollOffset:
-                                    parkingSearchState.scrollOffset,
-                                onSelect: _openCandidateById,
-                                onAction: _onCandidateAction,
-                                onPanelHeightChanged: (height) {
-                                  if ((_searchPanelHeight - height).abs() < 1 ||
-                                      !mounted) {
-                                    return;
-                                  }
-                                  setState(() => _searchPanelHeight = height);
-                                },
-                                onScrollOffsetChanged: ref
-                                    .read(parkingSearchProvider.notifier)
-                                    .saveScrollOffset,
                                 onClose: ref
                                     .read(routingProvider.notifier)
                                     .reset,
                               ),
                             ),
-                          if (searchDetailsVisible &&
-                              selectedDetailZone != null)
-                            Positioned(
-                              left: 0,
-                              right: 0,
-                              bottom: 0,
-                              child: ConstrainedBox(
-                                constraints: BoxConstraints(
-                                  maxHeight: maxDetailsPanelHeight,
+                          ),
+                        ),
+                      )
+                    : standaloneDetailsVisible
+                    ? SizedBox(
+                        width: double.infinity,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxHeight: maxDetailsPanelHeight,
+                          ),
+                          child: _PanelSizeReporter(
+                            onSizeChanged: (height) {
+                              if ((_detailsPanelHeight - height).abs() < 1 ||
+                                  !mounted) {
+                                return;
+                              }
+                              setState(() => _detailsPanelHeight = height);
+                            },
+                            child: PointerInterceptor(
+                              intercepting: kIsWeb,
+                              child: ParkingCardSheet(
+                                zone: _standaloneSelectedZone!,
+                                onBuildRoute: () => _buildRouteForZone(
+                                  _standaloneSelectedZone!.zoneId,
                                 ),
-                                child: _PanelSizeReporter(
-                                  onSizeChanged: (height) {
-                                    if ((_detailsPanelHeight - height).abs() <
-                                            1 ||
-                                        !mounted) {
-                                      return;
-                                    }
-                                    setState(
-                                      () => _detailsPanelHeight = height,
-                                    );
-                                    _scheduleParkingFocus(selectedDetailZone);
-                                  },
-                                  child: PointerInterceptor(
-                                    intercepting: kIsWeb,
-                                    child: ParkingCardSheet(
-                                      zone: selectedDetailZone,
-                                      candidate: selectedCandidate,
-                                      resultIndex: selectedCandidateIndex,
-                                      resultCount:
-                                          parkingSearchState.candidates.length,
-                                      onBack: () {
-                                        ref
-                                            .read(
-                                              parkingSearchProvider.notifier,
-                                            )
-                                            .backToResults();
+                                onShare: (address) => _shareLink(
+                                  parkingShareUri(
+                                    _standaloneSelectedZone!.zoneId,
+                                  ),
+                                  '${s.parkingNumber}'
+                                  '${_standaloneSelectedZone!.zoneId}',
+                                  text: _parkingShareText(
+                                    _standaloneSelectedZone!,
+                                    address,
+                                  ),
+                                ),
+                                onOpenExternal:
+                                    _standaloneSelectedZone!.geometry.isEmpty
+                                    ? null
+                                    : () {
+                                        final point = centroid(
+                                          _standaloneSelectedZone!.geometry,
+                                        );
+                                        _openExternalMap(
+                                          point.latitude,
+                                          point.longitude,
+                                        );
                                       },
-                                      onPrevious: selectedCandidateIndex > 0
-                                          ? () => _openAdjacentCandidate(-1)
-                                          : null,
-                                      onNext:
-                                          selectedCandidateIndex >= 0 &&
-                                              selectedCandidateIndex <
-                                                  parkingSearchState
-                                                          .candidates
-                                                          .length -
-                                                      1
-                                          ? () => _openAdjacentCandidate(1)
-                                          : null,
-                                      onBuildRoute: () =>
-                                          _buildRouteFromSearchCard(
-                                            selectedDetailZone,
-                                            selectedCandidate,
-                                          ),
-                                      onShare: (address) => _shareLink(
-                                        parkingShareUri(
-                                          selectedDetailZone.zoneId,
-                                        ),
-                                        '${s.parkingNumber}${selectedDetailZone.zoneId}',
-                                        text: _parkingShareText(
-                                          selectedDetailZone,
-                                          address,
-                                        ),
-                                      ),
-                                      onOpenExternal:
-                                          selectedDetailZone.geometry.isEmpty
-                                          ? null
-                                          : () {
-                                              final point = centroid(
-                                                selectedDetailZone.geometry,
-                                              );
-                                              _openExternalMap(
-                                                point.latitude,
-                                                point.longitude,
-                                              );
-                                            },
-                                      originLatitude: _userPosition?.latitude,
-                                      originLongitude: _userPosition?.longitude,
-                                      onClose: ref
-                                          .read(routingProvider.notifier)
-                                          .reset,
-                                    ),
-                                  ),
-                                ),
+                                originLatitude: _userPosition?.latitude,
+                                originLongitude: _userPosition?.longitude,
+                                onClose: _closeStandaloneParkingDetails,
                               ),
                             ),
-                          if (standaloneDetailsVisible)
-                            Positioned(
-                              left: 0,
-                              right: 0,
-                              bottom: 0,
-                              child: ConstrainedBox(
-                                constraints: BoxConstraints(
-                                  maxHeight: maxDetailsPanelHeight,
-                                ),
-                                child: _PanelSizeReporter(
-                                  onSizeChanged: (height) {
-                                    if ((_detailsPanelHeight - height).abs() <
-                                            1 ||
-                                        !mounted) {
-                                      return;
-                                    }
-                                    setState(
-                                      () => _detailsPanelHeight = height,
-                                    );
-                                    final zone = _standaloneSelectedZone;
-                                    if (zone != null) {
-                                      _scheduleParkingFocus(zone);
-                                    }
-                                  },
-                                  child: PointerInterceptor(
-                                    intercepting: kIsWeb,
-                                    child: ParkingCardSheet(
-                                      zone: _standaloneSelectedZone!,
-                                      onBuildRoute: () => _buildRouteForZone(
-                                        _standaloneSelectedZone!.zoneId,
-                                      ),
-                                      onShare: (address) => _shareLink(
-                                        parkingShareUri(
-                                          _standaloneSelectedZone!.zoneId,
-                                        ),
-                                        '${s.parkingNumber}'
-                                        '${_standaloneSelectedZone!.zoneId}',
-                                        text: _parkingShareText(
-                                          _standaloneSelectedZone!,
-                                          address,
-                                        ),
-                                      ),
-                                      onOpenExternal:
-                                          _standaloneSelectedZone!
-                                              .geometry
-                                              .isEmpty
-                                          ? null
-                                          : () {
-                                              final point = centroid(
-                                                _standaloneSelectedZone!
-                                                    .geometry,
-                                              );
-                                              _openExternalMap(
-                                                point.latitude,
-                                                point.longitude,
-                                              );
-                                            },
-                                      originLatitude: _userPosition?.latitude,
-                                      originLongitude: _userPosition?.longitude,
-                                      onClose: _closeStandaloneParkingDetails,
-                                    ),
+                          ),
+                        ),
+                      )
+                    : routePreviewVisible
+                    ? SizedBox(
+                        width: double.infinity,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxHeight: maxRoutePreviewPanelHeight,
+                          ),
+                          child: _PanelSizeReporter(
+                            onSizeChanged: (height) {
+                              if ((_routePreviewPanelHeight - height).abs() <
+                                      1 ||
+                                  !mounted) {
+                                return;
+                              }
+                              setState(() => _routePreviewPanelHeight = height);
+                            },
+                            child: PointerInterceptor(
+                              intercepting: kIsWeb,
+                              child: RoutePreviewSheet(
+                                route: routePreview,
+                                onShare: () => unawaited(
+                                  _shareRouteLink(
+                                    routePreview,
+                                    routePreviewTarget,
                                   ),
                                 ),
-                              ),
-                            ),
-                          if (routePreviewVisible)
-                            Positioned(
-                              left: 0,
-                              right: 0,
-                              bottom: 0,
-                              child: ConstrainedBox(
-                                constraints: BoxConstraints(
-                                  maxHeight: maxRoutePreviewPanelHeight,
-                                ),
-                                child: _PanelSizeReporter(
-                                  onSizeChanged: (height) {
-                                    if ((_routePreviewPanelHeight - height)
-                                                .abs() <
-                                            1 ||
-                                        !mounted) {
-                                      return;
-                                    }
-                                    setState(
-                                      () => _routePreviewPanelHeight = height,
-                                    );
-                                    _scheduleRoutePreviewFit(_routePolyline);
-                                  },
-                                  child: PointerInterceptor(
-                                    intercepting: kIsWeb,
-                                    child: RoutePreviewSheet(
-                                      route: routePreview,
-                                      onShare: () => unawaited(
-                                        _shareRouteLink(
-                                          routePreview,
-                                          routePreviewTarget,
-                                        ),
+                                zoneLat: routePreviewTarget?.latitude,
+                                zoneLon: routePreviewTarget?.longitude,
+                                onNavigateInApp: routePreviewTarget == null
+                                    ? null
+                                    : () => _startInAppNavigation(
+                                        zoneId: routePreview.selectedZoneId,
+                                        toLat: routePreviewTarget!.latitude,
+                                        toLon: routePreviewTarget.longitude,
                                       ),
-                                      zoneLat: routePreviewTarget?.latitude,
-                                      zoneLon: routePreviewTarget?.longitude,
-                                      onNavigateInApp:
-                                          routePreviewTarget == null
-                                          ? null
-                                          : () => _startInAppNavigation(
-                                              zoneId:
-                                                  routePreview.selectedZoneId,
-                                              toLat:
-                                                  routePreviewTarget!.latitude,
-                                              toLon:
-                                                  routePreviewTarget.longitude,
-                                            ),
-                                      onClose: ref
-                                          .read(routingProvider.notifier)
-                                          .reset,
-                                    ),
-                                  ),
-                                ),
+                                onClose: ref
+                                    .read(routingProvider.notifier)
+                                    .reset,
                               ),
                             ),
-                        ],
-                      ),
+                          ),
+                        ),
+                      )
+                    : const SizedBox.shrink(),
               ),
             ),
             // ─── Top bar ───────────────────────────────────────────────
@@ -3407,11 +3441,20 @@ class _MapScreenState extends ConsumerState<MapScreen>
                 right: 0,
                 child: PointerInterceptor(
                   intercepting: kIsWeb,
-                  child: NavigationBottomBar(
-                    onFinish: () {
-                      ref.read(navigationProvider.notifier).stop();
-                      ref.read(routingProvider.notifier).reset();
+                  child: _PanelSizeReporter(
+                    onSizeChanged: (height) {
+                      if ((_navigationPanelHeight - height).abs() < 1 ||
+                          !mounted) {
+                        return;
+                      }
+                      setState(() => _navigationPanelHeight = height);
                     },
+                    child: NavigationBottomBar(
+                      onFinish: () {
+                        ref.read(navigationProvider.notifier).stop();
+                        ref.read(routingProvider.notifier).reset();
+                      },
+                    ),
                   ),
                 ),
               ),
