@@ -558,10 +558,8 @@
         ? zones[0].clusterOne
         : zones[0].clusterFree;
     const size = clusterSize(zones.length);
-    const fontSize = size >= 38 * parkingMarkerScaleFactor
-      ? 13 * parkingMarkerScaleFactor
-      : 11 * parkingMarkerScaleFactor;
-    el.style.cssText = `position:absolute;left:0;top:0;transform:translate(-50%,-50%);width:${size}px;height:${size}px;box-sizing:border-box;border:0;border-radius:9999px;background:${color};display:flex;align-items:center;justify-content:center;text-align:center;color:${zones[0].markerTextColor};font:600 ${fontSize}px/1 Roboto,Arial,sans-serif;cursor:pointer;box-shadow:0 4px 6px -1px rgba(0,0,0,.1),0 2px 4px -2px rgba(0,0,0,.1),0 0 0 2px rgba(255,255,255,.7);opacity:${opacity};z-index:2100`;
+    const fontSize = size >= 38 * parkingMarkerScaleFactor ? 19 : 17;
+    el.style.cssText = `position:absolute;left:0;top:0;transform:translate(-50%,-50%);width:${size}px;height:${size}px;box-sizing:border-box;border:0;border-radius:9999px;background:${color};display:flex;align-items:center;justify-content:center;text-align:center;color:${zones[0].markerTextColor};font:800 ${fontSize}px/1 Roboto,Arial,sans-serif;cursor:pointer;box-shadow:0 4px 6px -1px rgba(0,0,0,.1),0 2px 4px -2px rgba(0,0,0,.1),0 0 0 2px rgba(255,255,255,.7);opacity:${opacity};z-index:2100`;
     el.textContent = String(freeCount);
     el.onclick = (e) => { e.stopPropagation(); onTap(); };
     return el;
@@ -1101,7 +1099,7 @@
       const coordinates = [state.destination[1], state.destination[0]];
       if (!entry.destinationMarkerElement) {
         entry.destinationMarkerElement = document.createElement('div');
-        entry.destinationMarkerElement.style.cssText = 'position:absolute;left:-16px;top:-40px;width:32px;height:40px;z-index:2300';
+        entry.destinationMarkerElement.style.cssText = 'position:absolute;left:-16px;top:-40px;width:32px;height:40px;opacity:1;z-index:2300';
         entry.destinationMarkerElement.innerHTML = '<svg viewBox="0 0 32 40" width="32" height="40" style="filter:drop-shadow(0 2px 2px rgba(0,0,0,.35))"><path d="M16 39C13 32 4 24 4 14A12 12 0 0 1 28 14C28 24 19 32 16 39Z" fill="#2e7d32" stroke="#fff" stroke-width="2"/><circle cx="16" cy="14" r="4" fill="#fff"/></svg>';
       }
       if (entry.destinationMarkerObject) {
@@ -1380,9 +1378,14 @@
       const entry = entries.get(id);
       if (entry && entry.map) entry.map.setLocation({ center: [lon, lat], zoom, duration: 300 });
     },
-    setZoom(id, z) {
+    setZoom(id, z, durationMilliseconds) {
       const entry = entries.get(id);
-      if (entry && entry.map) entry.map.setLocation({ zoom: z, duration: 200 });
+      if (entry && entry.map) {
+        entry.map.setLocation({
+          zoom: z,
+          duration: Math.max(0, Number(durationMilliseconds) || 0)
+        });
+      }
     },
     resetNorth(id) {
       const entry = entries.get(id);
@@ -1407,20 +1410,7 @@
         });
       }
     },
-    focus(id, lat, lon, zoom, top, right, bottom, left) {
-      const entry = entries.get(id);
-      if (entry && entry.map) {
-        entry.map.update({
-          margin: [top || 0, right || 0, bottom || 0, left || 0]
-        });
-        entry.map.setLocation({
-          center: [lon, lat],
-          zoom,
-          duration: 300
-        });
-      }
-    },
-    follow(id, lat, lon, zoom, azimuth, top, right, bottom, left) {
+    setCamera(id, lat, lon, zoom, azimuth, top, right, bottom, left) {
       const entry = entries.get(id);
       if (entry && entry.map) {
         entry.map.update({
@@ -1430,7 +1420,45 @@
           center: [lon, lat],
           zoom,
           azimuth,
-          duration: 180
+          duration: 600
+        });
+      }
+    },
+    focus(id, lat, lon, zoom, top, right, bottom, left) {
+      const entry = entries.get(id);
+      if (entry && entry.map) {
+        entry.map.update({
+          margin: [top || 0, right || 0, bottom || 0, left || 0]
+        });
+        entry.map.setLocation({
+          center: [lon, lat],
+          zoom,
+          duration: 600
+        });
+      }
+    },
+    follow(
+      id,
+      lat,
+      lon,
+      zoom,
+      azimuth,
+      top,
+      right,
+      bottom,
+      left,
+      durationMilliseconds
+    ) {
+      const entry = entries.get(id);
+      if (entry && entry.map) {
+        entry.map.update({
+          margin: [top || 0, right || 0, bottom || 0, left || 0]
+        });
+        entry.map.setLocation({
+          center: [lon, lat],
+          zoom,
+          azimuth,
+          duration: Math.max(0, Number(durationMilliseconds) || 0)
         });
       }
     },

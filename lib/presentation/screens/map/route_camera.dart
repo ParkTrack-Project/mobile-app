@@ -22,6 +22,18 @@ class RouteMapBounds {
   );
 }
 
+class RouteCameraPlan {
+  const RouteCameraPlan({
+    required this.center,
+    required this.zoom,
+    required this.azimuth,
+  });
+
+  final Point center;
+  final double zoom;
+  final double azimuth;
+}
+
 RouteMapBounds? calculateRouteBounds(List<Point>? points) {
   final valid = validRoutePoints(points);
   if (valid.length < 2) return null;
@@ -91,6 +103,97 @@ double _longitudeDelta(double from, double to) =>
 double _radians(double degrees) => degrees * math.pi / 180;
 
 double _degrees(double radians) => radians * 180 / math.pi;
+
+RouteCameraPlan? calculateRouteCameraPlan(
+  List<Point>? points, {
+  required Size viewport,
+  required EdgeInsets margins,
+  double minimumZoom = 3,
+  double maximumZoom = 21,
+}) {
+  final valid = validRoutePoints(points);
+  final azimuth = calculateRouteAzimuth(valid);
+  if (valid.length < 2 || azimuth == null) return null;
+
+  final radians = _radians(-azimuth);
+  final cosine = math.cos(radians);
+  final sine = math.sin(radians);
+  final unwrapped = <Point>[];
+  var previousLongitude = valid.first.longitude;
+  var unwrappedLongitude = previousLongitude;
+  for (final point in valid) {
+    if (unwrapped.isNotEmpty) {
+      unwrappedLongitude += _longitudeDelta(previousLongitude, point.longitude);
+      previousLongitude = point.longitude;
+    }
+    unwrapped.add(
+      Point(latitude: point.latitude, longitude: unwrappedLongitude),
+    );
+  }
+  final projected = unwrapped
+      .map(_projectMercator)
+      .map((point) {
+        return Offset(
+          point.dx * cosine - point.dy * sine,
+          point.dx * sine + point.dy * cosine,
+        );
+      })
+      .toList(growable: false);
+  final minX = projected.map((point) => point.dx).reduce(math.min);
+  final maxX = projected.map((point) => point.dx).reduce(math.max);
+  final minY = projected.map((point) => point.dy).reduce(math.min);
+  final maxY = projected.map((point) => point.dy).reduce(math.max);
+  final availableWidth = math.max(
+    1.0,
+    viewport.width - margins.horizontal - 16,
+  );
+  final availableHeight = math.max(
+    1.0,
+    viewport.height - margins.vertical - 16,
+  );
+  final spanX = math.max(1e-9, maxX - minX);
+  final spanY = math.max(1e-9, maxY - minY);
+  final zoomX = math.log(availableWidth / spanX) / math.ln2;
+  final zoomY = math.log(availableHeight / spanY) / math.ln2;
+  final zoom = math
+      .min(zoomX, zoomY)
+      .clamp(minimumZoom, maximumZoom)
+      .toDouble();
+
+  final rotatedCenter = Offset((minX + maxX) / 2, (minY + maxY) / 2);
+  final inverseRadians = -radians;
+  final inverseCosine = math.cos(inverseRadians);
+  final inverseSine = math.sin(inverseRadians);
+  final projectedCenter = Offset(
+    rotatedCenter.dx * inverseCosine - rotatedCenter.dy * inverseSine,
+    rotatedCenter.dx * inverseSine + rotatedCenter.dy * inverseCosine,
+  );
+  return RouteCameraPlan(
+    center: _unprojectMercator(projectedCenter),
+    zoom: zoom,
+    azimuth: azimuth,
+  );
+}
+
+Offset _projectMercator(Point point) {
+  final latitude = point.latitude.clamp(-85.05112878, 85.05112878);
+  final sinLatitude = math.sin(_radians(latitude));
+  return Offset(
+    ((point.longitude + 180) / 360) * 256,
+    (0.5 - math.log((1 + sinLatitude) / (1 - sinLatitude)) / (4 * math.pi)) *
+        256,
+  );
+}
+
+Point _unprojectMercator(Offset point) {
+  final rawLongitude = point.dx / 256 * 360 - 180;
+  final longitude = ((rawLongitude + 180) % 360 + 360) % 360 - 180;
+  final mercatorY = 0.5 - point.dy / 256;
+  final value = mercatorY * 2 * math.pi;
+  final hyperbolicSine = (math.exp(value) - math.exp(-value)) / 2;
+  final latitude = _degrees(math.atan(hyperbolicSine));
+  return Point(latitude: latitude, longitude: longitude);
+}
 
 RouteMapBounds padRouteBoundsForPanel(
   RouteMapBounds bounds, {

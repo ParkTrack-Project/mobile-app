@@ -40,7 +40,11 @@ external void _moveYandexMap(
 );
 
 @JS('parkTrackYandexMaps.setZoom')
-external void _setYandexMapZoom(JSString elementId, JSNumber zoom);
+external void _setYandexMapZoom(
+  JSString elementId,
+  JSNumber zoom,
+  JSNumber durationMilliseconds,
+);
 
 @JS('parkTrackYandexMaps.retry')
 external void _retryYandexMap(JSString elementId);
@@ -79,6 +83,20 @@ external void _focusYandexMap(
 
 @JS('parkTrackYandexMaps.follow')
 external void _followYandexMap(
+  JSString elementId,
+  JSNumber latitude,
+  JSNumber longitude,
+  JSNumber zoom,
+  JSNumber azimuth,
+  JSNumber top,
+  JSNumber right,
+  JSNumber bottom,
+  JSNumber left,
+  JSNumber durationMilliseconds,
+);
+
+@JS('parkTrackYandexMaps.setCamera')
+external void _setYandexMapCamera(
   JSString elementId,
   JSNumber latitude,
   JSNumber longitude,
@@ -235,8 +253,12 @@ class _WebMapViewState extends State<WebMapView> {
     widget.controller.moveHandler = (latitude, longitude, zoom) {
       _moveYandexMap(_elementId.toJS, latitude.toJS, longitude.toJS, zoom.toJS);
     };
-    widget.controller.zoomHandler = (zoom) {
-      _setYandexMapZoom(_elementId.toJS, zoom.toJS);
+    widget.controller.zoomHandler = (zoom, durationSeconds) {
+      _setYandexMapZoom(
+        _elementId.toJS,
+        zoom.toJS,
+        (durationSeconds * 1000).toJS,
+      );
     };
     widget.controller.fitBoundsWithInsetsHandler =
         (south, west, north, east, azimuth, top, right, bottom, left) {
@@ -267,8 +289,33 @@ class _WebMapViewState extends State<WebMapView> {
           );
         };
     widget.controller.followHandler =
-        (latitude, longitude, zoom, azimuth, top, right, bottom, left) {
+        (
+          latitude,
+          longitude,
+          zoom,
+          azimuth,
+          top,
+          right,
+          bottom,
+          left,
+          durationSeconds,
+        ) {
           _followYandexMap(
+            _elementId.toJS,
+            latitude.toJS,
+            longitude.toJS,
+            zoom.toJS,
+            azimuth.toJS,
+            top.toJS,
+            right.toJS,
+            bottom.toJS,
+            left.toJS,
+            (durationSeconds * 1000).toJS,
+          );
+        };
+    widget.controller.cameraHandler =
+        (latitude, longitude, zoom, azimuth, top, right, bottom, left) {
+          _setYandexMapCamera(
             _elementId.toJS,
             latitude.toJS,
             longitude.toJS,
