@@ -1,0 +1,242 @@
+name: Manual publish Android to Google Play
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag, or commit SHA to publish. Leave empty to use the selected workflow branch.
+        required: false
+        type: string
+      track:
+        description: Google Play track to publish to
+        required: true
+        type: choice
+        options:
+          - internal
+          - alpha
+          - beta
+          - production
+
+permissions:
+  contents: read
+
+concurrency:
+  group: manual-google-play-${{ inputs.track }}
+  cancel-in-progress: false
+
+env:
+  PACKAGE_NAME: com.parktrack.mobile
+  NDK_VERSION: 30.0.14904198
+
+jobs:
+  publish:
+    name: Build and publish AAB
+    runs-on: ubuntu-latest
+
+    environment:
+      name: google-play-release
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref_name }}
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Accept Android SDK licenses and install NDK
+        run: |
+          set -euo pipefail
+
+          ANDROID_SDK_DIR="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$ANDROID_SDK_DIR/cmdline-tools/latest/bin/sdkmanager"
+
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(
+              find "$ANDROID_SDK_DIR/cmdline-tools" \
+                -type f \
+                -name sdkmanager \
+                -print \
+                -quit \
+                2>/dev/null || true
+            )"
+          fi
+
+          if [ -z "$SDKMANAGER" ] || [ ! -x "$SDKMANAGER" ]; then
+            echo "sdkmanager was not found in $ANDROID_SDK_DIR"
+            exit 1
+          fi
+
+          echo "Using sdkmanager: $SDKMANAGER"
+          "$SDKMANAGER" --licenses < <(yes)
+          "$SDKMANAGER" "ndk;${NDK_VERSION}"
+          test -d "$ANDROID_SDK_DIR/ndk/${NDK_VERSION}"
+
+      - name: Show versions
+        run: |
+          flutter --version
+          java --version
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Generate source files
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Read and validate release version
+        run: |
+          set -euo pipefail
+
+          APP_VERSION="$(awk '/^version:/ {print $2; exit}' pubspec.yaml)"
+          VERSION_NAME="${APP_VERSION%%+*}"
+          VERSION_CODE="${APP_VERSION#*+}"
+
+          if [ -z "$APP_VERSION" ]; then
+            echo "Version is missing in pubspec.yaml"
+            exit 1
+          fi
+
+          if [ "$VERSION_NAME" = "$APP_VERSION" ]; then
+            echo "pubspec.yaml version must include Android build number: $APP_VERSION"
+            exit 1
+          fi
+
+          if ! [[ "$VERSION_CODE" =~ ^[0-9]+$ ]]; then
+            echo "Invalid Android version code: $VERSION_CODE"
+            exit 1
+          fi
+
+          echo "RELEASE_VERSION=$VERSION_NAME" >> "$GITHUB_ENV"
+          echo "ANDROID_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
+          echo "RELEASE_NAME=v$VERSION_NAME" >> "$GITHUB_ENV"
+
+          echo "Release version: $VERSION_NAME"
+          echo "Android version code: $VERSION_CODE"
+
+      - name: Restore Android signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+
+          : "${KEYSTORE_BASE64:?ANDROID_KEYSTORE_BASE64 is missing}"
+          : "${STORE_PASSWORD:?ANDROID_KEYSTORE_PASSWORD is missing}"
+          : "${KEY_PASSWORD:?ANDROID_KEY_PASSWORD is missing}"
+          : "${KEY_ALIAS:?ANDROID_KEY_ALIAS is missing}"
+
+          mkdir -p android/app
+
+          printf '%s' "$KEYSTORE_BASE64" \
+            | base64 --decode \
+            > android/app/upload-keystore.jks
+
+          printf '%s\n' \
+            "storePassword=$STORE_PASSWORD" \
+            "keyPassword=$KEY_PASSWORD" \
+            "keyAlias=$KEY_ALIAS" \
+            "storeFile=upload-keystore.jks" \
+            > android/key.properties
+
+      - name: Verify signing key
+        env:
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          keytool -list \
+            -keystore android/app/upload-keystore.jks \
+            -storepass "$STORE_PASSWORD" \
+            -alias "$KEY_ALIAS" \
+            > /dev/null
+
+          echo "Signing key is valid"
+
+      - name: Analyze project
+        run: flutter analyze
+
+      - name: Run tests
+        run: |
+          if [ -d test ]; then
+            flutter test
+          else
+            echo "No test directory, skipping tests"
+          fi
+
+      - name: Build signed Android App Bundle
+        run: flutter build appbundle --release
+
+      - name: Check generated Android App Bundle
+        run: |
+          ls -lh build/app/outputs/bundle/release/
+          test -f build/app/outputs/bundle/release/app-release.aab
+
+      - name: Prepare Google Play release notes
+        run: |
+          set -euo pipefail
+
+          SOURCE_DIR="distribution/releases/$RELEASE_VERSION"
+          TARGET_DIR="build/google-play/whatsnew"
+
+          echo "Preparing release notes for version: $RELEASE_VERSION"
+
+          test -f "$SOURCE_DIR/whatsnew-ru-RU"
+          test -f "$SOURCE_DIR/whatsnew-en-US"
+
+          mkdir -p "$TARGET_DIR"
+
+          cp "$SOURCE_DIR/whatsnew-ru-RU" \
+            "$TARGET_DIR/whatsnew-ru-RU"
+
+          cp "$SOURCE_DIR/whatsnew-en-US" \
+            "$TARGET_DIR/whatsnew-en-US"
+
+      - name: Validate Google Play release notes
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          directory = Path("build/google-play/whatsnew")
+          required_locales = ("ru-RU", "en-US")
+
+          for locale in required_locales:
+              path = directory / f"whatsnew-{locale}"
+
+              if not path.exists():
+                  raise SystemExit(f"Missing release notes: {path}")
+
+              text = path.read_text(encoding="utf-8").strip()
+
+              if not text:
+                  raise SystemExit(f"Release notes are empty: {path}")
+
+              if len(text) > 500:
+                  raise SystemExit(
+                      f"{path} contains {len(text)} characters; maximum is 500"
+                  )
+
+              print(f"{locale}: {len(text)} characters")
+          PY
+
+      - name: Upload to Google Play
+        uses: r0adkll/upload-google-play@v1.1.5
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: ${{ env.PACKAGE_NAME }}
+          releaseFiles: build/app/outputs/bundle/release/app-release.aab
+          tracks: ${{ inputs.track }}
+          status: completed
+          releaseName: ${{ env.RELEASE_NAME }}
+          whatsNewDirectory: build/google-play/whatsnew
