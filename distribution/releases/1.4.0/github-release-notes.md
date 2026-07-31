@@ -56,6 +56,8 @@ more reliable across Android and the web app.
 
 ### Web/PWA
 
+- Fixed route and parking sharing so the browser share sheet no longer fails
+  when a native Flutter plugin channel is unavailable.
 - Stopped serializing and redrawing all parking zones for every GPS position
   update; moving markers now use a lightweight update path.
 - Fixed route-preview framing so routes fit in the visible map area above the

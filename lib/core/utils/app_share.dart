@@ -2,6 +2,9 @@ import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
+import 'app_share_platform.dart'
+    if (dart.library.js_interop) 'app_share_platform_web.dart';
+
 const parkTrackMobileHost = 'm.parktrack.live';
 
 Uri parkingShareUri(int zoneId) =>
@@ -50,7 +53,7 @@ Future<void> shareParkTrackLink(
   final origin = overlay is RenderBox
       ? overlay.localToGlobal(Offset.zero) & overlay.size
       : null;
-  await SharePlus.instance.share(
+  await shareParkTrackParams(
     buildParkTrackShareParams(
       uri: uri,
       title: title,

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/core/utils/app_share.dart';
+import 'package:mobile/core/utils/app_share_platform_shared.dart';
 
 void main() {
   test('builds canonical ParkTrack share links', () {
@@ -48,6 +49,24 @@ void main() {
     expect(
       params.text,
       'Parking #42\n42 Test Street\nhttps://m.parktrack.live/parking/42',
+    );
+  });
+
+  test('builds an email fallback from the Web share payload', () {
+    final params = buildParkTrackShareParams(
+      uri: routeShareUri(7),
+      title: 'Route Ready',
+      text: 'Route to parking #42',
+      isWeb: true,
+    );
+
+    final fallback = buildShareMailtoUri(params);
+
+    expect(fallback.scheme, 'mailto');
+    expect(fallback.queryParameters['subject'], isNull);
+    expect(
+      fallback.queryParameters['body'],
+      'Route to parking #42\nhttps://m.parktrack.live/route/7',
     );
   });
 }
