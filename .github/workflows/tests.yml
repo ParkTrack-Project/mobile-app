@@ -2,27 +2,22 @@ name: Tests
 
 on:
   push:
-    branches:
-      - '**'
 
 permissions:
   contents: read
 
-concurrency:
-  group: tests-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  test:
-    name: Run Flutter tests
+  flutter-tests:
+    name: Flutter tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Set up Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           flutter-version: '3.41.7'
           channel: stable
@@ -31,8 +26,5 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Generate source files
-        run: dart run build_runner build --delete-conflicting-outputs
-
-      - name: Run tests
-        run: flutter test test
+      - name: Run all tests
+        run: flutter test --no-pub
