@@ -162,6 +162,38 @@ void main() {
     expect(finish.dy, lessThan(start.dy));
   });
 
+  test('fits a very long web route below zoom 3 on a narrow viewport', () {
+    const route = [
+      Point(latitude: 55.8642, longitude: -4.2518),
+      Point(latitude: 55.9533, longitude: 23.4167),
+      Point(latitude: 55.7558, longitude: 37.6173),
+      Point(latitude: 55.0302, longitude: 60.1084),
+      Point(latitude: 55.0084, longitude: 82.9357),
+    ];
+    const viewport = Size(381, 717);
+    const margins = EdgeInsets.fromLTRB(32, 112, 32, 221);
+    final plan = calculateRouteCameraPlanWithMapMargins(
+      route,
+      viewport: viewport,
+      margins: margins,
+    );
+
+    expect(plan, isNotNull);
+    expect(plan!.zoom, lessThan(3));
+    for (final point in route) {
+      final screenPoint = projectRoutePointToViewport(
+        point,
+        plan,
+        viewport: viewport,
+        cameraMargins: margins,
+      );
+      expect(screenPoint.dx - 16, greaterThanOrEqualTo(0));
+      expect(screenPoint.dx + 16, lessThanOrEqualTo(viewport.width));
+      expect(screenPoint.dy - 40, greaterThanOrEqualTo(0));
+      expect(screenPoint.dy, lessThanOrEqualTo(viewport.height));
+    }
+  });
+
   test('route camera plan keeps date-line routes local', () {
     final plan = calculateRouteCameraPlan(
       const [

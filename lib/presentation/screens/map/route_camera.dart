@@ -229,7 +229,7 @@ RouteCameraPlan? calculateRouteCameraPlanWithMapMargins(
   List<Point>? points, {
   required Size viewport,
   required EdgeInsets margins,
-  double minimumZoom = 3,
+  double minimumZoom = 0,
   double maximumZoom = 21,
 }) {
   final visibleViewport = Size(

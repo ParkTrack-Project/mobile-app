@@ -149,6 +149,12 @@ double resolveZoomControlsBottom({
 }
 
 @visibleForTesting
+bool shouldShowZoomControls({
+  required double viewportHeight,
+  required double mapControlsBottom,
+}) => viewportHeight - mapControlsBottom >= 280;
+
+@visibleForTesting
 bool shouldShowLowerMapControls({
   required double viewportHeight,
   required double mapControlsBottom,
@@ -2904,19 +2910,19 @@ class _MapScreenState extends ConsumerState<MapScreen>
       parkingFabVisible: parkingFabVisible,
       panelVisible: mapPanelHeight > 0,
     );
-    final showZoomControls =
-        !routePreviewVisible && viewportHeight - mapControlsBottom >= 280;
+    final showZoomControls = shouldShowZoomControls(
+      viewportHeight: viewportHeight,
+      mapControlsBottom: mapControlsBottom,
+    );
     final zoomControlsBottom = resolveZoomControlsBottom(
       viewportHeight: viewportHeight,
       mapControlsBottom: mapControlsBottom,
     );
-    final showLowerMapControls =
-        !routePreviewVisible &&
-        shouldShowLowerMapControls(
-          viewportHeight: viewportHeight,
-          mapControlsBottom: mapControlsBottom,
-          forceVisible: destinationCardVisible || isNavigating,
-        );
+    final showLowerMapControls = shouldShowLowerMapControls(
+      viewportHeight: viewportHeight,
+      mapControlsBottom: mapControlsBottom,
+      forceVisible: destinationCardVisible || isNavigating,
+    );
     final mapFocusMargins = EdgeInsets.only(
       top: routePreviewVisible ? 112 : 88,
       right: 24,

@@ -48,6 +48,37 @@ void main() {
     );
   });
 
+  test('keeps all map controls visible above a route preview card', () {
+    final mapControlsBottom = resolveMapControlsBottom(
+      mapPanelHeight: 190,
+      parkingFabVisible: false,
+      panelVisible: true,
+    );
+
+    expect(mapControlsBottom, 202);
+    expect(
+      shouldShowZoomControls(
+        viewportHeight: 717,
+        mapControlsBottom: mapControlsBottom,
+      ),
+      isTrue,
+    );
+    expect(
+      shouldShowLowerMapControls(
+        viewportHeight: 717,
+        mapControlsBottom: mapControlsBottom,
+      ),
+      isTrue,
+    );
+    expect(
+      resolveZoomControlsBottom(
+        viewportHeight: 717,
+        mapControlsBottom: mapControlsBottom,
+      ),
+      306,
+    );
+  });
+
   test('keeps lower controls above the destination card with a gap', () {
     expect(
       resolveMapControlsBottom(
