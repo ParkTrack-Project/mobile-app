@@ -14,6 +14,10 @@ location tracking, and smoother map interactions across Android and Web/PWA.
   destination, current and forecast free spaces, price, parking number, and
   address. Open any result as a full parking card and move directly between
   neighboring results without returning to the list.
+- Parking cards now show when current or historical availability was updated.
+  For future selections they show both the forecast target and creation times,
+  warn when the nearest forecast differs by at least 30 minutes, and provide a
+  shortcut to open that forecast.
 - Added route previews before navigation, with the complete route, trip
   details, and quick actions for in-app navigation and Yandex Maps.
 - Added Share actions for parking cards and routes, with descriptive text and
@@ -40,6 +44,8 @@ location tracking, and smoother map interactions across Android and Web/PWA.
 - Added detailed current and forecast availability, arrival and walking times,
   prices, addresses, destination markers, route previews, and in-app
   navigation controls.
+- Parking cards now include data update times and complete forecast timing,
+  with a mismatch warning and a shortcut to the nearest available forecast.
 - Added Share actions for parking and routes using the browser share sheet,
   with a fallback for browsers that do not support it.
 - Redesigned parking markers, clustering, and selection so the active parking

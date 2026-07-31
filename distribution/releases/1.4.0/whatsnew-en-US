@@ -1,6 +1,7 @@
-• New parking search: detailed results with arrival and walking times, current and forecast free spaces, and browsing options on the map.
+• New parking search with travel times, current and forecast spaces, and map browsing.
 • Added route previews and Share actions.
-• Redesigned parking markers and selection; the map stays interactive.
-• Updated Where am I, compass, zoom, follow mode, and smoother location marker movement.
-• Android uses Wi-Fi/network location with GPS fallback and keeps the last position during signal loss.
+• Redesigned parking markers; the map stays interactive.
+• Improved Where am I, compass, zoom, follow mode, and location movement.
+• Network-first Android location with GPS fallback and last-position retention.
+• Parking cards show data and forecast times, flag mismatches, and open the nearest forecast.
 • Fixed route framing, deep links, and map performance.

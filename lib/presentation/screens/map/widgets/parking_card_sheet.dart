@@ -7,6 +7,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../domain/models/route_result.dart';
 import '../../../../domain/models/zone.dart';
 import '../../../providers/parking_address_provider.dart';
+import '../../../providers/time_selector_provider.dart';
 import '../../../providers/zones_provider.dart';
 import 'parking_result_formatter.dart';
 import 'parking_zone_layer.dart';
@@ -47,6 +48,15 @@ class ParkingCardSheet extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(l10nProvider);
     final zonesAsync = ref.watch(rawZonesProvider);
+    final timeMode = ref.watch(timeSelectorProvider);
+    final selectedFutureAt = timeMode.maybeWhen(
+      future: (at) => at,
+      orElse: () => null,
+    );
+    final selectedPastAt = timeMode.maybeWhen(
+      past: (at) => at,
+      orElse: () => null,
+    );
     final currentZone =
         zonesAsync.valueOrNull
             ?.where((item) => item.zoneId == zone.zoneId)
@@ -64,6 +74,35 @@ class ParkingCardSheet extends ConsumerWidget {
             )),
           );
     final colors = Theme.of(context).colorScheme;
+    final timingFacts = <Widget>[
+      if (selectedFutureAt != null) ...[
+        if (currentZone.forecastFor case final forecastFor?)
+          _Fact(
+            key: const Key('parking_forecast_for'),
+            icon: Icons.schedule_outlined,
+            text:
+                '${s.forecastFor}: ${formatParkingCardDateTime(forecastFor, s)}',
+          ),
+        if (currentZone.forecastGeneratedAt case final generatedAt?)
+          _Fact(
+            key: const Key('parking_forecast_generated_at'),
+            icon: Icons.auto_graph_outlined,
+            text:
+                '${s.generated}: ${formatParkingCardDateTime(generatedAt, s)}',
+          ),
+      ] else if (currentZone.occupancyUpdatedAt case final updatedAt?)
+        if (selectedPastAt == null || !updatedAt.isAfter(selectedPastAt))
+          _Fact(
+            key: const Key('parking_occupancy_updated_at'),
+            icon: Icons.update_outlined,
+            text: '${s.updatedAt}: ${formatParkingCardDateTime(updatedAt, s)}',
+          ),
+    ];
+    final forecastMismatch =
+        selectedFutureAt != null &&
+        currentZone.forecastFor != null &&
+        selectedFutureAt.difference(currentZone.forecastFor!).abs() >=
+            const Duration(minutes: 30);
 
     return Material(
       color: colors.surface,
@@ -193,6 +232,21 @@ class ParkingCardSheet extends ConsumerWidget {
                 s: s,
               ),
             ],
+            if (timingFacts.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Wrap(spacing: 8, runSpacing: 6, children: timingFacts),
+            ],
+            if (forecastMismatch) ...[
+              const SizedBox(height: 10),
+              _ForecastMismatchWarning(
+                forecastFor: currentZone.forecastFor!,
+                selectedAt: selectedFutureAt,
+                s: s,
+                onOpenClosest: () => ref
+                    .read(timeSelectorProvider.notifier)
+                    .setFuture(currentZone.forecastFor!),
+              ),
+            ],
             if (onPrevious != null || onNext != null) ...[
               const SizedBox(height: 10),
               Row(
@@ -243,6 +297,64 @@ class ParkingCardSheet extends ConsumerWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+String formatParkingCardDateTime(DateTime value, AppStrings s) {
+  final local = value.toLocal();
+  final time =
+      '${local.hour.toString().padLeft(2, '0')}:'
+      '${local.minute.toString().padLeft(2, '0')}';
+  return '${local.day} ${s.monthNames[local.month]} ${local.year}, $time';
+}
+
+class _ForecastMismatchWarning extends StatelessWidget {
+  const _ForecastMismatchWarning({
+    required this.forecastFor,
+    required this.selectedAt,
+    required this.s,
+    required this.onOpenClosest,
+  });
+
+  final DateTime forecastFor;
+  final DateTime selectedAt;
+  final AppStrings s;
+  final VoidCallback onOpenClosest;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final warningColor = colors.tertiary;
+
+    return Container(
+      key: const Key('parking_forecast_mismatch_warning'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: warningColor.withValues(alpha: 0.1),
+        border: Border.all(color: warningColor.withValues(alpha: 0.65)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            '${s.forecastFor} ${formatParkingCardDateTime(forecastFor, s)}, '
+            '${s.youPicked} ${formatParkingCardDateTime(selectedAt, s)}',
+            style: TextStyle(color: warningColor, fontSize: 13),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton(
+            key: const Key('parking_open_closest_forecast'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: warningColor,
+              side: BorderSide(color: warningColor),
+            ),
+            onPressed: onOpenClosest,
+            child: Text(s.jumpToClosest),
+          ),
+        ],
       ),
     );
   }
