@@ -18,8 +18,12 @@ Future<void> shareParkTrackParams(ShareParams params) async {
 
   try {
     await navigator.share(data).toDart;
-  } on web.DOMException catch (error) {
-    if (error.name == 'AbortError') return;
+  } catch (error) {
+    final jsError = error as JSAny;
+    if (jsError.isA<web.DOMException>() &&
+        (jsError as web.DOMException).name == 'AbortError') {
+      return;
+    }
     _openEmailFallback(params);
   }
 }
