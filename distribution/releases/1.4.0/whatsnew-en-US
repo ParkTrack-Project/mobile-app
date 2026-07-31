@@ -1,7 +1,6 @@
-• Added convenient search results and detailed parking cards.
-• Added m.parktrack.live and parktrack:// links for opening app sections.
-• Parking cards now slide smoothly from the bottom while the map focuses on the selected parking area.
-• Route previews now fit the full route in the visible map area above the route card.
-• Fixed + and - in follow mode so zoom changes no longer bounce back.
-• Location and compass controls now sit above place cards and the navigation panel.
-• Optimized map, parking cluster, marker, and navigation updates.
+• New parking search: detailed results with arrival and walking times, current and forecast free spaces, and browsing options on the map.
+• Added route previews and Share actions.
+• Redesigned parking markers and selection; the map stays interactive.
+• Updated Where am I, compass, zoom, follow mode, and smoother location marker movement.
+• Android uses Wi-Fi/network location with GPS fallback and keeps the last position during signal loss.
+• Fixed route framing, deep links, and map performance.
