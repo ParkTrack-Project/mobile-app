@@ -2479,7 +2479,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
       _timeDebounce?.cancel();
       _timeDebounce = Timer(
         const Duration(milliseconds: 600),
-        () => _fetchZones(clearCache: false),
+        () => _fetchZones(clearCache: true),
       );
     });
     ref.listen(
