@@ -39,6 +39,7 @@ Offset projectRoutePointToViewport(
   Point point,
   RouteCameraPlan plan, {
   required Size viewport,
+  EdgeInsets cameraMargins = EdgeInsets.zero,
 }) {
   final center = _projectMercator(plan.center);
   final localPoint = _projectMercator(
@@ -58,9 +59,15 @@ Offset projectRoutePointToViewport(
     delta.dx * sine + delta.dy * cosine,
   );
   final scale = math.pow(2, plan.zoom).toDouble();
+  final cameraCenter = Offset(
+    cameraMargins.left +
+        math.max(1.0, viewport.width - cameraMargins.horizontal) / 2,
+    cameraMargins.top +
+        math.max(1.0, viewport.height - cameraMargins.vertical) / 2,
+  );
   return Offset(
-    viewport.width / 2 + rotated.dx * scale,
-    viewport.height / 2 + rotated.dy * scale,
+    cameraCenter.dx + rotated.dx * scale,
+    cameraCenter.dy + rotated.dy * scale,
   );
 }
 
@@ -210,6 +217,31 @@ RouteCameraPlan? calculateRouteCameraPlan(
     center: _unprojectMercator(projectedCenter),
     zoom: zoom,
     azimuth: azimuth,
+  );
+}
+
+/// Builds a camera plan for renderers that apply map margins themselves.
+///
+/// The route zoom is calculated against the unobstructed viewport, while the
+/// geographic camera center stays centered on the route. The renderer then
+/// places that center inside its margined viewport.
+RouteCameraPlan? calculateRouteCameraPlanWithMapMargins(
+  List<Point>? points, {
+  required Size viewport,
+  required EdgeInsets margins,
+  double minimumZoom = 3,
+  double maximumZoom = 21,
+}) {
+  final visibleViewport = Size(
+    math.max(1.0, viewport.width - margins.horizontal),
+    math.max(1.0, viewport.height - margins.vertical),
+  );
+  return calculateRouteCameraPlan(
+    points,
+    viewport: visibleViewport,
+    margins: EdgeInsets.zero,
+    minimumZoom: minimumZoom,
+    maximumZoom: maximumZoom,
   );
 }
 

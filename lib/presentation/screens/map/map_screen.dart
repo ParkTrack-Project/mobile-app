@@ -2096,7 +2096,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
     );
     _resetMyLocationCameraMode();
     if (kIsWeb) {
-      final plan = calculateRouteCameraPlan(
+      final plan = calculateRouteCameraPlanWithMapMargins(
         routePoints,
         viewport: mapViewport,
         margins: routeMargins,
