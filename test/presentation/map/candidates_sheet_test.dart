@@ -117,9 +117,7 @@ void main() {
     final predictedBadge = tester.widget<Container>(
       find.descendant(of: predictedFinder, matching: find.byType(Container)),
     );
-    final predictedDecoration = predictedBadge.decoration! as BoxDecoration;
-    expect(predictedDecoration.color, Colors.transparent);
-    expect(predictedDecoration.border!.top.color, const Color(0xFF2E7D32));
+    expect(predictedBadge.decoration, isNull);
     final predictedIcon = tester.widget<Icon>(
       find.descendant(of: predictedFinder, matching: find.byType(Icon)),
     );

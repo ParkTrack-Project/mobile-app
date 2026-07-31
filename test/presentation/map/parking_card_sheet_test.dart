@@ -75,6 +75,32 @@ void main() {
     expect(find.text('Confidence: 90%'), findsOneWidget);
     expect(find.text('4 spaces by 13:23'), findsOneWidget);
     expect(find.textContaining('from you'), findsOneWidget);
+    final predictedFinder = find.byKey(
+      const Key('parking_details_predicted_42'),
+    );
+    final predictedBadge = tester.widget<Container>(
+      find.descendant(of: predictedFinder, matching: find.byType(Container)),
+    );
+    final predictedDecoration = predictedBadge.decoration! as BoxDecoration;
+    expect(predictedDecoration.color, Colors.transparent);
+    expect(predictedDecoration.border!.top.color, const Color(0xFF2E7D32));
+    expect(
+      tester
+          .widget<Icon>(
+            find.descendant(of: predictedFinder, matching: find.byType(Icon)),
+          )
+          .color,
+      const Color(0xFF2E7D32),
+    );
+    expect(
+      tester
+          .widget<Text>(
+            find.descendant(of: predictedFinder, matching: find.byType(Text)),
+          )
+          .style
+          ?.color,
+      const Color(0xFF2E7D32),
+    );
     expect(
       find.descendant(
         of: find.byType(ParkingCardSheet),

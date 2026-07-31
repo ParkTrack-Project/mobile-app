@@ -41,6 +41,8 @@ more reliable across Android and the web app.
 - Repositioned the location and compass controls above destination cards and
   the navigation bottom panel.
 - Improved route-building progress feedback and navigation distance formatting.
+- Improved parking search cards with hour-and-minute walking times, highlighted
+  paid prices, and color-coded availability forecasts.
 - Improved zoom-button hold behavior, map-control placement on small screens,
   and location-marker contrast.
 - Fixed parking arrival estimates so API-provided local times remain consistent
@@ -62,6 +64,8 @@ more reliable across Android and the web app.
   navigation panels.
 - Improved map theme synchronization, compass behavior, marker selection,
   routing overlays, and small-screen control placement.
+- Improved parking search cards with hour-and-minute walking times, highlighted
+  paid prices, and color-coded availability forecasts.
 - Fixed parking arrival estimates so API-provided local times remain consistent
   across browser time zones.
 - Improved deep-link fallback behavior and preserved protected destinations

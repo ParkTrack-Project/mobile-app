@@ -265,6 +265,7 @@ class _CandidateFacts extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final facts = <Widget>[];
     final duration = formatParkingDuration(
       candidate.durationFromOriginSeconds,
@@ -284,6 +285,12 @@ class _CandidateFacts extends StatelessWidget {
       s,
     );
     final predicted = formatParkingSpaces(candidate.predictedFreeCount, s);
+    final predictedColor = switch (candidate.predictedFreeCount) {
+      null => colors.onSurfaceVariant,
+      <= 0 => colors.error,
+      1 => const Color(0xFFB48409),
+      _ => AppColors.primary,
+    };
     final eta = formatParkingArrivalEstimate(
       candidate.eta,
       candidate.durationFromOriginSeconds,
@@ -314,10 +321,13 @@ class _CandidateFacts extends StatelessWidget {
     if (predicted != null) {
       facts.add(
         _Fact(
+          key: Key('parking_details_predicted_${candidate.zoneId}'),
           icon: Icons.auto_graph,
           text: eta == null
               ? predicted
               : '$predicted ${s.expectedAvailability} $eta',
+          color: predictedColor,
+          outlined: true,
         ),
       );
     }
@@ -369,18 +379,30 @@ class _AvailabilityFact extends StatelessWidget {
 }
 
 class _Fact extends StatelessWidget {
-  const _Fact({required this.icon, required this.text});
+  const _Fact({
+    super.key,
+    required this.icon,
+    required this.text,
+    this.color,
+    this.outlined = false,
+  });
 
   final IconData icon;
   final String text;
+  final Color? color;
+  final bool outlined;
 
   @override
   Widget build(BuildContext context) {
-    final effectiveColor = Theme.of(context).colorScheme.onSurfaceVariant;
+    final effectiveColor =
+        color ?? Theme.of(context).colorScheme.onSurfaceVariant;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
-        color: effectiveColor.withValues(alpha: 0.1),
+        color: outlined
+            ? Colors.transparent
+            : effectiveColor.withValues(alpha: 0.1),
+        border: outlined ? Border.all(color: effectiveColor) : null,
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(

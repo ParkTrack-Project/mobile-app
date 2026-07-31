@@ -459,7 +459,6 @@ class _CandidateTile extends ConsumerWidget {
               ? predictedSpacesText
               : '$predictedSpacesText ${s.expectedAvailability} $arrivalText',
           color: predictedSpacesColor,
-          outlined: true,
         ),
       if (drivingDistanceText != null || durationText != null)
         _Fact(
