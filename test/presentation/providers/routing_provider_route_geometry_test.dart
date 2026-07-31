@@ -48,6 +48,29 @@ ProviderContainer _container({required bool withGeometry}) {
 }
 
 void main() {
+  test('publishes a local preview for a destination route', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    const points = [
+      Point(latitude: 61.78, longitude: 34.35),
+      Point(latitude: 61.79, longitude: 34.36),
+    ];
+
+    container.read(routingProvider.notifier).showDestinationRoutePreview((
+      points: points,
+      distanceMeters: 1200,
+      durationSeconds: 180,
+    ));
+
+    final route = container
+        .read(routingProvider)
+        .maybeWhen(routePreview: (value) => value, orElse: () => null);
+    expect(route?.selectedZoneId, destinationRouteZoneId);
+    expect(route?.routePolyline, points);
+    expect(route?.routeDistanceMeters, 1200);
+    expect(route?.routeDurationSeconds, 180);
+  });
+
   test('uses backend route geometry before the browser fallback', () async {
     final container = _container(withGeometry: true);
     addTearDown(container.dispose);

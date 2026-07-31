@@ -190,6 +190,32 @@ bool shouldDismissParkingDetailsForDestination({
   required bool hasStandaloneParkingDetails,
 }) => destination != null && hasStandaloneParkingDetails;
 
+@visibleForTesting
+Point? resolveRoutePreviewTarget({
+  required ActiveRoute route,
+  required Iterable<Zone> zones,
+  required Destination? destination,
+}) {
+  if (route.selectedZoneId == destinationRouteZoneId && destination != null) {
+    return Point(
+      latitude: destination.latitude,
+      longitude: destination.longitude,
+    );
+  }
+  final matchingZones = zones.where(
+    (zone) => zone.zoneId == route.selectedZoneId && zone.geometry.isNotEmpty,
+  );
+  if (matchingZones.isNotEmpty) {
+    return centroid(matchingZones.first.geometry);
+  }
+  final selectedCandidates = route.candidates.where(
+    (candidate) => candidate.zoneId == route.selectedZoneId,
+  );
+  final candidate =
+      selectedCandidates.firstOrNull ?? route.candidates.firstOrNull;
+  return candidate?.routePolyline?.lastOrNull;
+}
+
 class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({
     super.key,
@@ -1230,6 +1256,20 @@ class _MapScreenState extends ConsumerState<MapScreen>
   }
 
   Future<void> _shareRouteLink(ActiveRoute route, Point? target) async {
+    final destination = ref.read(destinationProvider);
+    if (route.selectedZoneId == destinationRouteZoneId && destination != null) {
+      final s = ref.read(l10nProvider);
+      await _shareLink(
+        destinationShareUri(
+          latitude: destination.latitude,
+          longitude: destination.longitude,
+          name: destination.name,
+        ),
+        s.routeReady,
+        text: destination.name ?? s.selectedPlace,
+      );
+      return;
+    }
     String? address;
     if (target != null) {
       try {
@@ -2243,6 +2283,37 @@ class _MapScreenState extends ConsumerState<MapScreen>
     }
   }
 
+  Future<void> _buildRouteForDestination(Destination destination) async {
+    if (_routeBuilding) return;
+    if (mounted) setState(() => _routeBuilding = true);
+    try {
+      final origin = await _routingOrigin();
+      if (origin == null) return;
+      final target = Point(
+        latitude: destination.latitude,
+        longitude: destination.longitude,
+      );
+      final geometry = await _requestRouteGeometry(origin, target);
+      if (!mounted) return;
+      if (geometry == null || geometry.points.length < 2) {
+        throw StateError('The routing services returned no driving route');
+      }
+      ref.read(routingProvider.notifier).showDestinationRoutePreview(geometry);
+    } catch (error, stackTrace) {
+      if (!mounted) return;
+      showErrorSnackBar(
+        context,
+        ref.read(l10nProvider).errorCreatingRoute,
+        error: error,
+        stackTrace: stackTrace,
+        s: ref.read(l10nProvider),
+        onRetry: () => _buildRouteForDestination(destination),
+      );
+    } finally {
+      if (mounted) setState(() => _routeBuilding = false);
+    }
+  }
+
   Future<void> _startInAppNavigation({
     required int zoneId,
     required double toLat,
@@ -2388,22 +2459,11 @@ class _MapScreenState extends ConsumerState<MapScreen>
     );
     Point? routePreviewTarget;
     if (routePreview != null) {
-      final matches = zones.where(
-        (zone) =>
-            zone.zoneId == routePreview.selectedZoneId &&
-            zone.geometry.isNotEmpty,
+      routePreviewTarget = resolveRoutePreviewTarget(
+        route: routePreview,
+        zones: zones,
+        destination: destination,
       );
-      if (matches.isNotEmpty) {
-        routePreviewTarget = centroid(matches.first.geometry);
-      } else {
-        final selectedCandidates = routePreview.candidates.where(
-          (candidate) => candidate.zoneId == routePreview.selectedZoneId,
-        );
-        final candidate =
-            selectedCandidates.firstOrNull ??
-            routePreview.candidates.firstOrNull;
-        routePreviewTarget = candidate?.routePolyline?.lastOrNull;
-      }
     }
 
     ref.listen(timeSelectorProvider, (_, _) {
@@ -3394,11 +3454,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
                               destination.latitude,
                               destination.longitude,
                             ),
-                            onNavigateInApp: () => _startInAppNavigation(
-                              zoneId: 0,
-                              toLat: destination.latitude,
-                              toLon: destination.longitude,
-                            ),
+                            onNavigateInApp: () =>
+                                _buildRouteForDestination(destination),
                             onClear: () {
                               ref.read(destinationProvider.notifier).state =
                                   null;

@@ -76,6 +76,8 @@ typedef RouteGeometry = ({
   int durationSeconds,
 });
 
+const destinationRouteZoneId = 0;
+
 class RoutingNotifier extends StateNotifier<RoutingState> {
   RoutingNotifier(this._ref) : super(const RoutingState.idle());
 
@@ -244,6 +246,33 @@ class RoutingNotifier extends StateNotifier<RoutingState> {
         ),
       );
     }
+  }
+
+  void showDestinationRoutePreview(RouteGeometry geometry) {
+    if (geometry.points.length < 2) {
+      throw ArgumentError.value(
+        geometry.points,
+        'geometry.points',
+        'A route preview requires at least two points',
+      );
+    }
+    _requestGeneration++;
+    _cancelToken?.cancel('Superseded by a destination route preview');
+    _cancelToken = null;
+    _ref.read(routingFailureProvider.notifier).state = null;
+    _ref.read(parkingSearchProvider.notifier).clear();
+    state = RoutingState.routePreview(
+      ActiveRoute(
+        routeId: 0,
+        status: 'ready',
+        selectedZoneId: destinationRouteZoneId,
+        routePolyline: geometry.points,
+        routeDistanceMeters: geometry.distanceMeters,
+        routeDurationSeconds: geometry.durationSeconds,
+        candidates: const [],
+      ),
+    );
+    _stableState = state;
   }
 
   Future<void> loadRoute(int routeId) async {
