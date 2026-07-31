@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import 'package:web/web.dart' as web;
 import 'package:yandex_mapkit/yandex_mapkit.dart';
 
-import '../../../../core/theme/app_colors.dart';
 import '../../../../domain/models/zone.dart';
 import 'parking_zone_layer.dart';
 import 'web_map_types.dart';
@@ -19,11 +18,18 @@ external void _createYandexMap(
   JSString theme,
   JSFunction cameraCallback,
   JSFunction zoneTapCallback,
+  JSFunction mapTapCallback,
   JSFunction errorCallback,
 );
 
 @JS('parkTrackYandexMaps.update')
 external void _updateYandexMap(JSString elementId, JSString stateJson);
+
+@JS('parkTrackYandexMaps.updatePosition')
+external void _updateYandexMapPosition(
+  JSString elementId,
+  JSString positionJson,
+);
 
 @JS('parkTrackYandexMaps.move')
 external void _moveYandexMap(
@@ -34,10 +40,20 @@ external void _moveYandexMap(
 );
 
 @JS('parkTrackYandexMaps.setZoom')
-external void _setYandexMapZoom(JSString elementId, JSNumber zoom);
+external void _setYandexMapZoom(
+  JSString elementId,
+  JSNumber zoom,
+  JSNumber durationMilliseconds,
+);
 
 @JS('parkTrackYandexMaps.retry')
 external void _retryYandexMap(JSString elementId);
+
+@JS('parkTrackYandexMaps.resetNorth')
+external void _resetNorthYandexMap(JSString elementId);
+
+@JS('parkTrackYandexMaps.requestHeading')
+external void _requestYandexMapHeading(JSString elementId);
 
 @JS('parkTrackYandexMaps.fitBounds')
 external void _fitYandexMapBounds(
@@ -46,6 +62,50 @@ external void _fitYandexMapBounds(
   JSNumber west,
   JSNumber north,
   JSNumber east,
+  JSNumber azimuth,
+  JSNumber top,
+  JSNumber right,
+  JSNumber bottom,
+  JSNumber left,
+);
+
+@JS('parkTrackYandexMaps.focus')
+external void _focusYandexMap(
+  JSString elementId,
+  JSNumber latitude,
+  JSNumber longitude,
+  JSNumber zoom,
+  JSNumber top,
+  JSNumber right,
+  JSNumber bottom,
+  JSNumber left,
+);
+
+@JS('parkTrackYandexMaps.follow')
+external void _followYandexMap(
+  JSString elementId,
+  JSNumber latitude,
+  JSNumber longitude,
+  JSNumber zoom,
+  JSNumber azimuth,
+  JSNumber top,
+  JSNumber right,
+  JSNumber bottom,
+  JSNumber left,
+  JSNumber durationMilliseconds,
+);
+
+@JS('parkTrackYandexMaps.setCamera')
+external void _setYandexMapCamera(
+  JSString elementId,
+  JSNumber latitude,
+  JSNumber longitude,
+  JSNumber zoom,
+  JSNumber azimuth,
+  JSNumber top,
+  JSNumber right,
+  JSNumber bottom,
+  JSNumber left,
 );
 
 @JS('parkTrackYandexMaps.destroy')
@@ -57,7 +117,9 @@ class WebMapView extends StatefulWidget {
     required this.controller,
     required this.zones,
     required this.candidateIds,
+    this.selectedZoneId,
     required this.onZoneTap,
+    required this.onMapTap,
     required this.onCameraChanged,
     required this.onMapReady,
     required this.onError,
@@ -65,6 +127,8 @@ class WebMapView extends StatefulWidget {
     this.activeRouteZoneId,
     this.userLatitude,
     this.userLongitude,
+    this.userHeading,
+    this.userAccuracy,
     this.navigationLatitude,
     this.navigationLongitude,
     this.navigationHeading,
@@ -75,7 +139,9 @@ class WebMapView extends StatefulWidget {
   final WebMapController controller;
   final List<Zone> zones;
   final Set<int> candidateIds;
+  final int? selectedZoneId;
   final void Function(Zone zone) onZoneTap;
+  final VoidCallback onMapTap;
   final void Function(WebMapCamera camera) onCameraChanged;
   final VoidCallback onMapReady;
   final void Function(Object error) onError;
@@ -83,6 +149,8 @@ class WebMapView extends StatefulWidget {
   final int? activeRouteZoneId;
   final double? userLatitude;
   final double? userLongitude;
+  final double? userHeading;
+  final double? userAccuracy;
   final double? navigationLatitude;
   final double? navigationLongitude;
   final double? navigationHeading;
@@ -101,12 +169,15 @@ class _WebMapViewState extends State<WebMapView> {
   bool _created = false;
   List<Zone>? _serializedZonesSource;
   Set<int> _serializedCandidateIds = const {};
+  int? _serializedSelectedZoneId;
   int? _serializedActiveRouteZoneId;
+  Brightness? _serializedBrightness;
   List<Map<String, Object?>> _serializedZones = const [];
   List<Point>? _serializedRouteSource;
   List<List<double>>? _serializedRoute;
   Map<int, Zone> _zonesById = const {};
   String? _lastStateJson;
+  String? _lastPositionJson;
 
   @override
   void initState() {
@@ -142,7 +213,38 @@ class _WebMapViewState extends State<WebMapView> {
   @override
   void didUpdateWidget(covariant WebMapView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!_created) return;
+    if (_hasStructuralChanges(oldWidget)) {
+      _updateMap();
+    } else if (_hasPositionChanges(oldWidget)) {
+      _updatePosition();
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
     if (_created) _updateMap();
+  }
+
+  bool _hasStructuralChanges(WebMapView oldWidget) {
+    return !identical(oldWidget.zones, widget.zones) ||
+        !setEquals(oldWidget.candidateIds, widget.candidateIds) ||
+        oldWidget.selectedZoneId != widget.selectedZoneId ||
+        oldWidget.activeRouteZoneId != widget.activeRouteZoneId ||
+        !identical(oldWidget.route, widget.route);
+  }
+
+  bool _hasPositionChanges(WebMapView oldWidget) {
+    return oldWidget.userLatitude != widget.userLatitude ||
+        oldWidget.userLongitude != widget.userLongitude ||
+        oldWidget.userHeading != widget.userHeading ||
+        oldWidget.userAccuracy != widget.userAccuracy ||
+        oldWidget.navigationLatitude != widget.navigationLatitude ||
+        oldWidget.navigationLongitude != widget.navigationLongitude ||
+        oldWidget.navigationHeading != widget.navigationHeading ||
+        oldWidget.destinationLatitude != widget.destinationLatitude ||
+        oldWidget.destinationLongitude != widget.destinationLongitude;
   }
 
   void _initializeMap(web.HTMLElement element) {
@@ -151,20 +253,88 @@ class _WebMapViewState extends State<WebMapView> {
     widget.controller.moveHandler = (latitude, longitude, zoom) {
       _moveYandexMap(_elementId.toJS, latitude.toJS, longitude.toJS, zoom.toJS);
     };
-    widget.controller.zoomHandler = (zoom) {
-      _setYandexMapZoom(_elementId.toJS, zoom.toJS);
-    };
-    widget.controller.fitBoundsHandler = (south, west, north, east) {
-      _fitYandexMapBounds(
+    widget.controller.zoomHandler = (zoom, durationSeconds) {
+      _setYandexMapZoom(
         _elementId.toJS,
-        south.toJS,
-        west.toJS,
-        north.toJS,
-        east.toJS,
+        zoom.toJS,
+        (durationSeconds * 1000).toJS,
       );
     };
+    widget.controller.fitBoundsWithInsetsHandler =
+        (south, west, north, east, azimuth, top, right, bottom, left) {
+          _fitYandexMapBounds(
+            _elementId.toJS,
+            south.toJS,
+            west.toJS,
+            north.toJS,
+            east.toJS,
+            azimuth.toJS,
+            top.toJS,
+            right.toJS,
+            bottom.toJS,
+            left.toJS,
+          );
+        };
+    widget.controller.focusHandler =
+        (latitude, longitude, zoom, top, right, bottom, left) {
+          _focusYandexMap(
+            _elementId.toJS,
+            latitude.toJS,
+            longitude.toJS,
+            zoom.toJS,
+            top.toJS,
+            right.toJS,
+            bottom.toJS,
+            left.toJS,
+          );
+        };
+    widget.controller.followHandler =
+        (
+          latitude,
+          longitude,
+          zoom,
+          azimuth,
+          top,
+          right,
+          bottom,
+          left,
+          durationSeconds,
+        ) {
+          _followYandexMap(
+            _elementId.toJS,
+            latitude.toJS,
+            longitude.toJS,
+            zoom.toJS,
+            azimuth.toJS,
+            top.toJS,
+            right.toJS,
+            bottom.toJS,
+            left.toJS,
+            (durationSeconds * 1000).toJS,
+          );
+        };
+    widget.controller.cameraHandler =
+        (latitude, longitude, zoom, azimuth, top, right, bottom, left) {
+          _setYandexMapCamera(
+            _elementId.toJS,
+            latitude.toJS,
+            longitude.toJS,
+            zoom.toJS,
+            azimuth.toJS,
+            top.toJS,
+            right.toJS,
+            bottom.toJS,
+            left.toJS,
+          );
+        };
     widget.controller.retryHandler = () {
       _retryYandexMap(_elementId.toJS);
+    };
+    widget.controller.resetNorthHandler = () {
+      _resetNorthYandexMap(_elementId.toJS);
+    };
+    widget.controller.requestHeadingHandler = () {
+      _requestYandexMapHeading(_elementId.toJS);
     };
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -186,6 +356,9 @@ class _WebMapViewState extends State<WebMapView> {
           south: (data['south'] as num).toDouble(),
           east: (data['east'] as num).toDouble(),
           north: (data['north'] as num).toDouble(),
+          azimuth: (data['azimuth'] as num?)?.toDouble() ?? 0,
+          cameraUpdateFinished: data['cameraUpdateFinished'] as bool? ?? true,
+          userGesture: data['userGesture'] as bool? ?? false,
         );
         final firstCamera = !widget.controller.isReady;
         widget.controller.camera = camera;
@@ -196,6 +369,7 @@ class _WebMapViewState extends State<WebMapView> {
         final zone = _zonesById[zoneId.toDartInt];
         if (zone != null) widget.onZoneTap(zone);
       }).toJS,
+      (() => widget.onMapTap()).toJS,
       ((JSString error) {
         debugPrint('Yandex Maps Error: ${error.toDart}');
         widget.onError(error.toDart);
@@ -210,68 +384,125 @@ class _WebMapViewState extends State<WebMapView> {
         ? 'ru_RU'
         : 'en_RU';
 
+    final position = _positionState();
     final state = <String, Object?>{
       'theme': isDark ? 'dark' : 'light',
       'locale': locale,
       'zones': _zoneState(),
       'route': _routeState(),
-      'user': widget.userLatitude != null && widget.userLongitude != null
-          ? [widget.userLatitude, widget.userLongitude]
-          : null,
-      'navigation':
-          widget.navigationLatitude != null &&
-              widget.navigationLongitude != null
-          ? [
-              widget.navigationLatitude,
-              widget.navigationLongitude,
-              widget.navigationHeading ?? 0,
-            ]
-          : null,
-      'destination':
-          widget.destinationLatitude != null &&
-              widget.destinationLongitude != null
-          ? [widget.destinationLatitude, widget.destinationLongitude]
-          : null,
+      ...position,
     };
     final stateJson = jsonEncode(state);
     if (stateJson == _lastStateJson) return;
     _lastStateJson = stateJson;
+    _lastPositionJson = jsonEncode(position);
     _updateYandexMap(_elementId.toJS, stateJson.toJS);
   }
 
+  void _updatePosition() {
+    final positionJson = jsonEncode(_positionState());
+    if (positionJson == _lastPositionJson) return;
+    _lastPositionJson = positionJson;
+    _updateYandexMapPosition(_elementId.toJS, positionJson.toJS);
+  }
+
+  Map<String, Object?> _positionState() => {
+    'user': widget.userLatitude != null && widget.userLongitude != null
+        ? [
+            widget.userLatitude,
+            widget.userLongitude,
+            widget.userHeading != null &&
+                    widget.userHeading!.isFinite &&
+                    widget.userHeading! >= 0
+                ? widget.userHeading
+                : null,
+            widget.userAccuracy != null &&
+                    widget.userAccuracy!.isFinite &&
+                    widget.userAccuracy! > 0
+                ? widget.userAccuracy
+                : null,
+          ]
+        : null,
+    'navigation':
+        widget.navigationLatitude != null && widget.navigationLongitude != null
+        ? [
+            widget.navigationLatitude,
+            widget.navigationLongitude,
+            widget.navigationHeading ?? 0,
+          ]
+        : null,
+    'destination':
+        widget.destinationLatitude != null &&
+            widget.destinationLongitude != null
+        ? [widget.destinationLatitude, widget.destinationLongitude]
+        : null,
+  };
+
   List<Map<String, Object?>> _zoneState() {
+    final brightness = Theme.of(context).brightness;
     if (identical(_serializedZonesSource, widget.zones) &&
         setEquals(_serializedCandidateIds, widget.candidateIds) &&
-        _serializedActiveRouteZoneId == widget.activeRouteZoneId) {
+        _serializedSelectedZoneId == widget.selectedZoneId &&
+        _serializedActiveRouteZoneId == widget.activeRouteZoneId &&
+        _serializedBrightness == brightness) {
       return _serializedZones;
     }
 
     _serializedZonesSource = widget.zones;
     _serializedCandidateIds = Set.unmodifiable(widget.candidateIds);
+    _serializedSelectedZoneId = widget.selectedZoneId;
     _serializedActiveRouteZoneId = widget.activeRouteZoneId;
+    _serializedBrightness = brightness;
     _zonesById = {for (final zone in widget.zones) zone.zoneId: zone};
+    final markerState = resolveParkingMarkerState(
+      allIds: _zonesById.keys.toSet(),
+      resultIds: widget.candidateIds,
+      selectedId: widget.selectedZoneId,
+    );
     _serializedZones = widget.zones
+        .where(isParkingZoneRenderable)
         .map((zone) {
-          final color = zoneColor(zone);
+          final colors = parkingZoneColors(zone, brightness: brightness);
           final center = centroid(zone.geometry);
+          final isCandidate = widget.candidateIds.contains(zone.zoneId);
+          final isSelected = widget.selectedZoneId == zone.zoneId;
+          final isDimmed = !markerState.activeIds.contains(zone.zoneId);
+          final displayedColors = isDimmed ? colors.dimmed() : colors;
+          final clusterFull = parkingClusterColor(0, brightness: brightness);
+          final clusterOne = parkingClusterColor(1, brightness: brightness);
+          final clusterFree = parkingClusterColor(3, brightness: brightness);
           return <String, Object?>{
             'id': zone.zoneId,
             'type': zone.zoneType == ZoneType.parallel ? 'line' : 'polygon',
             'points': zone.geometry
                 .map((point) => [point.latitude, point.longitude])
                 .toList(growable: false),
-            'color':
-                '#${color.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}',
+            'fill': _cssColor(displayedColors.fill),
+            'stroke': _cssColor(displayedColors.stroke),
             'freeCount': zone.freeCount,
-            'label': color == AppColors.parkingUnknown ? null : zone.freeCount,
-            'hasForecast': zone.hasForecast,
-            'candidate': widget.candidateIds.contains(zone.zoneId),
-            'active': widget.activeRouteZoneId == zone.zoneId,
+            'label': zone.freeCount,
+            'isActive': zone.isActive,
+            'candidate': isCandidate,
+            'active': widget.activeRouteZoneId == zone.zoneId || isSelected,
+            'markerOpacity': isDimmed ? parkingCounterDimmedOpacity : 1.0,
+            'markerTextColor': brightness == Brightness.dark
+                ? '#09090b'
+                : '#ffffff',
+            'clusterFull': _cssColor(clusterFull),
+            'clusterOne': _cssColor(clusterOne),
+            'clusterFree': _cssColor(clusterFree),
             'center': [center.latitude, center.longitude],
           };
         })
         .toList(growable: false);
     return _serializedZones;
+  }
+
+  String _cssColor(Color color) {
+    final value = color.toARGB32();
+    final alpha = (value >>> 24).toRadixString(16).padLeft(2, '0');
+    final rgb = (value & 0xFFFFFF).toRadixString(16).padLeft(6, '0');
+    return '#$rgb$alpha';
   }
 
   List<List<double>>? _routeState() {
@@ -293,6 +524,7 @@ class _WebMapViewState extends State<WebMapView> {
     widget.controller.clear();
     _zonesById = const {};
     _lastStateJson = null;
+    _lastPositionJson = null;
     super.dispose();
   }
 

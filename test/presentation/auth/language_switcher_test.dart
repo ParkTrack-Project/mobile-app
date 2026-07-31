@@ -4,7 +4,9 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/core/storage/settings_storage.dart';
 import 'package:mobile/presentation/providers/settings_provider.dart';
+import 'package:mobile/presentation/screens/auth/login_screen.dart';
 import 'package:mobile/presentation/screens/auth/register_screen.dart';
+import 'package:mobile/presentation/screens/auth/widgets/language_switcher.dart';
 
 class _MemorySettingsStorage extends SettingsStorage {
   String? language;
@@ -22,6 +24,21 @@ class _MemorySettingsStorage extends SettingsStorage {
 }
 
 void main() {
+  testWidgets('login page shows only the app bar language switcher', (
+    tester,
+  ) async {
+    final storage = _MemorySettingsStorage()..language = 'ru';
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [settingsStorageProvider.overrideWithValue(storage)],
+        child: const _LoginTestApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(LanguageSwitcher), findsOneWidget);
+  });
+
   testWidgets('switches language before authentication without overflow', (
     tester,
   ) async {
@@ -46,6 +63,25 @@ void main() {
     expect(find.text('Registration'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+}
+
+class _LoginTestApp extends ConsumerWidget {
+  const _LoginTestApp();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
+    return MaterialApp(
+      locale: settings.locale,
+      supportedLocales: const [Locale('ru'), Locale('en')],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      home: const LoginScreen(),
+    );
+  }
 }
 
 class _TestApp extends ConsumerWidget {

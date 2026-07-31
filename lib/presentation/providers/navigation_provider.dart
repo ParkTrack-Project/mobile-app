@@ -8,6 +8,7 @@ import 'package:yandex_mapkit/yandex_mapkit.dart';
 import '../../core/utils/nav_math.dart';
 import '../../core/localization/app_localizations.dart';
 import '../../core/services/yandex_web_route.dart';
+import 'app_providers.dart';
 
 class NavigationData {
   final int zoneId;
@@ -67,6 +68,7 @@ class NavigationNotifier extends Notifier<NavigationData?> {
   Future<void> startNavigation({
     required int zoneId,
     required List<Point> route,
+    required Point initialPosition,
     required double totalSeconds,
     required double totalMeters,
     required double destLat,
@@ -96,7 +98,6 @@ class NavigationNotifier extends Notifier<NavigationData?> {
     _smoothHeading = null;
     _offRouteSamples = 0;
 
-    final initialPosition = route.first;
     state = NavigationData(
       zoneId: zoneId,
       route: route,
@@ -107,9 +108,13 @@ class NavigationNotifier extends Notifier<NavigationData?> {
       heading: 0,
     );
 
-    _sub = Geolocator.getPositionStream(
-      locationSettings: _buildLocationSettings(s),
-    ).listen(_onPosition, onError: (_) {});
+    _sub = ref
+        .read(preferredLocationServiceProvider)
+        .watchCurrentPosition(
+          locationSettings: _buildLocationSettings(s),
+          preferNetworkInitialFix: true,
+        )
+        .listen(_onPosition, onError: (_) {});
   }
 
   void stop() {

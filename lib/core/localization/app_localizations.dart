@@ -18,6 +18,8 @@ class AppStrings {
   final String serviceUnavailable;
   final String locationServicesDisabled;
   final String searching;
+  final String startingNavigation;
+  final String routeBuilding;
   final String routeReady;
   final String selectParking;
   final String parkingZone;
@@ -53,7 +55,6 @@ class AppStrings {
   final String logoutConfirm;
   final String cancel;
   final String inAppRoute;
-  final String yandexNavigator;
   final String buildRoute;
   final String searchParkingNear;
   final String selectedPlace;
@@ -162,6 +163,28 @@ class AppStrings {
   final String editProfile;
   final String save;
   final String profileUpdated;
+  final String parkingNearby;
+  final String rankingPrinciple;
+  final String availablePlaces;
+  final String parkingSpaceOne;
+  final String parkingSpaceFew;
+  final String parkingSpaceMany;
+  final String freeStatus;
+  final String goAction;
+  final String openInYandexMaps;
+  final String externalMapOpenError;
+  final String backToResults;
+  final String accessibleParking;
+  final String parkingNumber;
+  final String addressLoading;
+  final String drivingTime;
+  final String walkingTime;
+  final String fromYou;
+  final String toDestination;
+  final String expectedAvailability;
+  final String previousParking;
+  final String nextParking;
+  final String share;
 
   AppStrings({
     required this.appTitle,
@@ -179,6 +202,8 @@ class AppStrings {
     required this.serviceUnavailable,
     required this.locationServicesDisabled,
     required this.searching,
+    required this.startingNavigation,
+    required this.routeBuilding,
     required this.routeReady,
     required this.selectParking,
     required this.parkingZone,
@@ -215,7 +240,6 @@ class AppStrings {
     required this.logoutConfirm,
     required this.cancel,
     required this.inAppRoute,
-    required this.yandexNavigator,
     required this.buildRoute,
     required this.searchParkingNear,
     required this.selectedPlace,
@@ -323,6 +347,28 @@ class AppStrings {
     required this.editProfile,
     required this.save,
     required this.profileUpdated,
+    required this.parkingNearby,
+    required this.rankingPrinciple,
+    required this.availablePlaces,
+    required this.parkingSpaceOne,
+    required this.parkingSpaceFew,
+    required this.parkingSpaceMany,
+    required this.freeStatus,
+    required this.goAction,
+    required this.openInYandexMaps,
+    required this.externalMapOpenError,
+    required this.backToResults,
+    required this.accessibleParking,
+    required this.parkingNumber,
+    required this.addressLoading,
+    required this.drivingTime,
+    required this.walkingTime,
+    required this.fromYou,
+    required this.toDestination,
+    required this.expectedAvailability,
+    required this.previousParking,
+    required this.nextParking,
+    required this.share,
   });
 
   static AppStrings ru = AppStrings(
@@ -341,6 +387,8 @@ class AppStrings {
     serviceUnavailable: 'Сервис временно недоступен',
     locationServicesDisabled: 'Геолокация отключена',
     searching: 'Ищем...',
+    startingNavigation: 'Запускаем навигацию...',
+    routeBuilding: 'Строим маршрут...',
     routeReady: 'Маршрут готов',
     selectParking: 'Выберите парковку',
     parkingZone: 'Парковка',
@@ -377,9 +425,8 @@ class AppStrings {
     notAuthenticated: 'Неверные данные для входа',
     logoutConfirm: 'Вы уверены, что хотите выйти из аккаунта?',
     cancel: 'Отмена',
-    inAppRoute: 'В приложении',
-    yandexNavigator: 'Яндекс',
-    buildRoute: 'Построить маршрут',
+    inAppRoute: 'В путь',
+    buildRoute: 'Маршрут',
     searchParkingNear: 'Искать парковку рядом',
     selectedPlace: 'Выбранное место',
     myLocation: 'Мое местоположение',
@@ -435,7 +482,7 @@ class AppStrings {
         'Для поиска парковок рядом с вами необходим доступ к местоположению.',
     pickZoneOnMap: 'Выберите парковочную зону на карте',
     navigationActive: 'Навигация активна',
-    unauthorized: 'Не авторизован',
+    unauthorized: 'Неверные данные для входа',
     forbidden: 'Нет доступа',
     notFound: 'Не найдено',
     emailAlreadyExists: 'Пользователь с таким email уже существует',
@@ -503,6 +550,28 @@ class AppStrings {
     editProfile: 'Редактировать профиль',
     save: 'Сохранить',
     profileUpdated: 'Профиль обновлен',
+    parkingNearby: 'Парковки рядом',
+    rankingPrinciple: 'Подобраны по времени и расстоянию',
+    availablePlaces: 'свободных мест',
+    parkingSpaceOne: 'место',
+    parkingSpaceFew: 'места',
+    parkingSpaceMany: 'мест',
+    freeStatus: 'Бесплатно',
+    goAction: 'В путь',
+    openInYandexMaps: 'Яндекс Карты',
+    externalMapOpenError: 'Не удалось открыть Яндекс Карты',
+    backToResults: 'Назад к результатам',
+    accessibleParking: 'Доступная парковка',
+    parkingNumber: 'Парковка №',
+    addressLoading: 'Определяем адрес…',
+    drivingTime: 'на машине',
+    walkingTime: 'пешком',
+    fromYou: 'от вас',
+    toDestination: 'до места',
+    expectedAvailability: 'к',
+    previousParking: 'Предыдущая',
+    nextParking: 'Следующая',
+    share: 'Поделиться',
   );
 
   static AppStrings en = AppStrings(
@@ -521,6 +590,8 @@ class AppStrings {
     serviceUnavailable: 'Service temporarily unavailable',
     locationServicesDisabled: 'Location services disabled',
     searching: 'Searching...',
+    startingNavigation: 'Starting navigation...',
+    routeBuilding: 'Building route...',
     routeReady: 'Route Ready',
     selectParking: 'Select Parking',
     parkingZone: 'Parking',
@@ -557,9 +628,8 @@ class AppStrings {
     notAuthenticated: 'Invalid login credentials',
     logoutConfirm: 'Are you sure you want to sign out?',
     cancel: 'Cancel',
-    inAppRoute: 'In-app',
-    yandexNavigator: 'Yandex',
-    buildRoute: 'Build Route',
+    inAppRoute: 'Go',
+    buildRoute: 'Route',
     searchParkingNear: 'Search parking nearby',
     selectedPlace: 'Selected place',
     myLocation: 'My location',
@@ -615,7 +685,7 @@ class AppStrings {
         'Location access is required to find parking near you.',
     pickZoneOnMap: 'Select a parking zone on the map',
     navigationActive: 'Navigation active',
-    unauthorized: 'Unauthorized',
+    unauthorized: 'Invalid login credentials',
     forbidden: 'Forbidden',
     notFound: 'Not found',
     emailAlreadyExists: 'User with this email already exists',
@@ -682,6 +752,28 @@ class AppStrings {
     editProfile: 'Edit Profile',
     save: 'Save',
     profileUpdated: 'Profile updated',
+    parkingNearby: 'Parking nearby',
+    rankingPrinciple: 'Ranked by time and distance',
+    availablePlaces: 'spaces available',
+    parkingSpaceOne: 'space',
+    parkingSpaceFew: 'spaces',
+    parkingSpaceMany: 'spaces',
+    freeStatus: 'Free',
+    goAction: 'Go',
+    openInYandexMaps: 'Yandex Maps',
+    externalMapOpenError: 'Could not open Yandex Maps',
+    backToResults: 'Back to results',
+    accessibleParking: 'Accessible parking',
+    parkingNumber: 'Parking #',
+    addressLoading: 'Finding address…',
+    drivingTime: 'by car',
+    walkingTime: 'walk',
+    fromYou: 'from you',
+    toDestination: 'to destination',
+    expectedAvailability: 'by',
+    previousParking: 'Previous',
+    nextParking: 'Next',
+    share: 'Share',
   );
 }
 

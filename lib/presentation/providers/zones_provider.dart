@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/network/api_exception.dart';
@@ -6,15 +8,20 @@ import 'app_providers.dart';
 import 'time_selector_provider.dart';
 import 'filters_provider.dart';
 
+const zoneAutoRefreshInterval = Duration(seconds: 20);
+
 final rawZonesProvider =
     StateNotifierProvider<ZonesNotifier, AsyncValue<List<Zone>>>(
       (ref) => ZonesNotifier(ref),
     );
 
 class ZonesNotifier extends StateNotifier<AsyncValue<List<Zone>>> {
-  ZonesNotifier(this._ref) : super(const AsyncValue.data([]));
+  ZonesNotifier(this._ref) : super(const AsyncValue.loading()) {
+    _refreshTimer = Timer.periodic(zoneAutoRefreshInterval, (_) => refresh());
+  }
 
   final Ref _ref;
+  Timer? _refreshTimer;
   String? _lastBbox;
   String? _lastRequestKey;
   CancelToken? _cancelToken;
@@ -70,6 +77,7 @@ class ZonesNotifier extends StateNotifier<AsyncValue<List<Zone>>> {
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     _cancelToken?.cancel('Zones provider disposed');
     super.dispose();
   }

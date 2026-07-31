@@ -209,8 +209,18 @@ TurnDirection _classifyTurn(double diff) {
 String formatNavDistance(num meters, [AppStrings? s]) {
   final metersSign = s?.metersSign ?? 'm';
   final kmSign = s?.kmSign ?? 'km';
-  if (meters < 950) return '${meters.round()} $metersSign';
-  return '${(meters / 1000).toStringAsFixed(1)} $kmSign';
+  final value = meters.toDouble();
+  if (value <= 0) return '0 $metersSign';
+  if (value < 10) return '10 $metersSign';
+  if (value < 1000) return '${(value ~/ 10) * 10} $metersSign';
+  if (value < 10000) {
+    final kmTenths = value ~/ 100;
+    final whole = kmTenths ~/ 10;
+    final fraction = kmTenths % 10;
+    final separator = s?.kmSign == 'км' ? ',' : '.';
+    return '$whole$separator$fraction $kmSign';
+  }
+  return '${value ~/ 1000} $kmSign';
 }
 
 String formatNavDuration(num seconds, [AppStrings? s]) {
@@ -219,5 +229,5 @@ String formatNavDuration(num seconds, [AppStrings? s]) {
   if (seconds < 3600) return '${(seconds / 60).round()} $minSign';
   final h = seconds ~/ 3600;
   final m = (seconds % 3600) ~/ 60;
-  return m == 0 ? '$h$hourSign' : '$h$hourSign $m$minSign';
+  return m == 0 ? '$h $hourSign' : '$h $hourSign $m $minSign';
 }

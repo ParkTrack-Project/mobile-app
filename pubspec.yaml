@@ -2,7 +2,7 @@ name: mobile
 description: "ParkTrack — мобильное приложение для поиска парковок"
 publish_to: 'none'
 
-version: 1.3.0+3
+version: 1.4.0+4
 
 environment:
   sdk: ^3.11.5
@@ -33,11 +33,15 @@ dependencies:
   flutter_secure_storage: ^9.2.4
 
   # Map & Location
-  yandex_mapkit: ^3.4.0
+  # Vendored until upstream applies BitmapFactory downsampling on Android.
+  yandex_mapkit:
+    path: third_party/yandex_mapkit-3.4.0
   geolocator: ^13.0.3
 
   # Deeplink
   url_launcher: ^6.3.1
+  share_plus: ^11.1.0
+  package_info_plus: ^8.3.1
 
   cupertino_icons: ^1.0.8
   pointer_interceptor: ^0.10.1+2

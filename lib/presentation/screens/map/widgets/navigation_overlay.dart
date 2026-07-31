@@ -206,22 +206,25 @@ class _NavBottomBar extends ConsumerWidget {
         children: [
           Expanded(
             child: _StatCell(
+              icon: Icons.schedule_rounded,
+              semanticsLabel: s.timeLabel,
               value: formatNavDuration(nav.remainingSeconds, s),
-              label: s.timeLabel,
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
           Expanded(
             child: _StatCell(
+              icon: Icons.route_rounded,
+              semanticsLabel: s.distanceLabel,
               value: formatNavDistance(nav.remainingMeters, s),
-              label: s.distanceLabel,
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
           Expanded(
             child: _StatCell(
-              value: '${nav.speedKmh.round()}',
-              label: s.speedLabel,
+              icon: Icons.speed_rounded,
+              semanticsLabel: s.speedLabel,
+              value: '${nav.speedKmh.round()} ${s.speedLabel}',
               valueColor: speedColor,
             ),
           ),
@@ -239,39 +242,48 @@ class _NavBottomBar extends ConsumerWidget {
 }
 
 class _StatCell extends StatelessWidget {
-  const _StatCell({required this.value, required this.label, this.valueColor});
+  const _StatCell({
+    required this.icon,
+    required this.semanticsLabel,
+    required this.value,
+    this.valueColor,
+  });
 
+  final IconData icon;
+  final String semanticsLabel;
   final String value;
-  final String label;
   final Color? valueColor;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          value,
-          maxLines: 1,
-          softWrap: false,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: valueColor ?? Theme.of(context).colorScheme.onSurface,
-            height: 1,
+    final color = valueColor ?? Theme.of(context).colorScheme.onSurface;
+    return Semantics(
+      label: semanticsLabel,
+      value: value,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 4),
+          Flexible(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                value,
+                maxLines: 1,
+                softWrap: false,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                  height: 1,
+                ),
+              ),
+            ),
           ),
-        ),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: Theme.of(context).hintColor,
-            height: 1.2,
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

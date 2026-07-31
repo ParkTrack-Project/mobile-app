@@ -13,7 +13,31 @@ void main() {
 
     test('accepts a parking URL with a positive zone id', () {
       expect(coordinator.safeLocation(Uri.parse('/parking/42')), '/parking/42');
+      expect(
+        coordinator.safeLocation(
+          Uri.parse('https://m.parktrack.live/parking/42'),
+        ),
+        '/parking/42',
+      );
+      expect(
+        coordinator.safeLocation(Uri.parse('parktrack://parking/42')),
+        '/parking/42',
+      );
       expect(coordinator.safeLocation(Uri.parse('/parking/nope')), '/map');
+    });
+
+    test('accepts route URLs with a positive route id', () {
+      expect(coordinator.safeLocation(Uri.parse('/route/7')), '/route/7');
+      expect(
+        coordinator.safeLocation(Uri.parse('https://m.parktrack.live/route/7')),
+        '/route/7',
+      );
+      expect(
+        coordinator.safeLocation(Uri.parse('parktrack://route/7')),
+        '/route/7',
+      );
+      expect(coordinator.safeLocation(Uri.parse('/route/nope')), '/map');
+      expect(coordinator.safeLocation(Uri.parse('/route/0')), '/map');
     });
 
     test('preserves a search query', () {
@@ -45,6 +69,51 @@ void main() {
         ),
         '/map?zoneId=7&lat=10.0&lon=20.0&name=Office',
       );
+      expect(
+        coordinator.safeLocation(Uri.parse('parktrack://map?id=8&q=station')),
+        '/map?zoneId=8&q=station',
+      );
+    });
+
+    test('supports every public app section for both link schemes', () {
+      const paths = [
+        '/map',
+        '/search?q=park',
+        '/route/7',
+        '/profile',
+        '/profile/edit',
+        '/login',
+        '/register',
+        '/password-reset',
+      ];
+
+      for (final path in paths) {
+        expect(
+          coordinator.safeLocation(Uri.parse('https://m.parktrack.live$path')),
+          coordinator.safeLocation(Uri.parse(path)),
+        );
+        final uri = Uri.parse(path);
+        final custom = Uri(
+          scheme: 'parktrack',
+          host: uri.pathSegments.first,
+          pathSegments: uri.pathSegments.skip(1),
+          queryParameters: uri.queryParameters.isEmpty
+              ? null
+              : uri.queryParameters,
+        );
+        expect(coordinator.safeLocation(custom), coordinator.safeLocation(uri));
+      }
+    });
+
+    test('normalizes destination links and validates coordinates', () {
+      expect(
+        coordinator.safeLocation(
+          Uri.parse(
+            'parktrack://destination?lat=61.789114&lon=34.359757&name=Station',
+          ),
+        ),
+        '/destination?lat=61.789114&lon=34.359757&name=Station',
+      );
     });
 
     test('rejects unknown and external redirect locations', () {
@@ -53,13 +122,10 @@ void main() {
         coordinator.safeLocation(Uri.parse('https://example.com/map')),
         '/map',
       );
-    });
-
-    test('restores a remembered destination once after authentication', () {
-      coordinator.remember(Uri.parse('/parking/42'));
-
-      expect(coordinator.takePendingOr('/map'), '/parking/42');
-      expect(coordinator.takePendingOr('/search?q=park'), '/search?q=park');
+      expect(
+        coordinator.safeLocation(Uri.parse('parktrack-other://map')),
+        '/map',
+      );
     });
   });
 }

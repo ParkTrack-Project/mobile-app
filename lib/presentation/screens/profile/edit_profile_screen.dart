@@ -20,10 +20,9 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   @override
   void initState() {
     super.initState();
-    final user = ref.read(authStateProvider).maybeWhen(
-          authenticated: (u) => u,
-          orElse: () => null,
-        );
+    final user = ref
+        .read(authStateProvider)
+        .maybeWhen(authenticated: (u) => u, orElse: () => null);
     _nameCtrl = TextEditingController(text: user?.fullName ?? '');
   }
 
@@ -38,13 +37,13 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     setState(() => _loading = true);
     final s = ref.read(l10nProvider);
     try {
-      await ref.read(authStateProvider.notifier).updateProfile(
-            fullName: _nameCtrl.text.trim(),
-          );
+      await ref
+          .read(authStateProvider.notifier)
+          .updateProfile(fullName: _nameCtrl.text.trim());
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(s.profileUpdated)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(s.profileUpdated)));
         context.pop();
       }
     } on ApiException catch (e) {
@@ -71,27 +70,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   Widget build(BuildContext context) {
     final s = ref.watch(l10nProvider);
     return Scaffold(
-      appBar: AppBar(
-        title: Text(s.editProfile),
-        actions: [
-          if (!_loading)
-            TextButton(
-              onPressed: _save,
-              child: Text(s.save, style: const TextStyle(color: Colors.white)),
-            )
-          else
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: Center(
-                child: SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                ),
-              ),
-            ),
-        ],
-      ),
+      appBar: AppBar(title: Text(s.editProfile)),
       body: Form(
         key: _formKey,
         child: ListView(
@@ -104,7 +83,8 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                 prefixIcon: const Icon(Icons.person_outlined),
                 border: const OutlineInputBorder(),
               ),
-              validator: (v) => v == null || v.trim().isEmpty ? s.nameRequired : null,
+              validator: (v) =>
+                  v == null || v.trim().isEmpty ? s.nameRequired : null,
             ),
             const SizedBox(height: 32),
             FilledButton(
@@ -113,7 +93,10 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                   ? const SizedBox(
                       height: 20,
                       width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
                     )
                   : Text(s.save),
             ),

@@ -30,6 +30,7 @@ class RoutingRepository {
       minFreeCount: minFreeCount,
       minConfidence: minConfidence,
       useForecast: useForecast,
+      limit: 10,
     );
     final response = await _api.searchParking(
       request,
@@ -54,12 +55,18 @@ class RoutingRepository {
           ? LocationDto(latitude: destinationLat, longitude: destinationLon!)
           : null,
       useForecast: useForecast,
+      limit: 10,
     );
     final dto = await _api.createRoute(
       request,
       selectedZoneId: selectedZoneId,
       cancelToken: cancelToken,
     );
+    return _mapRoute(dto);
+  }
+
+  Future<ActiveRoute> getRoute(int routeId) async {
+    final dto = await _api.getRoute(routeId);
     return _mapRoute(dto);
   }
 
@@ -76,17 +83,20 @@ class RoutingRepository {
     routePolyline: _parsePolyline(dto.routeGeometry),
   );
 
-  ActiveRoute _mapRoute(RouteDto dto) => ActiveRoute(
-    routeId: dto.routeId,
-    status: dto.status,
-    selectedZoneId: dto.selectedZoneId ?? 0,
-    arrivalTime: dto.arrivalTime,
-    deeplinkUrl: dto.deeplinkUrl,
-    routePolyline: null,
-    candidates: dto.selectedCandidate != null
-        ? [_mapCandidate(dto.selectedCandidate!)]
-        : [],
-  );
+  ActiveRoute _mapRoute(RouteDto dto) {
+    final selectedCandidate = dto.selectedCandidate == null
+        ? null
+        : _mapCandidate(dto.selectedCandidate!);
+    return ActiveRoute(
+      routeId: dto.routeId,
+      status: dto.status,
+      selectedZoneId: dto.selectedZoneId ?? 0,
+      arrivalTime: dto.arrivalTime,
+      deeplinkUrl: dto.deeplinkUrl,
+      routePolyline: selectedCandidate?.routePolyline,
+      candidates: selectedCandidate != null ? [selectedCandidate] : [],
+    );
+  }
 
   List<Point>? _parsePolyline(Map<String, dynamic>? geometry) {
     if (geometry == null) return null;

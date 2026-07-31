@@ -1,29 +1,30 @@
-# Android App Links Configuration
+# ParkTrack deep links
 
-To enable automatic verification for App Links on Android, you must add the production SHA-256 fingerprint to `web/.well-known/assetlinks.json`.
+ParkTrack supports verified Android App Links on `m.parktrack.live` and the
+`parktrack://` custom scheme. Both forms open the same application sections.
 
-## Current Blocker
-The production SHA-256 fingerprint is currently missing in the repository. 
+| Section | HTTPS App Link | Custom scheme |
+| --- | --- | --- |
+| Map | `https://m.parktrack.live/map` | `parktrack://map` |
+| Parking card | `https://m.parktrack.live/parking/42` | `parktrack://parking/42` |
+| Saved route | `https://m.parktrack.live/route/7` | `parktrack://route/7` |
+| Destination | `https://m.parktrack.live/destination?lat=61.789114&lon=34.359757&name=Station` | `parktrack://destination?lat=61.789114&lon=34.359757&name=Station` |
+| Search | `https://m.parktrack.live/search?q=station` | `parktrack://search?q=station` |
+| Profile | `https://m.parktrack.live/profile` | `parktrack://profile` |
+| Edit profile | `https://m.parktrack.live/profile/edit` | `parktrack://profile/edit` |
+| Sign in | `https://m.parktrack.live/login` | `parktrack://login` |
+| Registration | `https://m.parktrack.live/register` | `parktrack://register` |
+| Password reset | `https://m.parktrack.live/password-reset` | `parktrack://password-reset` |
 
-## How to get the fingerprint
-If the app is published via Google Play with App Signing enabled:
-1. Go to the [Google Play Console](https://play.google.com/console/).
-2. Select your app.
-3. Go to **Setup** > **App integrity**.
-4. Find the **App signing key certificate** section.
-5. Copy the **SHA-256 certificate fingerprint**.
+Backward-compatible map links are also accepted:
 
-If you are using a local keystore:
-Run the following command:
-```bash
-keytool -list -v -keystore path/to/your/keystore.jks
-```
-Then find the SHA-256 value.
+- `https://m.parktrack.live/map?id=42`;
+- `https://m.parktrack.live/map?zoneId=42`;
+- `https://m.parktrack.live/map?q=station`;
+- `https://m.parktrack.live/map/parking/42`;
+- the corresponding `parktrack://map?...` links.
 
-## Update assetlinks.json
-Once you have the fingerprint, update `web/.well-known/assetlinks.json`:
-```json
-"sha256_cert_fingerprints": [
-  "PASTE_YOUR_FINGERPRINT_HERE"
-]
-```
+Only exact `https://m.parktrack.live` links, `parktrack://` links, and internal
+relative paths are accepted as application destinations. Unknown or malformed
+links safely fall back to `/map`. Protected sections preserve their destination
+through authentication.

@@ -84,8 +84,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  const Center(child: LanguageSwitcher()),
                   const SizedBox(height: 32),
                   TextFormField(
                     controller: _loginCtrl,

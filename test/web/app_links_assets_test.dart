@@ -26,6 +26,7 @@ void main() {
     expect(manifest, contains('android:autoVerify="true"'));
     expect(manifest, contains('android:scheme="https"'));
     expect(manifest, contains('android:host="m.parktrack.live"'));
+    expect(manifest, contains('android:scheme="parktrack"'));
     expect(manifest, isNot(contains('android:host="*.parktrack.live"')));
   });
 
@@ -47,7 +48,7 @@ void main() {
     expect(
       target['sha256_cert_fingerprints'],
       contains(
-        'B8:0A:91:ED:3C:71:8F:0B:21:53:82:9D:85:41:AA:93:CB:A0:54:1F:AF:E2:ED:4E:F4:61:4A:F9:75:A6:ED:D0',
+        '52:9C:D3:24:95:AD:28:AB:08:F6:AE:C5:09:19:87:43:E4:9D:E8:0D:39:55:1B:A2:60:00:C6:AB:B9:B9:6D:BE',
       ),
     );
   });

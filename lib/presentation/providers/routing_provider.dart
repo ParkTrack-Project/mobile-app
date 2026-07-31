@@ -1,10 +1,12 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
+import 'package:yandex_mapkit/yandex_mapkit.dart';
 import '../../core/network/api_exception.dart';
 import '../../domain/models/route_result.dart';
 import 'app_providers.dart';
 import 'filters_provider.dart';
+import 'parking_search_provider.dart';
 import 'time_selector_provider.dart';
 
 part 'routing_provider.freezed.dart';
@@ -29,12 +31,6 @@ class Destination with _$Destination {
 }
 
 final destinationProvider = StateProvider<Destination?>((ref) => null);
-
-enum DestinationMode { routeToAddress, nearestParking }
-
-final destinationModeProvider = StateProvider<DestinationMode>(
-  (ref) => DestinationMode.nearestParking,
-);
 
 class SearchBias {
   const SearchBias({
@@ -74,6 +70,14 @@ final searchBiasProvider = StateProvider<SearchBias?>((ref) => null);
 
 final searchQueryProvider = StateProvider<String>((ref) => '');
 
+typedef RouteGeometry = ({
+  List<Point> points,
+  int distanceMeters,
+  int durationSeconds,
+});
+
+const destinationRouteZoneId = 0;
+
 class RoutingNotifier extends StateNotifier<RoutingState> {
   RoutingNotifier(this._ref) : super(const RoutingState.idle());
 
@@ -83,13 +87,15 @@ class RoutingNotifier extends StateNotifier<RoutingState> {
   int _failureGeneration = 0;
   RoutingState? _stableState;
 
-  void _startRequest() {
+  void _startRequest({bool preserveStableState = true}) {
     _ref.read(routingFailureProvider.notifier).state = null;
-    final stable = state.maybeWhen(
-      candidates: (_) => state,
-      routePreview: (_) => state,
-      orElse: () => null,
-    );
+    final stable = preserveStableState
+        ? state.maybeWhen(
+            candidates: (_) => state,
+            routePreview: (_) => state,
+            orElse: () => null,
+          )
+        : null;
     if (stable != null) {
       _stableState = stable;
     } else {
@@ -124,7 +130,9 @@ class RoutingNotifier extends StateNotifier<RoutingState> {
     _cancelToken?.cancel('Superseded by a newer routing request');
     final cancelToken = CancelToken();
     _cancelToken = cancelToken;
-    _startRequest();
+    _ref.read(parkingSearchProvider.notifier).startSearch();
+    _stableState = null;
+    _startRequest(preserveStableState: false);
     try {
       final destination = _ref.read(destinationProvider);
       final filters = _ref.read(filtersProvider);
@@ -147,9 +155,11 @@ class RoutingNotifier extends StateNotifier<RoutingState> {
       if (generation != _requestGeneration || cancelToken.isCancelled) return;
       state = RoutingState.candidates(candidates);
       _stableState = state;
+      _ref.read(parkingSearchProvider.notifier).showResults(candidates);
     } catch (e) {
       if (e is DioException && CancelToken.isCancel(e)) return;
       if (generation != _requestGeneration) return;
+      _ref.read(parkingSearchProvider.notifier).showSearchError();
       _publishFailure(
         e,
         fallback: AppFailureKind.network,
@@ -162,6 +172,10 @@ class RoutingNotifier extends StateNotifier<RoutingState> {
     required double originLat,
     required double originLon,
     required int selectedZoneId,
+    List<Point>? routePolyline,
+    int? routeDistanceMeters,
+    int? routeDurationSeconds,
+    Future<RouteGeometry?> Function()? routeGeometryFallback,
   }) async {
     final generation = ++_requestGeneration;
     _cancelToken?.cancel('Superseded by a newer routing request');
@@ -175,7 +189,7 @@ class RoutingNotifier extends StateNotifier<RoutingState> {
         future: (_) => true,
         orElse: () => null,
       );
-      final route = await _ref
+      var route = await _ref
           .read(routingRepositoryProvider)
           .createRoute(
             originLat: originLat,
@@ -187,11 +201,37 @@ class RoutingNotifier extends StateNotifier<RoutingState> {
             cancelToken: cancelToken,
           );
       if (generation != _requestGeneration || cancelToken.isCancelled) return;
+      RouteGeometry? fallbackGeometry;
+      final primaryPolyline = routePolyline ?? route.routePolyline;
+      if ((primaryPolyline == null || primaryPolyline.length < 2) &&
+          routeGeometryFallback != null) {
+        fallbackGeometry = await routeGeometryFallback();
+        if (generation != _requestGeneration || cancelToken.isCancelled) {
+          return;
+        }
+      }
+      final resolvedPolyline =
+          routePolyline ?? route.routePolyline ?? fallbackGeometry?.points;
+      if (resolvedPolyline == null || resolvedPolyline.length < 2) {
+        throw StateError('The routing services returned no driving route');
+      }
+      route = route.copyWith(
+        routePolyline: resolvedPolyline,
+        routeDistanceMeters:
+            routeDistanceMeters ??
+            route.routeDistanceMeters ??
+            fallbackGeometry?.distanceMeters,
+        routeDurationSeconds:
+            routeDurationSeconds ??
+            route.routeDurationSeconds ??
+            fallbackGeometry?.durationSeconds,
+      );
       state = RoutingState.routePreview(route);
       _stableState = state;
     } catch (e) {
       if (e is DioException && CancelToken.isCancel(e)) return;
       if (generation != _requestGeneration) return;
+      _ref.read(parkingSearchProvider.notifier).backToResults();
       _publishFailure(
         e,
         fallback: AppFailureKind.routeLoad,
@@ -199,7 +239,61 @@ class RoutingNotifier extends StateNotifier<RoutingState> {
           originLat: originLat,
           originLon: originLon,
           selectedZoneId: selectedZoneId,
+          routePolyline: routePolyline,
+          routeDistanceMeters: routeDistanceMeters,
+          routeDurationSeconds: routeDurationSeconds,
+          routeGeometryFallback: routeGeometryFallback,
         ),
+      );
+    }
+  }
+
+  void showDestinationRoutePreview(RouteGeometry geometry) {
+    if (geometry.points.length < 2) {
+      throw ArgumentError.value(
+        geometry.points,
+        'geometry.points',
+        'A route preview requires at least two points',
+      );
+    }
+    _requestGeneration++;
+    _cancelToken?.cancel('Superseded by a destination route preview');
+    _cancelToken = null;
+    _ref.read(routingFailureProvider.notifier).state = null;
+    _ref.read(parkingSearchProvider.notifier).clear();
+    state = RoutingState.routePreview(
+      ActiveRoute(
+        routeId: 0,
+        status: 'ready',
+        selectedZoneId: destinationRouteZoneId,
+        routePolyline: geometry.points,
+        routeDistanceMeters: geometry.distanceMeters,
+        routeDurationSeconds: geometry.durationSeconds,
+        candidates: const [],
+      ),
+    );
+    _stableState = state;
+  }
+
+  Future<void> loadRoute(int routeId) async {
+    final generation = ++_requestGeneration;
+    _cancelToken?.cancel('Superseded by a shared route request');
+    _cancelToken = null;
+    _stableState = null;
+    _startRequest(preserveStableState: false);
+    try {
+      final route = await _ref
+          .read(routingRepositoryProvider)
+          .getRoute(routeId);
+      if (generation != _requestGeneration) return;
+      state = RoutingState.routePreview(route);
+      _stableState = state;
+    } catch (error) {
+      if (generation != _requestGeneration) return;
+      _publishFailure(
+        error,
+        fallback: AppFailureKind.routeLoad,
+        retry: () => loadRoute(routeId),
       );
     }
   }
@@ -210,6 +304,7 @@ class RoutingNotifier extends StateNotifier<RoutingState> {
     _cancelToken = null;
     _stableState = null;
     _ref.read(routingFailureProvider.notifier).state = null;
+    _ref.read(parkingSearchProvider.notifier).clear();
     state = const RoutingState.idle();
   }
 

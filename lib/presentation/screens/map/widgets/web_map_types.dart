@@ -7,6 +7,9 @@ class WebMapCamera {
     required this.south,
     required this.east,
     required this.north,
+    this.azimuth = 0,
+    this.cameraUpdateFinished = true,
+    this.userGesture = false,
   });
 
   final double latitude;
@@ -16,14 +19,64 @@ class WebMapCamera {
   final double south;
   final double east;
   final double north;
+  final double azimuth;
+  final bool cameraUpdateFinished;
+  final bool userGesture;
 }
 
 class WebMapController {
   WebMapCamera? camera;
   void Function(double latitude, double longitude, double zoom)? moveHandler;
-  void Function(double zoom)? zoomHandler;
+  void Function(double zoom, double durationSeconds)? zoomHandler;
   void Function(double south, double west, double north, double east)?
   fitBoundsHandler;
+  void Function(
+    double south,
+    double west,
+    double north,
+    double east,
+    double azimuth,
+    double top,
+    double right,
+    double bottom,
+    double left,
+  )?
+  fitBoundsWithInsetsHandler;
+  void Function(
+    double latitude,
+    double longitude,
+    double zoom,
+    double top,
+    double right,
+    double bottom,
+    double left,
+  )?
+  focusHandler;
+  void Function(
+    double latitude,
+    double longitude,
+    double zoom,
+    double azimuth,
+    double top,
+    double right,
+    double bottom,
+    double left,
+    double durationSeconds,
+  )?
+  followHandler;
+  void Function(
+    double latitude,
+    double longitude,
+    double zoom,
+    double azimuth,
+    double top,
+    double right,
+    double bottom,
+    double left,
+  )?
+  cameraHandler;
+  void Function()? resetNorthHandler;
+  void Function()? requestHeadingHandler;
   void Function()? retryHandler;
 
   bool get isReady => camera != null;
@@ -31,21 +84,102 @@ class WebMapController {
   void move(double latitude, double longitude, double zoom) =>
       moveHandler?.call(latitude, longitude, zoom);
 
+  void setZoom(double zoom, {double durationSeconds = 0.2}) =>
+      zoomHandler?.call(zoom, durationSeconds);
+
   void zoomBy(double delta) {
     final current = camera;
-    if (current != null) zoomHandler?.call(current.zoom + delta);
+    if (current != null) zoomHandler?.call(current.zoom + delta, 0.2);
   }
 
-  void fitBounds(double south, double west, double north, double east) =>
+  void fitBounds(
+    double south,
+    double west,
+    double north,
+    double east, {
+    double top = 0,
+    double right = 0,
+    double bottom = 0,
+    double left = 0,
+    double azimuth = 0,
+  }) {
+    final withInsets = fitBoundsWithInsetsHandler;
+    if (withInsets != null) {
+      withInsets(south, west, north, east, azimuth, top, right, bottom, left);
+    } else {
       fitBoundsHandler?.call(south, west, north, east);
+    }
+  }
+
+  void focus(
+    double latitude,
+    double longitude,
+    double zoom, {
+    double top = 0,
+    double right = 0,
+    double bottom = 0,
+    double left = 0,
+  }) => focusHandler?.call(latitude, longitude, zoom, top, right, bottom, left);
+
+  void follow(
+    double latitude,
+    double longitude,
+    double zoom,
+    double azimuth, {
+    double top = 0,
+    double right = 0,
+    double bottom = 0,
+    double left = 0,
+    double durationSeconds = 0,
+  }) => followHandler?.call(
+    latitude,
+    longitude,
+    zoom,
+    azimuth,
+    top,
+    right,
+    bottom,
+    left,
+    durationSeconds,
+  );
+
+  void setCamera(
+    double latitude,
+    double longitude,
+    double zoom,
+    double azimuth, {
+    double top = 0,
+    double right = 0,
+    double bottom = 0,
+    double left = 0,
+  }) => cameraHandler?.call(
+    latitude,
+    longitude,
+    zoom,
+    azimuth,
+    top,
+    right,
+    bottom,
+    left,
+  );
 
   void retry() => retryHandler?.call();
+
+  void resetNorth() => resetNorthHandler?.call();
+
+  void requestHeading() => requestHeadingHandler?.call();
 
   void clear() {
     camera = null;
     moveHandler = null;
     zoomHandler = null;
     fitBoundsHandler = null;
+    fitBoundsWithInsetsHandler = null;
+    focusHandler = null;
+    followHandler = null;
+    cameraHandler = null;
+    resetNorthHandler = null;
+    requestHeadingHandler = null;
     retryHandler = null;
   }
 }

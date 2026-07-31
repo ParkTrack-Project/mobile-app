@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
 import '../../core/network/dio_client.dart';
+import '../../core/services/android_heading_source.dart';
+import '../../core/services/preferred_location_service.dart';
 import '../../core/storage/token_storage.dart';
 import '../../data/api/auth_api.dart';
 import '../../data/api/zones_api.dart';
@@ -11,30 +13,50 @@ import '../../data/repositories/auth_repository.dart';
 import '../../data/repositories/zones_repository.dart';
 import '../../data/repositories/routing_repository.dart';
 
-
 final tokenStorageProvider = Provider<TokenStorage>((ref) => TokenStorage());
+
+final headingSourceProvider = Provider<HeadingSource>(
+  (ref) => const AndroidHeadingSource(),
+);
+
+final preferredLocationServiceProvider = Provider<PreferredLocationService>(
+  (ref) => PreferredLocationService(),
+);
 
 final dioProvider = Provider<Dio>((ref) {
   final tokenStorage = ref.read(tokenStorageProvider);
   return createDio(tokenStorage);
 });
 
-final authApiProvider = Provider<AuthApi>((ref) => AuthApi(ref.read(dioProvider)));
-final zonesApiProvider = Provider<ZonesApi>((ref) => ZonesApi(ref.read(dioProvider)));
-final occupancyApiProvider = Provider<OccupancyApi>((ref) => OccupancyApi(ref.read(dioProvider)));
-final forecastsApiProvider = Provider<ForecastsApi>((ref) => ForecastsApi(ref.read(dioProvider)));
-final routingApiProvider = Provider<RoutingApi>((ref) => RoutingApi(ref.read(dioProvider)));
+final authApiProvider = Provider<AuthApi>(
+  (ref) => AuthApi(ref.read(dioProvider)),
+);
+final zonesApiProvider = Provider<ZonesApi>(
+  (ref) => ZonesApi(ref.read(dioProvider)),
+);
+final occupancyApiProvider = Provider<OccupancyApi>(
+  (ref) => OccupancyApi(ref.read(dioProvider)),
+);
+final forecastsApiProvider = Provider<ForecastsApi>(
+  (ref) => ForecastsApi(ref.read(dioProvider)),
+);
+final routingApiProvider = Provider<RoutingApi>(
+  (ref) => RoutingApi(ref.read(dioProvider)),
+);
 
-final authRepositoryProvider = Provider<AuthRepository>((ref) => AuthRepository(
-      ref.read(authApiProvider),
-      ref.read(tokenStorageProvider),
-    ));
+final authRepositoryProvider = Provider<AuthRepository>(
+  (ref) =>
+      AuthRepository(ref.read(authApiProvider), ref.read(tokenStorageProvider)),
+);
 
-final zonesRepositoryProvider = Provider<ZonesRepository>((ref) => ZonesRepository(
-      ref.read(zonesApiProvider),
-      ref.read(occupancyApiProvider),
-      ref.read(forecastsApiProvider),
-    ));
+final zonesRepositoryProvider = Provider<ZonesRepository>(
+  (ref) => ZonesRepository(
+    ref.read(zonesApiProvider),
+    ref.read(occupancyApiProvider),
+    ref.read(forecastsApiProvider),
+  ),
+);
 
 final routingRepositoryProvider = Provider<RoutingRepository>(
-    (ref) => RoutingRepository(ref.read(routingApiProvider)));
+  (ref) => RoutingRepository(ref.read(routingApiProvider)),
+);

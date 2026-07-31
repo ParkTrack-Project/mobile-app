@@ -1,275 +1,358 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pointer_interceptor/pointer_interceptor.dart';
-import '../../../../domain/models/zone.dart';
-import '../../../../core/theme/app_colors.dart';
-import '../../../../presentation/providers/time_selector_provider.dart';
-import '../../../../presentation/providers/zones_provider.dart';
+import 'package:yandex_mapkit/yandex_mapkit.dart';
+
 import '../../../../core/localization/app_localizations.dart';
+import '../../../../core/theme/app_colors.dart';
+import '../../../../domain/models/route_result.dart';
+import '../../../../domain/models/zone.dart';
+import '../../../providers/parking_address_provider.dart';
+import '../../../providers/time_selector_provider.dart';
+import '../../../providers/zones_provider.dart';
+import 'parking_result_formatter.dart';
+import 'parking_zone_layer.dart';
 
-Future<void> showParkingCard(
-  BuildContext context,
-  Zone zone, {
-  VoidCallback? onBuildRoute,
-}) {
-  return showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    builder: (_) => PointerInterceptor(
-      intercepting: kIsWeb,
-      child: _ParkingCardSheet(zone: zone, onBuildRoute: onBuildRoute),
-    ),
-  );
-}
+class ParkingCardSheet extends ConsumerWidget {
+  const ParkingCardSheet({
+    super.key,
+    required this.zone,
+    required this.onBuildRoute,
+    required this.onClose,
+    this.onShare,
+    this.onOpenExternal,
+    this.originLatitude,
+    this.originLongitude,
+    this.candidate,
+    this.onBack,
+    this.onPrevious,
+    this.onNext,
+    this.resultIndex,
+    this.resultCount,
+  });
 
-class _ParkingCardSheet extends ConsumerWidget {
   final Zone zone;
-  final VoidCallback? onBuildRoute;
-
-  const _ParkingCardSheet({required this.zone, this.onBuildRoute});
+  final RouteCandidate? candidate;
+  final VoidCallback onBuildRoute;
+  final VoidCallback onClose;
+  final ValueChanged<String?>? onShare;
+  final VoidCallback? onOpenExternal;
+  final double? originLatitude;
+  final double? originLongitude;
+  final VoidCallback? onBack;
+  final VoidCallback? onPrevious;
+  final VoidCallback? onNext;
+  final int? resultIndex;
+  final int? resultCount;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(l10nProvider);
+    final zonesAsync = ref.watch(rawZonesProvider);
     final timeMode = ref.watch(timeSelectorProvider);
-    final isFuture = timeMode.maybeWhen(
-      future: (_) => true,
-      orElse: () => false,
-    );
-    final isPast = timeMode.maybeWhen(past: (_) => true, orElse: () => false);
-    final userSelectedAt = timeMode.maybeWhen(
+    final selectedFutureAt = timeMode.maybeWhen(
       future: (at) => at,
       orElse: () => null,
     );
-
-    final zonesAsync = ref.watch(rawZonesProvider);
-    final isLoading = zonesAsync is AsyncLoading;
+    final selectedPastAt = timeMode.maybeWhen(
+      past: (at) => at,
+      orElse: () => null,
+    );
     final currentZone =
         zonesAsync.valueOrNull
-            ?.where((z) => z.zoneId == zone.zoneId)
+            ?.where((item) => item.zoneId == zone.zoneId)
             .firstOrNull ??
         zone;
-
-    return Padding(
-      padding: EdgeInsets.only(
-        bottom:
-            MediaQuery.of(context).viewInsets.bottom +
-            MediaQuery.of(context).padding.bottom,
-      ),
-      child: SingleChildScrollView(
-        child: Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+    final center = currentZone.geometry.isEmpty
+        ? null
+        : centroid(currentZone.geometry);
+    final address = center == null
+        ? const AsyncValue<String?>.data(null)
+        : ref.watch(
+            parkingAddressProvider((
+              latitude: center.latitude,
+              longitude: center.longitude,
+            )),
+          );
+    final colors = Theme.of(context).colorScheme;
+    final timingFacts = <Widget>[
+      if (selectedFutureAt != null) ...[
+        if (currentZone.forecastFor case final forecastFor?)
+          _Fact(
+            key: const Key('parking_forecast_for'),
+            icon: Icons.schedule_outlined,
+            text:
+                '${s.forecastFor}: ${formatParkingCardDateTime(forecastFor, s)}',
           ),
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+        if (currentZone.forecastGeneratedAt case final generatedAt?)
+          _Fact(
+            key: const Key('parking_forecast_generated_at'),
+            icon: Icons.auto_graph_outlined,
+            text:
+                '${s.generated}: ${formatParkingCardDateTime(generatedAt, s)}',
+          ),
+      ] else if (currentZone.occupancyUpdatedAt case final updatedAt?)
+        if (selectedPastAt == null || !updatedAt.isAfter(selectedPastAt))
+          _Fact(
+            key: const Key('parking_occupancy_updated_at'),
+            icon: Icons.update_outlined,
+            text: '${s.updatedAt}: ${formatParkingCardDateTime(updatedAt, s)}',
+          ),
+    ];
+    final forecastMismatch =
+        selectedFutureAt != null &&
+        currentZone.forecastFor != null &&
+        selectedFutureAt.difference(currentZone.forecastFor!).abs() >=
+            const Duration(minutes: 30);
+
+    return Material(
+      color: colors.surface,
+      elevation: 14,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      clipBehavior: Clip.antiAlias,
+      child: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          10,
+          16,
+          16 + MediaQuery.paddingOf(context).bottom,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: colors.outlineVariant,
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              const SizedBox(height: 16),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                if (onBack != null)
+                  IconButton(
+                    tooltip: s.backToResults,
+                    onPressed: onBack,
+                    icon: const Icon(Icons.arrow_back),
+                  ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${s.parkingNumber}${currentZone.zoneId}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                      address.when(
+                        data: (value) => value == null || value.trim().isEmpty
+                            ? const SizedBox.shrink()
+                            : Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text(
+                                  value.trim(),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(
+                                        color: colors.onSurfaceVariant,
+                                      ),
+                                ),
+                              ),
+                        loading: () => Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            s.addressLoading,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: colors.onSurfaceVariant),
+                          ),
+                        ),
+                        error: (_, _) => const SizedBox.shrink(),
+                      ),
+                    ],
+                  ),
+                ),
+                if (resultIndex != null && resultCount != null)
+                  Text(
+                    '${resultIndex! + 1}/$resultCount',
+                    style: TextStyle(color: colors.onSurfaceVariant),
+                  ),
+                if (onShare != null)
+                  IconButton(
+                    key: const Key('parking_share'),
+                    tooltip: s.share,
+                    onPressed: () => onShare?.call(address.valueOrNull),
+                    icon: const Icon(Icons.share_outlined),
+                  ),
+                IconButton(
+                  tooltip: s.close,
+                  onPressed: onClose,
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                _AvailabilityFact(zone: currentZone, s: s),
+                if (formatParkingPrice(currentZone.pay, s) case final price?)
+                  _Fact(icon: Icons.payments_outlined, text: price),
+                if (currentZone.locationType != null)
+                  _Fact(
+                    icon: Icons.place_outlined,
+                    text: _locationTypeLabel(currentZone.locationType!, s),
+                  ),
+                if (currentZone.isAccessible == true)
+                  _Fact(icon: Icons.accessible, text: s.accessibleParking),
+                if (currentZone.isPrivate == true)
+                  _Fact(icon: Icons.lock_outline, text: s.private),
+                _Fact(
+                  icon: Icons.verified_outlined,
+                  text:
+                      '${s.confidence}: ${(((candidate?.confidence ?? currentZone.confidence).clamp(0, 1)) * 100).round()}%',
+                ),
+              ],
+            ),
+            if (candidate != null) ...[
+              const SizedBox(height: 10),
+              _CandidateFacts(
+                candidate: candidate!,
+                zone: currentZone,
+                originLatitude: originLatitude,
+                originLongitude: originLongitude,
+                s: s,
+              ),
+            ],
+            if (timingFacts.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Wrap(spacing: 8, runSpacing: 6, children: timingFacts),
+            ],
+            if (forecastMismatch) ...[
+              const SizedBox(height: 10),
+              _ForecastMismatchWarning(
+                forecastFor: currentZone.forecastFor!,
+                selectedAt: selectedFutureAt,
+                s: s,
+                onOpenClosest: () => ref
+                    .read(timeSelectorProvider.notifier)
+                    .setFuture(currentZone.forecastFor!),
+              ),
+            ],
+            if (onPrevious != null || onNext != null) ...[
+              const SizedBox(height: 10),
               Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      '${s.parkingZone} #${currentZone.zoneId}',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
+                    child: OutlinedButton.icon(
+                      onPressed: onPrevious,
+                      icon: const Icon(Icons.chevron_left),
+                      label: Text(s.previousParking),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: onNext,
+                      iconAlignment: IconAlignment.end,
+                      icon: const Icon(Icons.chevron_right),
+                      label: Text(s.nextParking),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: onBuildRoute,
+                    icon: const Icon(Icons.navigation_rounded),
+                    label: Text(s.buildRoute),
+                  ),
+                ),
+                if (onOpenExternal != null) ...[
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      onPressed: onOpenExternal,
+                      icon: const Icon(Icons.open_in_new_rounded),
+                      label: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(s.openInYandexMaps),
                       ),
                     ),
                   ),
-                  if (currentZone.isPrivate == true)
-                    _Badge(s.private, Colors.orange),
-                  if (currentZone.isAccessible == true)
-                    _Badge('♿', AppColors.primary),
                 ],
-              ),
-              const SizedBox(height: 12),
-              if (isLoading)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 24),
-                  child: Center(
-                    child: Text(
-                      s.loadingData,
-                      style: const TextStyle(color: AppColors.textSecondary),
-                    ),
-                  ),
-                )
-              else ...[
-                _InfoRow(
-                  icon: Icons.local_parking,
-                  label: s.capacity,
-                  value: currentZone.hasForecast
-                      ? '${currentZone.freeCount} / ${currentZone.capacity} ${s.free.toLowerCase()}'
-                      : s.noForecast,
-                  valueColor: currentZone.hasForecast
-                      ? null
-                      : AppColors.textSecondary,
-                ),
-                if (isFuture &&
-                    currentZone.hasForecast &&
-                    currentZone.forecastFor != null)
-                  _InfoRow(
-                    icon: Icons.schedule,
-                    label: '${s.forecast} ${s.forWord}',
-                    value: _formatDateTime(currentZone.forecastFor!, s),
-                  ),
-                if (isFuture &&
-                    currentZone.hasForecast &&
-                    currentZone.forecastGeneratedAt != null)
-                  _InfoRow(
-                    icon: Icons.build_circle_outlined,
-                    label: s.generated,
-                    value: _formatDateTime(currentZone.forecastGeneratedAt!, s),
-                  ),
-                _InfoRow(
-                  icon: Icons.payments_outlined,
-                  label: s.pay,
-                  value: currentZone.pay == 0
-                      ? s.free
-                      : '${currentZone.pay} ₽/${s.hourSign}',
-                  valueColor: currentZone.pay == 0 ? AppColors.primary : null,
-                ),
-                if (!isPast)
-                  _InfoRow(
-                    icon: Icons.verified_outlined,
-                    label: s.confidence,
-                    value: _confidenceLabel(currentZone),
-                  ),
-                if (currentZone.locationType != null)
-                  _InfoRow(
-                    icon: Icons.place_outlined,
-                    label: s.type,
-                    value: _locationTypeLabel(currentZone.locationType!, s),
-                  ),
-                _InfoRow(
-                  icon: Icons.directions_car_outlined,
-                  label: s.parkingType,
-                  value: currentZone.zoneType == ZoneType.parallel
-                      ? s.parallel
-                      : s.regular,
-                ),
-                if (!isPast && currentZone.occupancyUpdatedAt != null)
-                  _InfoRow(
-                    icon: Icons.update,
-                    label: s.updatedAt,
-                    value: _formatDateTime(currentZone.occupancyUpdatedAt!, s),
-                  ),
-                if (isFuture &&
-                    currentZone.forecastFor != null &&
-                    userSelectedAt != null)
-                  _StaleForecastBanner(
-                    forecastFor: currentZone.forecastFor!,
-                    userSelectedAt: userSelectedAt,
-                    s: s,
-                    onSnap: () {
-                      ref
-                          .read(timeSelectorProvider.notifier)
-                          .setFuture(currentZone.forecastFor!);
-                      Navigator.pop(context);
-                    },
-                  ),
               ],
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    onBuildRoute?.call();
-                  },
-                  icon: const Icon(Icons.directions),
-                  label: Text(s.buildRoute),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
-
-  String _confidenceLabel(Zone z) => '${(z.confidence * 100).round()}%';
-
-  String _locationTypeLabel(LocationType type, AppStrings s) => switch (type) {
-    LocationType.street => s.street,
-    LocationType.yard => s.yard,
-    LocationType.openLot => s.openLot,
-    LocationType.underground => s.underground,
-    LocationType.multilevel => s.multilevel,
-  };
-
-  static String _formatTime(DateTime dt) {
-    final l = dt.toLocal();
-    return '${l.hour.toString().padLeft(2, '0')}:${l.minute.toString().padLeft(2, '0')}';
-  }
-
-  static String _formatDateTime(DateTime dt, AppStrings s) {
-    final l = dt.toLocal();
-    final now = DateTime.now();
-    final timeStr = _formatTime(l);
-    if (l.year == now.year && l.month == now.month && l.day == now.day) {
-      return '${s.today} $timeStr';
-    }
-    return '${l.day} ${s.monthNames[l.month]} $timeStr';
-  }
 }
 
-class _StaleForecastBanner extends StatelessWidget {
-  final DateTime forecastFor;
-  final DateTime userSelectedAt;
-  final VoidCallback onSnap;
-  final AppStrings s;
+String formatParkingCardDateTime(DateTime value, AppStrings s) {
+  final local = value.toLocal();
+  final time =
+      '${local.hour.toString().padLeft(2, '0')}:'
+      '${local.minute.toString().padLeft(2, '0')}';
+  return '${local.day} ${s.monthNames[local.month]} ${local.year}, $time';
+}
 
-  const _StaleForecastBanner({
+class _ForecastMismatchWarning extends StatelessWidget {
+  const _ForecastMismatchWarning({
     required this.forecastFor,
-    required this.userSelectedAt,
-    required this.onSnap,
+    required this.selectedAt,
     required this.s,
+    required this.onOpenClosest,
   });
+
+  final DateTime forecastFor;
+  final DateTime selectedAt;
+  final AppStrings s;
+  final VoidCallback onOpenClosest;
 
   @override
   Widget build(BuildContext context) {
-    final diffMin = userSelectedAt.difference(forecastFor).inMinutes.abs();
-    if (diffMin <= 30) return const SizedBox.shrink();
+    final colors = Theme.of(context).colorScheme;
+    final warningColor = colors.tertiary;
+
     return Container(
-      margin: const EdgeInsets.only(top: 12),
+      key: const Key('parking_forecast_mismatch_warning'),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.orange.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+        color: warningColor.withValues(alpha: 0.1),
+        border: Border.all(color: warningColor.withValues(alpha: 0.65)),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            '${s.forecastFor} ${_ParkingCardSheet._formatTime(forecastFor)}, '
-            '${s.youPicked} ${_ParkingCardSheet._formatTime(userSelectedAt)}',
-            style: const TextStyle(color: Colors.orange, fontSize: 13),
+            '${s.forecastFor} ${formatParkingCardDateTime(forecastFor, s)}, '
+            '${s.youPicked} ${formatParkingCardDateTime(selectedAt, s)}',
+            style: TextStyle(color: warningColor, fontSize: 13),
           ),
           const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton(
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.orange,
-                side: const BorderSide(color: Colors.orange),
-              ),
-              onPressed: onSnap,
-              child: Text(s.jumpToClosest),
+          OutlinedButton(
+            key: const Key('parking_open_closest_forecast'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: warningColor,
+              side: BorderSide(color: warningColor),
             ),
+            onPressed: onOpenClosest,
+            child: Text(s.jumpToClosest),
           ),
         ],
       ),
@@ -277,38 +360,172 @@ class _StaleForecastBanner extends StatelessWidget {
   }
 }
 
-class _InfoRow extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color? valueColor;
-
-  const _InfoRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-    this.valueColor,
+class _CandidateFacts extends StatelessWidget {
+  const _CandidateFacts({
+    required this.candidate,
+    required this.zone,
+    required this.s,
+    this.originLatitude,
+    this.originLongitude,
   });
 
+  final RouteCandidate candidate;
+  final Zone zone;
+  final AppStrings s;
+  final double? originLatitude;
+  final double? originLongitude;
+
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+    final colors = Theme.of(context).colorScheme;
+    final facts = <Widget>[];
+    final duration = formatParkingDuration(
+      candidate.durationFromOriginSeconds,
+      s,
+    );
+    final origin = originLatitude == null || originLongitude == null
+        ? null
+        : Point(latitude: originLatitude!, longitude: originLongitude!);
+    final center = zone.geometry.isEmpty ? null : centroid(zone.geometry);
+    final routeDistance = formatParkingDistance(
+      parkingPolylineLengthMeters(candidate.routePolyline) ??
+          parkingPointDistanceMeters(origin, center),
+      s,
+    );
+    final destinationDistance = formatParkingDistance(
+      candidate.distanceToDestinationMeters,
+      s,
+    );
+    final predicted = formatParkingSpaces(candidate.predictedFreeCount, s);
+    final predictedColor = switch (candidate.predictedFreeCount) {
+      null => colors.onSurfaceVariant,
+      <= 0 => colors.error,
+      1 => const Color(0xFFB48409),
+      _ => AppColors.primary,
+    };
+    final eta = formatParkingArrivalEstimate(
+      candidate.eta,
+      candidate.durationFromOriginSeconds,
+    );
+    if (routeDistance != null || duration != null) {
+      facts.add(
+        _Fact(
+          icon: Icons.directions_car_outlined,
+          text: [
+            ?routeDistance,
+            if (duration != null) '($duration)',
+            s.fromYou,
+          ].join(' '),
+        ),
+      );
+    }
+    if (destinationDistance != null) {
+      facts.add(
+        _Fact(
+          icon: Icons.directions_walk,
+          text:
+              '$destinationDistance ${s.toDestination} · '
+              '${formatParkingWalkingDuration(candidate.distanceToDestinationMeters, s)} '
+              '${s.walkingTime}',
+        ),
+      );
+    }
+    if (predicted != null) {
+      facts.add(
+        _Fact(
+          key: Key('parking_details_predicted_${candidate.zoneId}'),
+          icon: Icons.auto_graph,
+          text: eta == null
+              ? predicted
+              : '$predicted ${s.expectedAvailability} $eta',
+          color: predictedColor,
+          outlined: true,
+        ),
+      );
+    }
+    return Wrap(spacing: 8, runSpacing: 6, children: facts);
+  }
+}
+
+class _AvailabilityFact extends StatelessWidget {
+  const _AvailabilityFact({required this.zone, required this.s});
+
+  final Zone zone;
+  final AppStrings s;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final color = switch (zone.freeCount) {
+      <= 0 => colors.error,
+      1 => const Color(0xFFB48409),
+      _ => AppColors.primary,
+    };
+    final spaces = formatParkingSpaces(zone.freeCount, s) ?? s.noForecast;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(10),
+      ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 20, color: Theme.of(context).hintColor),
-          const SizedBox(width: 12),
-          Text(
-            label,
-            style: TextStyle(color: Theme.of(context).hintColor, fontSize: 14),
-          ),
-          const Spacer(),
-          Text(
-            value,
-            style: TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 14,
-              color: valueColor ?? Theme.of(context).colorScheme.onSurface,
+          Icon(Icons.local_parking, size: 16, color: color),
+          const SizedBox(width: 5),
+          Text(spaces, style: TextStyle(fontSize: 12, color: color)),
+          if (zone.capacity > 0) ...[
+            const SizedBox(width: 3),
+            Text(
+              '/ ${zone.capacity}',
+              style: TextStyle(
+                fontSize: 10,
+                color: color.withValues(alpha: 0.72),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _Fact extends StatelessWidget {
+  const _Fact({
+    super.key,
+    required this.icon,
+    required this.text,
+    this.color,
+    this.outlined = false,
+  });
+
+  final IconData icon;
+  final String text;
+  final Color? color;
+  final bool outlined;
+
+  @override
+  Widget build(BuildContext context) {
+    final effectiveColor =
+        color ?? Theme.of(context).colorScheme.onSurfaceVariant;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: outlined
+            ? Colors.transparent
+            : effectiveColor.withValues(alpha: 0.1),
+        border: outlined ? Border.all(color: effectiveColor) : null,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: effectiveColor),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              text,
+              style: TextStyle(fontSize: 12, color: effectiveColor),
             ),
           ),
         ],
@@ -317,30 +534,10 @@ class _InfoRow extends StatelessWidget {
   }
 }
 
-class _Badge extends StatelessWidget {
-  final String text;
-  final Color color;
-
-  const _Badge(this.text, this.color);
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(left: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.5)),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          color: color,
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
-  }
-}
+String _locationTypeLabel(LocationType type, AppStrings s) => switch (type) {
+  LocationType.street => s.street,
+  LocationType.yard => s.yard,
+  LocationType.openLot => s.openLot,
+  LocationType.underground => s.underground,
+  LocationType.multilevel => s.multilevel,
+};
