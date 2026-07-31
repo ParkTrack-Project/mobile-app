@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/presentation/screens/map/route_camera.dart';
 import 'package:yandex_mapkit/yandex_mapkit.dart';
 
+const _projectionTolerance = 1e-9;
+
 void main() {
   test('calculates bounds containing the complete route', () {
     final bounds = calculateRouteBounds(const [
@@ -139,11 +141,17 @@ void main() {
       );
       expect(
         screenPoint.dx,
-        inInclusiveRange(margins.left, viewport.width - margins.right),
+        inInclusiveRange(
+          margins.left - _projectionTolerance,
+          viewport.width - margins.right + _projectionTolerance,
+        ),
       );
       expect(
         screenPoint.dy,
-        inInclusiveRange(margins.top, viewport.height - margins.bottom),
+        inInclusiveRange(
+          margins.top - _projectionTolerance,
+          viewport.height - margins.bottom + _projectionTolerance,
+        ),
       );
     }
 

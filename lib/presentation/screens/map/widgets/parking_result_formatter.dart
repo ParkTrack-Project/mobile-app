@@ -57,13 +57,19 @@ String? formatParkingWalkingDuration(int? meters, AppStrings strings) {
 
 String? formatParkingArrival(String? value) {
   if (value == null || value.trim().isEmpty) return null;
-  final parsed = DateTime.tryParse(value)?.toLocal();
+  final input = value.trim();
+  final timestampTime = RegExp(r'(?:T|\s)(\d{1,2}):(\d{2})').firstMatch(input);
+  if (timestampTime != null) {
+    return '${timestampTime.group(1)!.padLeft(2, '0')}:'
+        '${timestampTime.group(2)}';
+  }
+  final parsed = DateTime.tryParse(input)?.toLocal();
   if (parsed != null) {
     final hour = parsed.hour.toString().padLeft(2, '0');
     final minute = parsed.minute.toString().padLeft(2, '0');
     return '$hour:$minute';
   }
-  final match = RegExp(r'(\d{1,2}):(\d{2})').firstMatch(value);
+  final match = RegExp(r'(\d{1,2}):(\d{2})').firstMatch(input);
   return match == null
       ? null
       : '${match.group(1)!.padLeft(2, '0')}:${match.group(2)}';

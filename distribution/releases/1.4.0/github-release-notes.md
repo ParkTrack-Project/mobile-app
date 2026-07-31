@@ -43,6 +43,8 @@ more reliable across Android and the web app.
 - Improved route-building progress feedback and navigation distance formatting.
 - Improved zoom-button hold behavior, map-control placement on small screens,
   and location-marker contrast.
+- Fixed parking arrival estimates so API-provided local times remain consistent
+  across device time zones.
 - Reduced redundant zone fetches, optimized parking-cluster overlap merging,
   and removed repeated route/parking camera refits after panel measurement.
 - Parallelized parking marker bitmap generation and removed unused routing and
@@ -60,5 +62,7 @@ more reliable across Android and the web app.
   navigation panels.
 - Improved map theme synchronization, compass behavior, marker selection,
   routing overlays, and small-screen control placement.
+- Fixed parking arrival estimates so API-provided local times remain consistent
+  across browser time zones.
 - Improved deep-link fallback behavior and preserved protected destinations
   through authentication.
