@@ -397,7 +397,9 @@ class _CandidateTile extends ConsumerWidget {
         ? zone?.freeCount
         : candidate.freeCount;
     final spacesText = formatParkingSpaces(displayedFreeCount, s);
-    final priceText = formatParkingPrice(zone?.pay ?? candidate.pay, s);
+    final pricePerHour = zone?.pay ?? candidate.pay;
+    final priceText = formatParkingPrice(pricePerHour, s);
+    final isPaid = pricePerHour > 0;
     final predictedSpacesText = formatParkingSpaces(
       candidate.predictedFreeCount,
       s,
@@ -423,6 +425,12 @@ class _CandidateTile extends ConsumerWidget {
       ParkingResultTier.average => const Color(0xFFB48409),
       ParkingResultTier.poor => isDark ? const Color(0xFFF44336) : colors.error,
     };
+    final predictedSpacesColor = switch (candidate.predictedFreeCount) {
+      null => colors.onSurfaceVariant,
+      <= 0 => colors.error,
+      1 => const Color(0xFFB48409),
+      _ => AppColors.primary,
+    };
     final factWidgets = <Widget>[
       if (!useAndroidCandidateLayout && spacesText != null)
         _Fact(
@@ -436,13 +444,22 @@ class _CandidateTile extends ConsumerWidget {
           },
         ),
       if (priceText != null)
-        _Fact(icon: Icons.payments_outlined, text: priceText),
+        _Fact(
+          key: Key('parking_candidate_price_${candidate.zoneId}'),
+          icon: Icons.payments_outlined,
+          text: priceText,
+          color: isPaid ? colors.error : null,
+          outlined: isPaid,
+        ),
       if (predictedSpacesText != null)
         _Fact(
+          key: Key('parking_candidate_predicted_${candidate.zoneId}'),
           icon: Icons.auto_graph,
           text: arrivalText == null
               ? predictedSpacesText
               : '$predictedSpacesText ${s.expectedAvailability} $arrivalText',
+          color: predictedSpacesColor,
+          outlined: true,
         ),
       if (drivingDistanceText != null || durationText != null)
         _Fact(
@@ -730,18 +747,35 @@ class _AvailabilityBadge extends StatelessWidget {
 }
 
 class _Fact extends StatelessWidget {
-  const _Fact({required this.icon, required this.text, this.color});
+  const _Fact({
+    super.key,
+    required this.icon,
+    required this.text,
+    this.color,
+    this.outlined = false,
+  });
 
   final IconData icon;
   final String text;
   final Color? color;
+  final bool outlined;
 
   @override
   Widget build(BuildContext context) {
     final effectiveColor =
         color ?? Theme.of(context).colorScheme.onSurfaceVariant;
-    return ConstrainedBox(
+    return Container(
       constraints: const BoxConstraints(maxWidth: 220),
+      padding: outlined
+          ? const EdgeInsets.symmetric(horizontal: 6, vertical: 3)
+          : EdgeInsets.zero,
+      decoration: outlined
+          ? BoxDecoration(
+              color: Colors.transparent,
+              border: Border.all(color: effectiveColor),
+              borderRadius: BorderRadius.circular(6),
+            )
+          : null,
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [

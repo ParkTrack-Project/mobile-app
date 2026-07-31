@@ -37,6 +37,10 @@ void main() {
     'formats destination walk time, arrival, and real polyline distance',
     () {
       expect(formatParkingWalkingDuration(160, AppStrings.en), '~2 min');
+      expect(formatParkingWalkingDuration(4720, AppStrings.en), '~59 min');
+      expect(formatParkingWalkingDuration(4800, AppStrings.en), '~1 h');
+      expect(formatParkingWalkingDuration(4880, AppStrings.en), '~1 h 1 min');
+      expect(formatParkingWalkingDuration(4880, AppStrings.ru), '~1 ч 1 мин');
       expect(formatParkingArrival('2026-07-23T13:23:00+03:00'), '13:23');
       expect(
         formatParkingArrivalEstimate(

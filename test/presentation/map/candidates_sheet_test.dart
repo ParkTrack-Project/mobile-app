@@ -106,6 +106,28 @@ void main() {
     expect(find.text('7 spaces'), findsOneWidget);
     expect(find.text('Free'), findsOneWidget);
     expect(find.text('Accessible parking'), findsOneWidget);
+    final freePriceFinder = find.byKey(const Key('parking_candidate_price_42'));
+    final freePriceBadge = tester.widget<Container>(
+      find.descendant(of: freePriceFinder, matching: find.byType(Container)),
+    );
+    expect(freePriceBadge.decoration, isNull);
+    final predictedFinder = find.byKey(
+      const Key('parking_candidate_predicted_42'),
+    );
+    final predictedBadge = tester.widget<Container>(
+      find.descendant(of: predictedFinder, matching: find.byType(Container)),
+    );
+    final predictedDecoration = predictedBadge.decoration! as BoxDecoration;
+    expect(predictedDecoration.color, Colors.transparent);
+    expect(predictedDecoration.border!.top.color, const Color(0xFF2E7D32));
+    final predictedIcon = tester.widget<Icon>(
+      find.descendant(of: predictedFinder, matching: find.byType(Icon)),
+    );
+    final predictedText = tester.widget<Text>(
+      find.descendant(of: predictedFinder, matching: find.byType(Text)),
+    );
+    expect(predictedIcon.color, const Color(0xFF2E7D32));
+    expect(predictedText.style?.color, const Color(0xFF2E7D32));
 
     await tester.tap(find.byKey(const Key('parking_candidate_42')));
     expect(selectedZoneId, 42);
@@ -120,6 +142,70 @@ void main() {
     expect(selectedAction, CandidateAction.go);
     expect(tester.takeException(), isNull);
     debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('highlights a paid parking price in red without badge fill', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(340, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    const candidate = RouteCandidate(
+      zoneId: 7,
+      rank: 1,
+      freeCount: 3,
+      confidence: 0.8,
+      pay: 60,
+      durationFromOriginSeconds: 300,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [l10nProvider.overrideWithValue(AppStrings.en)],
+        child: MaterialApp(
+          home: Scaffold(
+            body: CandidatesSheet(
+              candidates: const [candidate],
+              zones: const [],
+              lastViewedZoneId: null,
+              initialScrollOffset: 0,
+              onSelect: (_) {},
+              onAction: (_, _, _) {},
+              onScrollOffsetChanged: (_) {},
+              onClose: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final priceFinder = find.byKey(const Key('parking_candidate_price_7'));
+    final priceBadge = tester.widget<Container>(
+      find.descendant(of: priceFinder, matching: find.byType(Container)),
+    );
+    final decoration = priceBadge.decoration! as BoxDecoration;
+    final errorColor = Theme.of(tester.element(priceFinder)).colorScheme.error;
+    expect(decoration.color, Colors.transparent);
+    expect(decoration.border!.top.color, errorColor);
+    expect(
+      tester
+          .widget<Icon>(
+            find.descendant(of: priceFinder, matching: find.byType(Icon)),
+          )
+          .color,
+      errorColor,
+    );
+    expect(
+      tester
+          .widget<Text>(
+            find.descendant(of: priceFinder, matching: find.byType(Text)),
+          )
+          .style
+          ?.color,
+      errorColor,
+    );
   });
 
   test('assigns relative green, yellow, and red result tiers', () {

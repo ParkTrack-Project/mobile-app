@@ -51,7 +51,8 @@ String? formatParkingPrice(int? pricePerHour, AppStrings strings) {
 String? formatParkingWalkingDuration(int? meters, AppStrings strings) {
   if (meters == null || meters < 0) return null;
   final minutes = math.max(1, (meters / 80).ceil());
-  return '~$minutes ${strings.minutesSign}';
+  final duration = formatParkingDuration(minutes * 60, strings)!;
+  return '~$duration';
 }
 
 String? formatParkingArrival(String? value) {
