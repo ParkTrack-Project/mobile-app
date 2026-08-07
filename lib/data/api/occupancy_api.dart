@@ -16,7 +16,7 @@ class OccupancyApi {
         'bbox': bbox,
         'at': at,
         'view': 'map',
-        'latest_only': true,
+        'is_active': true,
       },
       cancelToken: cancelToken,
     );

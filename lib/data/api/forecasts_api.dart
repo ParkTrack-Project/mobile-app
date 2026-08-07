@@ -16,7 +16,7 @@ class ForecastsApi {
         'bbox': bbox,
         'at': at,
         'view': 'map',
-        'latest_model_only': true,
+        'is_active': true,
       },
       cancelToken: cancelToken,
     );
