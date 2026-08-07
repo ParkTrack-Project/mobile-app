@@ -14,6 +14,11 @@ across Android and Web/PWA.
   and through sign-in, including links received while the app is already open.
 - Kept the router instance stable across authentication changes and hardened
   internal redirects against unsupported external URLs.
+- Centered the map on coordinates opened through destination links, including
+  links received during application startup.
+- Updated parking availability when a past or future time is selected and no
+  longer substitutes the current count when temporal data is unavailable.
+- Removed the Share action from the route preview card.
 
 ### Web/PWA
 
@@ -23,3 +28,7 @@ across Android and Web/PWA.
   Android can verify the `m.parktrack.live` association.
 - Documented every supported deep link, parameter, compatibility form, and
   local verification command.
+- Centered destination links after the Web map finishes loading.
+- Updated map markers and cards with availability for the selected time and
+  show a neutral unavailable state instead of the current count when needed.
+- Removed the Share action from the route preview card.

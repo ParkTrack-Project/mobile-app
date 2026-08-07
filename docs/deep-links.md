@@ -10,7 +10,7 @@ scheme is a fallback for clients that cannot use Android App Links.
 | Map | `https://m.parktrack.live/map` | `parktrack://map` |
 | Parking card | `https://m.parktrack.live/parking/42` | `parktrack://parking/42` |
 | Saved route | `https://m.parktrack.live/route/7` | `parktrack://route/7` |
-| Destination | `https://m.parktrack.live/destination?lat=61.789114&lon=34.359757&name=Station` | `parktrack://destination?lat=61.789114&lon=34.359757&name=Station` |
+| Destination | `https://m.parktrack.live/destination?lat=59.926567&lon=30.339086&name=Itmo%20University` | `parktrack://destination?lat=59.926567&lon=30.339086&name=Itmo%20University` |
 | Search | `https://m.parktrack.live/search?q=station` | `parktrack://search?q=station` |
 | Profile | `https://m.parktrack.live/profile` | `parktrack://profile` |
 | Edit profile | `https://m.parktrack.live/profile/edit` | `parktrack://profile/edit` |
@@ -30,6 +30,9 @@ scheme is a fallback for clients that cannot use Android App Links.
 
 URL-encode parameter values when constructing links. For example,
 `https://m.parktrack.live/search?q=Lenina%20Street`.
+
+Opening `/destination` places a destination marker at the supplied coordinates
+and centers the map on it after the map engine is ready on Android and Web.
 
 ## Backward compatibility
 
