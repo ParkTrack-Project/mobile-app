@@ -400,6 +400,30 @@ class _MapScreenState extends ConsumerState<MapScreen>
     }
   }
 
+  Future<void> _focusDestination(
+    Destination? destination, {
+    bool animate = true,
+  }) async {
+    if (destination == null) return;
+    _resetMyLocationCameraMode();
+    if (kIsWeb) {
+      _webMapController.move(destination.latitude, destination.longitude, 15);
+      return;
+    }
+    await _mapController?.moveCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(
+          target: Point(
+            latitude: destination.latitude,
+            longitude: destination.longitude,
+          ),
+          zoom: 15,
+        ),
+      ),
+      animation: animate ? const MapAnimation(duration: 0.8) : null,
+    );
+  }
+
   void _performSearch(String query) {
     context.push('/search?q=${Uri.encodeComponent(query)}');
   }
@@ -2536,26 +2560,13 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
     ref.listen(destinationProvider, (_, dest) {
       if (dest == null) return;
-      _resetMyLocationCameraMode();
       if (shouldDismissParkingDetailsForDestination(
         destination: dest,
         hasStandaloneParkingDetails: _standaloneSelectedZone != null,
       )) {
         setState(() => _standaloneSelectedZone = null);
       }
-      if (kIsWeb) {
-        _webMapController.move(dest.latitude, dest.longitude, 15);
-        return;
-      }
-      _mapController?.moveCamera(
-        CameraUpdate.newCameraPosition(
-          CameraPosition(
-            target: Point(latitude: dest.latitude, longitude: dest.longitude),
-            zoom: 15,
-          ),
-        ),
-        animation: const MapAnimation(duration: 0.8),
-      );
+      unawaited(_focusDestination(dest));
     });
 
     ref.listen(routingProvider, (_, next) async {
@@ -2942,6 +2953,12 @@ class _MapScreenState extends ConsumerState<MapScreen>
                 },
                 onMapReady: () {
                   _webMapReady = true;
+                  final readyDestination = ref.read(destinationProvider);
+                  if (readyDestination != null) {
+                    unawaited(
+                      _focusDestination(readyDestination, animate: false),
+                    );
+                  }
                   final camera = _webMapController.camera;
                   if (camera != null) {
                     _lastCameraTarget = Point(
@@ -2965,7 +2982,6 @@ class _MapScreenState extends ConsumerState<MapScreen>
                       latitude: 61.789114,
                       longitude: 34.359757,
                     );
-                    _lastCameraTarget = fallback;
                     await (_markerBitmapsFuture ??
                         _loadMarkerBitmaps(
                           MediaQuery.devicePixelRatioOf(context),
@@ -2977,9 +2993,20 @@ class _MapScreenState extends ConsumerState<MapScreen>
                     } else {
                       await _syncNativeUserLayer(visible: true);
                     }
+                    final readyDestination = ref.read(destinationProvider);
+                    final initialTarget = readyDestination == null
+                        ? fallback
+                        : Point(
+                            latitude: readyDestination.latitude,
+                            longitude: readyDestination.longitude,
+                          );
+                    _lastCameraTarget = initialTarget;
                     await controller.moveCamera(
                       CameraUpdate.newCameraPosition(
-                        const CameraPosition(target: fallback, zoom: 14),
+                        CameraPosition(
+                          target: initialTarget,
+                          zoom: readyDestination == null ? 14 : 15,
+                        ),
                       ),
                     );
                     _fetchZones();
