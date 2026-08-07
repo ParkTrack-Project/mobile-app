@@ -57,11 +57,13 @@ class ParkingCardSheet extends ConsumerWidget {
       past: (at) => at,
       orElse: () => null,
     );
+    final matchingZone = zonesAsync.valueOrNull
+        ?.where((item) => item.zoneId == zone.zoneId)
+        .firstOrNull;
+    final isCurrentTime = selectedFutureAt == null && selectedPastAt == null;
     final currentZone =
-        zonesAsync.valueOrNull
-            ?.where((item) => item.zoneId == zone.zoneId)
-            .firstOrNull ??
-        zone;
+        matchingZone ??
+        (isCurrentTime ? zone : zone.copyWith(hasForecast: false));
     final center = currentZone.geometry.isEmpty
         ? null
         : centroid(currentZone.geometry);
@@ -456,12 +458,14 @@ class _AvailabilityFact extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final color = switch (zone.freeCount) {
+    final freeCount = zone.selectedTimeFreeCount;
+    final color = switch (freeCount) {
+      null => colors.onSurfaceVariant,
       <= 0 => colors.error,
       1 => const Color(0xFFB48409),
       _ => AppColors.primary,
     };
-    final spaces = formatParkingSpaces(zone.freeCount, s) ?? s.noForecast;
+    final spaces = formatParkingSpaces(freeCount, s) ?? s.noForecast;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
@@ -474,7 +478,7 @@ class _AvailabilityFact extends StatelessWidget {
           Icon(Icons.local_parking, size: 16, color: color),
           const SizedBox(width: 5),
           Text(spaces, style: TextStyle(fontSize: 12, color: color)),
-          if (zone.capacity > 0) ...[
+          if (freeCount != null && zone.capacity > 0) ...[
             const SizedBox(width: 3),
             Text(
               '/ ${zone.capacity}',

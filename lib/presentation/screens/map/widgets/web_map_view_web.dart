@@ -471,6 +471,9 @@ class _WebMapViewState extends State<WebMapView> {
           final clusterFull = parkingClusterColor(0, brightness: brightness);
           final clusterOne = parkingClusterColor(1, brightness: brightness);
           final clusterFree = parkingClusterColor(3, brightness: brightness);
+          final clusterUnknown = parkingUnavailableColor(
+            brightness: brightness,
+          );
           return <String, Object?>{
             'id': zone.zoneId,
             'type': zone.zoneType == ZoneType.parallel ? 'line' : 'polygon',
@@ -479,8 +482,8 @@ class _WebMapViewState extends State<WebMapView> {
                 .toList(growable: false),
             'fill': _cssColor(displayedColors.fill),
             'stroke': _cssColor(displayedColors.stroke),
-            'freeCount': zone.freeCount,
-            'label': zone.freeCount,
+            'freeCount': zone.selectedTimeFreeCount,
+            'label': zone.selectedTimeFreeCount,
             'isActive': zone.isActive,
             'candidate': isCandidate,
             'active': widget.activeRouteZoneId == zone.zoneId || isSelected,
@@ -491,6 +494,7 @@ class _WebMapViewState extends State<WebMapView> {
             'clusterFull': _cssColor(clusterFull),
             'clusterOne': _cssColor(clusterOne),
             'clusterFree': _cssColor(clusterFree),
+            'clusterUnknown': _cssColor(clusterUnknown),
             'center': [center.latitude, center.longitude],
           };
         })

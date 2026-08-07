@@ -552,17 +552,21 @@
   }
 
   function clusterMarkerElement(zones, onTap) {
-    const freeCount = zones.reduce(
+    const zonesWithAvailability = zones.filter(zone => zone.freeCount != null);
+    const freeCount = zonesWithAvailability.reduce(
       (sum, zone) =>
         sum + (zone.isActive ? Math.max(0, Number(zone.freeCount ?? 0)) : 0),
       0
     );
+    const hasAvailability = zonesWithAvailability.length > 0;
     const el = document.createElement('div');
     el.className = 'parktrack-cluster';
     const opacity = Math.max(
       ...zones.map(zone => Number(zone.markerOpacity ?? 1))
     );
-    const color = freeCount === 0
+    const color = !hasAvailability
+      ? zones[0].clusterUnknown
+      : freeCount === 0
       ? zones[0].clusterFull
       : freeCount <= 2
         ? zones[0].clusterOne
@@ -572,7 +576,7 @@
       (size >= 38 * parkingClusterScaleFactor ? 19 : 17) *
       parkingClusterScaleFactor / parkingMarkerBaseScaleFactor;
     el.style.cssText = `position:absolute;left:0;top:0;transform:translate(-50%,-50%);width:${size}px;height:${size}px;box-sizing:border-box;border:0;border-radius:9999px;background:${color};display:flex;align-items:center;justify-content:center;text-align:center;color:${zones[0].markerTextColor};font:800 ${fontSize}px/1 Roboto,Arial,sans-serif;cursor:pointer;box-shadow:0 4px 6px -1px rgba(0,0,0,.1),0 2px 4px -2px rgba(0,0,0,.1),0 0 0 2px rgba(255,255,255,.7);opacity:${opacity};z-index:2100`;
-    el.textContent = String(freeCount);
+    el.textContent = hasAvailability ? String(freeCount) : '';
     el.onclick = (e) => { e.stopPropagation(); onTap(); };
     return el;
   }
@@ -1159,6 +1163,7 @@
         zone.clusterFull,
         zone.clusterOne,
         zone.clusterFree,
+        zone.clusterUnknown,
       ]),
     ]);
     if (zoneRenderSignature !== entry.zoneRenderSignature) {

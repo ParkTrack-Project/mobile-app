@@ -91,9 +91,11 @@ final filteredZonesProvider = Provider<List<Zone>>((ref) {
 
   return zones.where((z) {
     if (filters.hideInactive && !z.isActive) return false;
-    if (filters.hideNoFreeSpots && z.freeCount == 0) return false;
-    if (filters.minFreeCount > 0 && z.freeCount < filters.minFreeCount) {
-      return false;
+    if (z.hasForecast) {
+      if (filters.hideNoFreeSpots && z.freeCount == 0) return false;
+      if (filters.minFreeCount > 0 && z.freeCount < filters.minFreeCount) {
+        return false;
+      }
     }
     if (z.confidence < filters.minConfidence) return false;
     if (filters.maxPayPerHour != null && z.pay > filters.maxPayPerHour!) {

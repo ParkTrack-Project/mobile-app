@@ -28,3 +28,8 @@ class Zone with _$Zone {
     DateTime? forecastGeneratedAt,
   }) = _Zone;
 }
+
+extension ZoneAvailability on Zone {
+  /// Availability for the requested map time, if the backend returned it.
+  int? get selectedTimeFreeCount => hasForecast ? freeCount : null;
+}

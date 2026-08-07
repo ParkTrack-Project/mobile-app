@@ -25,6 +25,7 @@ const int _dimmedStrokeAlpha = 0xB3;
 typedef ParkingClusterBitmapKey = ({
   int totalFree,
   int clusterSize,
+  bool hasAvailability,
   int color,
   int textColor,
 });
@@ -35,12 +36,14 @@ class ParkingCluster {
     required this.key,
     required this.center,
     required this.totalFree,
+    required this.hasAvailability,
     required this.zoneIds,
   });
 
   final String key;
   final Point center;
   final int totalFree;
+  final bool hasAvailability;
   final Set<int> zoneIds;
 
   int get zoneCount => zoneIds.length;
@@ -70,7 +73,10 @@ class _ParkingClusterPoint {
   final Point center;
   final Offset pixel;
 
-  int get free => zone.isActive ? math.max(0, zone.freeCount) : 0;
+  bool get hasAvailability => zone.hasForecast;
+
+  int get free =>
+      zone.isActive && hasAvailability ? math.max(0, zone.freeCount) : 0;
 }
 
 class ParkingZoneColors {
@@ -131,19 +137,27 @@ ParkingMarkerState resolveParkingMarkerState({
 Future<Uint8List> _cachedClusterBitmap(
   int totalFree,
   int clusterSize,
+  bool hasAvailability,
   Color color,
   Color textColor,
 ) {
   final key = (
     totalFree: totalFree,
     clusterSize: clusterSize,
+    hasAvailability: hasAvailability,
     color: color.toARGB32(),
     textColor: textColor.toARGB32(),
   );
   if (_clusterBitmapCache.length > 128) _clusterBitmapCache.clear();
   return _clusterBitmapCache.putIfAbsent(
     key,
-    () => buildClusterBitmap(totalFree, clusterSize, color, textColor),
+    () => buildClusterBitmap(
+      totalFree,
+      clusterSize,
+      hasAvailability,
+      color,
+      textColor,
+    ),
   );
 }
 
@@ -359,6 +373,7 @@ ParkingCluster _parkingClusterFromPoints(List<_ParkingClusterPoint> points) {
     key: ids.join('-'),
     center: _meanParkingCenter(points),
     totalFree: points.fold<int>(0, (sum, point) => sum + point.free),
+    hasAvailability: points.any((point) => point.hasAvailability),
     zoneIds: Set.unmodifiable(ids),
   );
 }
@@ -543,13 +558,16 @@ ParkingClusterBitmapKey parkingClusterBitmapKey(
   ParkingCluster cluster, {
   Brightness brightness = Brightness.light,
 }) {
-  final color = parkingClusterColor(cluster.totalFree, brightness: brightness);
+  final color = cluster.hasAvailability
+      ? parkingClusterColor(cluster.totalFree, brightness: brightness)
+      : parkingUnavailableColor(brightness: brightness);
   final textColor = brightness == Brightness.dark
       ? const Color(0xFF09090B)
       : Colors.white;
   return (
     totalFree: cluster.totalFree,
     clusterSize: cluster.zoneCount,
+    hasAvailability: cluster.hasAvailability,
     color: color.toARGB32(),
     textColor: textColor.toARGB32(),
   );
@@ -563,6 +581,7 @@ Future<Uint8List> buildParkingClusterBitmap(
   return _cachedClusterBitmap(
     key.totalFree,
     key.clusterSize,
+    key.hasAvailability,
     Color(key.color),
     Color(key.textColor),
   );
@@ -617,6 +636,7 @@ Future<Uint8List> buildCountBitmap(
 Future<Uint8List> buildClusterBitmap(
   int totalFree,
   int clusterSize,
+  bool hasAvailability,
   Color color,
   Color textColor,
 ) async {
@@ -634,7 +654,7 @@ Future<Uint8List> buildClusterBitmap(
       ..style = ui.PaintingStyle.stroke
       ..strokeWidth = 4,
   );
-  final label = '$totalFree';
+  final label = hasAvailability ? '$totalFree' : '';
   final textPainter = TextPainter(
     text: TextSpan(
       text: label,
@@ -672,7 +692,7 @@ ParkingZoneColors parkingZoneColors(
   Brightness brightness = Brightness.light,
 }) {
   final isDark = brightness == Brightness.dark;
-  if (!zone.isActive) {
+  if (!zone.isActive || !zone.hasForecast) {
     return isDark
         ? const ParkingZoneColors(
             fill: Color(0xD9E4E4E7),
@@ -729,6 +749,11 @@ ParkingZoneColors parkingZoneColors(
 
 Color zoneColor(Zone zone, {Brightness brightness = Brightness.light}) =>
     parkingZoneColors(zone, brightness: brightness).stroke;
+
+Color parkingUnavailableColor({Brightness brightness = Brightness.light}) =>
+    brightness == Brightness.dark
+    ? const Color(0xFFD4D4D8)
+    : const Color(0xFF6B7280);
 
 Color parkingClusterColor(
   int freeCount, {

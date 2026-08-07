@@ -178,6 +178,23 @@ void main() {
     expect(find.byKey(const Key('parking_occupancy_updated_at')), findsNothing);
   });
 
+  testWidgets('does not present current spaces as future availability', (
+    tester,
+  ) async {
+    final notifier = TimeSelectorNotifier()
+      ..setFuture(DateTime(2042, 5, 10, 15));
+
+    await _pumpCard(
+      tester,
+      zone: _zone().copyWith(hasForecast: false),
+      timeNotifier: notifier,
+    );
+
+    expect(find.text('No forecast'), findsOneWidget);
+    expect(find.text('5 spaces'), findsNothing);
+    expect(find.text('/ 10'), findsNothing);
+  });
+
   testWidgets('shows forecast metadata and warns at exactly 30 minutes', (
     tester,
   ) async {

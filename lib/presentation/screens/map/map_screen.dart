@@ -456,7 +456,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
     for (final zone in zones) {
       final color = zoneColor(zone, brightness: brightness);
       styles[zone.zoneId] = (
-        count: zone.freeCount,
+        count: zone.selectedTimeFreeCount,
         color: color.toARGB32(),
         textColor: textColor.toARGB32(),
       );
