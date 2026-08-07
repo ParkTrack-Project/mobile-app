@@ -45,6 +45,9 @@ jobs:
       - name: Add path URL fallback
         run: cp build/web/index.html build/web/404.html
 
+      - name: Verify Android App Links asset
+        run: test -f build/web/.well-known/assetlinks.json
+
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
@@ -52,6 +55,7 @@ jobs:
         uses: actions/upload-pages-artifact@v4
         with:
           path: build/web
+          include-hidden-files: true
 
       - name: Deploy to GitHub Pages
         id: deployment

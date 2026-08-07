@@ -30,7 +30,7 @@ void main() {
     expect(manifest, isNot(contains('android:host="*.parktrack.live"')));
   });
 
-  test('asset links contains the production Android app identity', () {
+  test('local web root contains the production Android app identity', () {
     final assetLinks =
         jsonDecode(File('web/.well-known/assetlinks.json').readAsStringSync())
             as List<dynamic>;
@@ -59,5 +59,7 @@ void main() {
     ).readAsStringSync();
 
     expect(workflow, contains('cp build/web/index.html build/web/404.html'));
+    expect(workflow, contains('test -f build/web/.well-known/assetlinks.json'));
+    expect(workflow, contains('include-hidden-files: true'));
   });
 }
