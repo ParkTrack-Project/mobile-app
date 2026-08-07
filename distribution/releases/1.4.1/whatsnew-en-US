@@ -1,0 +1,3 @@
+• Fixed parktrack:// and m.parktrack.live links so they open the requested app section.
+• Preserved link destinations while the session is checked and through sign-in.
+• Improved verified Android App Links reliability.

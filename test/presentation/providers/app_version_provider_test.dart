@@ -22,8 +22,8 @@ void main() {
       PackageInfo.setMockInitialValues(
         appName: 'ParkTrack',
         packageName: 'com.parktrack.mobile',
-        version: '1.4.0',
-        buildNumber: '4',
+        version: '1.4.1',
+        buildNumber: '5',
         buildSignature: '',
       );
       final container = ProviderContainer();
@@ -31,9 +31,9 @@ void main() {
 
       final appVersion = await container.read(appVersionProvider.future);
 
-      expect(appVersion.version, '1.4.0');
-      expect(appVersion.buildNumber, '4');
-      expect(appVersion.label, 'ParkTrack v1.4.0+4');
+      expect(appVersion.version, '1.4.1');
+      expect(appVersion.buildNumber, '5');
+      expect(appVersion.label, 'ParkTrack v1.4.1+5');
     },
   );
 
