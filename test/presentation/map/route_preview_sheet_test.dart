@@ -11,7 +11,6 @@ void main() {
   ) async {
     var goPressed = false;
     var closePressed = false;
-    var sharePressed = false;
     const route = ActiveRoute(
       routeId: 1,
       status: 'ready',
@@ -35,7 +34,6 @@ void main() {
                   zoneLat: 61,
                   zoneLon: 34,
                   onNavigateInApp: () => goPressed = true,
-                  onShare: () => sharePressed = true,
                   onClose: () => closePressed = true,
                 ),
               ),
@@ -51,6 +49,7 @@ void main() {
     expect(find.text('from you:'), findsOneWidget);
     expect(find.text('1.4 km • 6 min'), findsOneWidget);
     expect(find.byIcon(Icons.navigation_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.share_outlined), findsNothing);
     expect(
       find.descendant(
         of: find.byType(RoutePreviewSheet),
@@ -61,8 +60,6 @@ void main() {
 
     await tester.tap(find.text('Go'));
     expect(goPressed, isTrue);
-    await tester.tap(find.byKey(const Key('route_share')));
-    expect(sharePressed, isTrue);
     expect(find.text('Reset'), findsNothing);
     await tester.tap(find.byTooltip('Close'));
     expect(closePressed, isTrue);

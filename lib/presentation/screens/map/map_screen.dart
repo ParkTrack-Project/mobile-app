@@ -33,7 +33,6 @@ import '../../../core/localization/app_localizations.dart';
 import '../../../core/services/android_heading_source.dart';
 import '../../../core/services/preferred_location_service.dart';
 import '../../../core/services/yandex_web_route.dart';
-import '../../providers/parking_address_provider.dart';
 import 'my_location_camera_state.dart';
 import 'route_camera.dart';
 import 'widgets/candidates_sheet.dart';
@@ -1259,50 +1258,6 @@ class _MapScreenState extends ConsumerState<MapScreen>
     final cleanAddress = address?.trim();
     if (cleanAddress == null || cleanAddress.isEmpty) return title;
     return '$title\n$cleanAddress';
-  }
-
-  Future<void> _shareRouteLink(ActiveRoute route, Point? target) async {
-    final destination = ref.read(destinationProvider);
-    if (route.selectedZoneId == destinationRouteZoneId && destination != null) {
-      final s = ref.read(l10nProvider);
-      await _shareLink(
-        destinationShareUri(
-          latitude: destination.latitude,
-          longitude: destination.longitude,
-          name: destination.name,
-        ),
-        s.routeReady,
-        text: destination.name ?? s.selectedPlace,
-      );
-      return;
-    }
-    String? address;
-    if (target != null) {
-      try {
-        address = await ref.read(
-          parkingAddressProvider((
-            latitude: target.latitude,
-            longitude: target.longitude,
-          )).future,
-        );
-      } catch (_) {
-        address = null;
-      }
-    }
-    if (!mounted) return;
-    final s = ref.read(l10nProvider);
-    final cleanAddress = address?.trim();
-    final ruText = cleanAddress == null || cleanAddress.isEmpty
-        ? 'Маршрут до парковки №${route.selectedZoneId}'
-        : 'Маршрут до парковки №${route.selectedZoneId} ($cleanAddress)';
-    final enText = cleanAddress == null || cleanAddress.isEmpty
-        ? 'Route to parking #${route.selectedZoneId}'
-        : 'Route to parking #${route.selectedZoneId} ($cleanAddress)';
-    await _shareLink(
-      routeShareUri(route.routeId),
-      s.routeReady,
-      text: identical(s, AppStrings.ru) ? ruText : enText,
-    );
   }
 
   Future<void> _onClusterTap(ParkingCluster cluster) async {
@@ -3212,12 +3167,6 @@ class _MapScreenState extends ConsumerState<MapScreen>
                               intercepting: kIsWeb,
                               child: RoutePreviewSheet(
                                 route: routePreview,
-                                onShare: () => unawaited(
-                                  _shareRouteLink(
-                                    routePreview,
-                                    routePreviewTarget,
-                                  ),
-                                ),
                                 zoneLat: routePreviewTarget?.latitude,
                                 zoneLon: routePreviewTarget?.longitude,
                                 onNavigateInApp: routePreviewTarget == null
