@@ -29,7 +29,8 @@ class ZonesNotifier extends StateNotifier<AsyncValue<List<Zone>>> {
 
   Future<void> fetchZones(String bbox, {bool force = false}) async {
     final timeMode = _ref.read(timeSelectorProvider);
-    final requestKey = '$bbox|$timeMode';
+    final isActive = _ref.read(filtersProvider).hideInactive ? true : null;
+    final requestKey = '$bbox|$timeMode|isActive=$isActive';
     if (!force && requestKey == _lastRequestKey && state.hasValue) return;
 
     _lastBbox = bbox;
@@ -42,9 +43,23 @@ class ZonesNotifier extends StateNotifier<AsyncValue<List<Zone>>> {
     try {
       final repo = _ref.read(zonesRepositoryProvider);
       final zones = await timeMode.when(
-        now: () => repo.getZonesNow(bbox, cancelToken: cancelToken),
-        past: (at) => repo.getZonesPast(bbox, at, cancelToken: cancelToken),
-        future: (at) => repo.getZonesFuture(bbox, at, cancelToken: cancelToken),
+        now: () => repo.getZonesNow(
+          bbox,
+          isActive: isActive,
+          cancelToken: cancelToken,
+        ),
+        past: (at) => repo.getZonesPast(
+          bbox,
+          at,
+          isActive: isActive,
+          cancelToken: cancelToken,
+        ),
+        future: (at) => repo.getZonesFuture(
+          bbox,
+          at,
+          isActive: isActive,
+          cancelToken: cancelToken,
+        ),
       );
       if (generation != _requestGeneration || cancelToken.isCancelled) return;
       state = AsyncValue.data(zones);

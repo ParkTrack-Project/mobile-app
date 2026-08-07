@@ -34,4 +34,24 @@ void main() {
       expect(fetch, contains('_zoneFetchInFlightBbox = null'));
     },
   );
+
+  test('active filter reloads the current viewport', () {
+    final source = File(
+      'lib/presentation/screens/map/map_screen.dart',
+    ).readAsStringSync();
+    final listenerStart = source.indexOf(
+      'filtersProvider.select((filters) => filters.hideInactive)',
+    );
+    final listenerEnd = source.indexOf(
+      'ref.listen(\n      filteredZonesProvider',
+      listenerStart,
+    );
+
+    expect(listenerStart, greaterThanOrEqualTo(0));
+    expect(listenerEnd, greaterThan(listenerStart));
+    expect(
+      source.substring(listenerStart, listenerEnd),
+      contains('_fetchZones(clearCache: true)'),
+    );
+  });
 }

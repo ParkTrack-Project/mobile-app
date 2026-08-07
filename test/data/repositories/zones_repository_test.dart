@@ -9,9 +9,20 @@ import 'package:mobile/domain/models/zone.dart';
 
 void main() {
   late ZonesRepository repository;
+  late List<RequestOptions> requests;
 
   setUp(() {
-    final dio = Dio()..interceptors.add(MockInterceptor());
+    requests = [];
+    final dio = Dio()
+      ..interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            requests.add(options);
+            handler.next(options);
+          },
+        ),
+      )
+      ..interceptors.add(MockInterceptor());
     repository = ZonesRepository(
       ZonesApi(dio),
       OccupancyApi(dio),
@@ -39,5 +50,36 @@ void main() {
     final missing = zones.singleWhere((zone) => zone.zoneId == 102);
     expect(missing.hasForecast, isFalse);
     expect(missing.selectedTimeFreeCount, isNull);
+  });
+
+  test('propagates the optional active filter to every map request', () async {
+    await repository.getZonesPast(
+      '30,59,31,60',
+      DateTime.utc(2026, 8, 7, 10),
+      isActive: true,
+    );
+
+    expect(requests.map((request) => request.uri.path).toSet(), {
+      '/zones',
+      '/occupancy',
+    });
+    expect(
+      requests.every(
+        (request) => request.uri.queryParameters['is_active'] == 'true',
+      ),
+      isTrue,
+    );
+
+    requests.clear();
+    await repository.getZonesFuture(
+      '30,59,31,60',
+      DateTime.utc(2026, 8, 9, 10),
+    );
+    expect(
+      requests.every(
+        (request) => !request.uri.queryParameters.containsKey('is_active'),
+      ),
+      isTrue,
+    );
   });
 }

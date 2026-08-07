@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import '../models/zone_models.dart';
+import 'map_query.dart';
 
 class ZonesApi {
   final Dio _dio;
@@ -18,17 +19,19 @@ class ZonesApi {
     CancelToken? cancelToken,
   }) async {
     final response = await _dio.get(
-      '/zones',
-      queryParameters: {
-        'bbox': bbox,
-        'view': view,
-        'is_active': ?isActive,
-        'min_free_count': ?minFreeCount,
-        'min_confidence': ?minConfidence,
-        'max_pay': ?maxPay,
-        'include_private': ?includePrivate,
-        'hide_location_types': ?hideLocationTypes,
-      },
+      mapQueryPath(
+        '/zones',
+        bbox: bbox,
+        parameters: {
+          'view': view,
+          'is_active': isActive,
+          'min_free_count': minFreeCount,
+          'min_confidence': minConfidence,
+          'max_pay': maxPay,
+          'include_private': includePrivate,
+          'hide_location_types': hideLocationTypes,
+        },
+      ),
       cancelToken: cancelToken,
     );
     return (response.data as List)

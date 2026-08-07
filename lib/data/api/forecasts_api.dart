@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'map_query.dart';
 
 class ForecastsApi {
   final Dio _dio;
@@ -8,16 +9,20 @@ class ForecastsApi {
   Future<List<Map<String, dynamic>>> getForecastsMap({
     required String bbox,
     required String at,
+    bool? isActive,
     CancelToken? cancelToken,
   }) async {
     final response = await _dio.get(
-      '/forecasts',
-      queryParameters: {
-        'bbox': bbox,
-        'at': at,
-        'view': 'map',
-        'is_active': true,
-      },
+      mapQueryPath(
+        '/forecasts',
+        bbox: bbox,
+        parameters: {
+          'at': at,
+          'view': 'map',
+          'latest_model_only': true,
+          'is_active': isActive,
+        },
+      ),
       cancelToken: cancelToken,
     );
     return (response.data as List).cast<Map<String, dynamic>>();

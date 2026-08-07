@@ -2461,6 +2461,13 @@ class _MapScreenState extends ConsumerState<MapScreen>
         () => _fetchZones(clearCache: true),
       );
     });
+    ref.listen(filtersProvider.select((filters) => filters.hideInactive), (
+      previous,
+      next,
+    ) {
+      if (previous == null || previous == next) return;
+      unawaited(_fetchZones(clearCache: true));
+    });
     ref.listen(
       filteredZonesProvider,
       (_, next) => _updateZoneBitmaps(
