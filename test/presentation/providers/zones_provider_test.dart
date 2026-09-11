@@ -130,6 +130,24 @@ void main() {
     expect(repository.requestedIsActive, [true, true, true]);
   });
 
+  test('keeps zones neutral while selected-time data is pending', () async {
+    final repository = _FakeZonesRepository();
+    final container = ProviderContainer(
+      overrides: [zonesRepositoryProvider.overrideWithValue(repository)],
+    );
+    addTearDown(container.dispose);
+    final notifier = container.read(rawZonesProvider.notifier);
+
+    await notifier.fetchZones('1,2,3,4');
+    notifier.markAvailabilityPending();
+
+    final pendingZone = container.read(rawZonesProvider).requireValue.single;
+    expect(pendingZone.zoneId, repository.cachedZone.zoneId);
+    expect(pendingZone.geometry, repository.cachedZone.geometry);
+    expect(pendingZone.hasForecast, isFalse);
+    expect(pendingZone.selectedTimeFreeCount, isNull);
+  });
+
   test('active filter is part of the request key and can be omitted', () async {
     final repository = _FakeZonesRepository();
     final container = ProviderContainer(

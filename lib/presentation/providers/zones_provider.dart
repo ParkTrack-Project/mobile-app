@@ -78,12 +78,25 @@ class ZonesNotifier extends StateNotifier<AsyncValue<List<Zone>>> {
     if (_lastBbox != null) await fetchZones(_lastBbox!, force: true);
   }
 
-  void clearZones() {
+  void markAvailabilityPending() {
     _requestGeneration++;
-    _cancelToken?.cancel('Zone state cleared');
+    _cancelToken?.cancel('Parking time changed');
     _cancelToken = null;
     _lastRequestKey = null;
-    state = const AsyncValue.loading();
+    final zones = state.valueOrNull;
+    if (zones == null) {
+      state = const AsyncValue.loading();
+      return;
+    }
+    state = AsyncValue.data([
+      for (final zone in zones)
+        zone.copyWith(
+          hasForecast: false,
+          occupancyUpdatedAt: null,
+          forecastFor: null,
+          forecastGeneratedAt: null,
+        ),
+    ]);
   }
 
   void setErrorState(Object error, StackTrace stackTrace) {

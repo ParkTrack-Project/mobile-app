@@ -1433,10 +1433,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
     return _cachedZoneLabels!;
   }
 
-  Future<void> _fetchZones({bool clearCache = false}) async {
-    if (clearCache) {
-      _zoneLabelCache.clear();
-      _zonesById.clear();
+  Future<void> _fetchZones({bool invalidateViewportCache = false}) async {
+    if (invalidateViewportCache) {
       _lastZoneFetchBbox = null;
       _zoneFetchInFlightBbox = null;
     }
@@ -2452,13 +2450,19 @@ class _MapScreenState extends ConsumerState<MapScreen>
     }
 
     ref.listen(timeSelectorProvider, (_, _) {
-      ref.read(rawZonesProvider.notifier).clearZones();
-      _zoneLabelCache.clear();
-      _zonesById.clear();
+      ref.read(rawZonesProvider.notifier).markAvailabilityPending();
+      _resultZonesById.updateAll(
+        (_, zone) => zone.copyWith(
+          hasForecast: false,
+          occupancyUpdatedAt: null,
+          forecastFor: null,
+          forecastGeneratedAt: null,
+        ),
+      );
       _timeDebounce?.cancel();
       _timeDebounce = Timer(
         const Duration(milliseconds: 600),
-        () => _fetchZones(clearCache: true),
+        () => _fetchZones(invalidateViewportCache: true),
       );
     });
     ref.listen(filtersProvider.select((filters) => filters.hideInactive), (
@@ -2466,7 +2470,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
       next,
     ) {
       if (previous == null || previous == next) return;
-      unawaited(_fetchZones(clearCache: true));
+      unawaited(_fetchZones(invalidateViewportCache: true));
     });
     ref.listen(
       filteredZonesProvider,
