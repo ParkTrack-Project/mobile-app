@@ -11,7 +11,7 @@ void main() {
       final request = await _captureRequest(
         (dio) => OccupancyApi(dio).getOccupancyMap(
           bbox: '34.32714,61.81808,34.39237,61.76014',
-          at: '2026-08-07T10:00:00Z',
+          at: '2026-08-07T09:00:00.000Z',
           isActive: true,
         ),
       );
@@ -20,6 +20,7 @@ void main() {
       expect(request.uri.queryParameters['latest_only'], 'true');
       expect(request.uri.queryParameters['is_active'], 'true');
       _expectLiteralBbox(request);
+      _expectLiteralAt(request, '2026-08-07T09:00:00.000Z');
     },
   );
 
@@ -29,7 +30,7 @@ void main() {
       final request = await _captureRequest(
         (dio) => ForecastsApi(dio).getForecastsMap(
           bbox: '34.32714,61.81808,34.39237,61.76014',
-          at: '2026-08-09T10:00:00Z',
+          at: '2026-08-09T10:00:00.000Z',
         ),
       );
 
@@ -37,6 +38,7 @@ void main() {
       expect(request.uri.queryParameters['latest_model_only'], 'true');
       expect(request.uri.queryParameters, isNot(contains('is_active')));
       _expectLiteralBbox(request);
+      _expectLiteralAt(request, '2026-08-09T10:00:00.000Z');
     },
   );
 
@@ -85,4 +87,9 @@ void _expectLiteralBbox(RequestOptions request) {
     contains('bbox=34.32714,61.81808,34.39237,61.76014'),
   );
   expect(request.uri.toString(), isNot(contains('%2C')));
+}
+
+void _expectLiteralAt(RequestOptions request, String at) {
+  expect(request.uri.toString(), contains('at=$at'));
+  expect(request.uri.toString(), isNot(contains('%3A')));
 }
