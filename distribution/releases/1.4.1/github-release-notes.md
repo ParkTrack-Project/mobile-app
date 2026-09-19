@@ -19,6 +19,9 @@ across Android and Web/PWA.
 - Updated parking availability when a past or future time is selected and no
   longer substitutes the current count when temporal data is unavailable.
 - Removed the Share action from the route preview card.
+- Greatly reduced Android map work during live location, marker animation, and
+  direction updates, eliminating redundant platform-view rebuilds and bitmap
+  decoding.
 
 ### Web/PWA
 

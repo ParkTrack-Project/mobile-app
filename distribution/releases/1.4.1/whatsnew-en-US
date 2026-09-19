@@ -4,3 +4,4 @@
 • Destination links now center the map on the shared point.
 • Parking availability now follows the selected time.
 • Removed the Share action from route previews.
+• Made the map much smoother during live location and direction updates.
