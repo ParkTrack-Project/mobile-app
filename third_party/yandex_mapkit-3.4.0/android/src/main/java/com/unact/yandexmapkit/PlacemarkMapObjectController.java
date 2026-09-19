@@ -85,19 +85,37 @@ public class PlacemarkMapObjectController
   @SuppressWarnings({"unchecked", "ConstantConditions"})
   public void update(Map<String, Object> params) {
     if (!internallyControlled) {
-      placemark.setGeometry(Utils.pointFromJson((Map<String, Object>) params.get("point")));
-      placemark.setVisible((Boolean) params.get("isVisible"));
+      if (params.containsKey("point")) {
+        placemark.setGeometry(Utils.pointFromJson((Map<String, Object>) params.get("point")));
+      }
+      if (params.containsKey("isVisible")) {
+        placemark.setVisible((Boolean) params.get("isVisible"));
+      }
     }
 
-    placemark.setZIndex(((Double) params.get("zIndex")).floatValue());
-    placemark.setDraggable((Boolean) params.get("isDraggable"));
-    placemark.setOpacity(((Double) params.get("opacity")).floatValue());
-    placemark.setDirection(((Double) params.get("direction")).floatValue());
+    if (params.containsKey("zIndex")) {
+      placemark.setZIndex(((Double) params.get("zIndex")).floatValue());
+    }
+    if (params.containsKey("isDraggable")) {
+      placemark.setDraggable((Boolean) params.get("isDraggable"));
+    }
+    if (params.containsKey("opacity")) {
+      placemark.setOpacity(((Double) params.get("opacity")).floatValue());
+    }
+    if (params.containsKey("direction")) {
+      placemark.setDirection(((Double) params.get("direction")).floatValue());
+    }
 
-    setText(((Map<String, Object>) params.get("text")));
-    setIcon(((Map<String, Object>) params.get("icon")));
+    if (params.containsKey("text")) {
+      setText(((Map<String, Object>) params.get("text")));
+    }
+    if (params.containsKey("icon")) {
+      setIcon(((Map<String, Object>) params.get("icon")));
+    }
 
-    consumeTapEvents = (Boolean) params.get("consumeTapEvents");
+    if (params.containsKey("consumeTapEvents")) {
+      consumeTapEvents = (Boolean) params.get("consumeTapEvents");
+    }
   }
 
   public void remove() {

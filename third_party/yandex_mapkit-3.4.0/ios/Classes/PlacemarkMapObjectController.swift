@@ -61,19 +61,37 @@ class PlacemarkMapObjectController:
 
   public func update(_ params: [String: Any]) {
     if (!internallyControlled) {
-      placemark.geometry = Utils.pointFromJson(params["point"] as! [String: NSNumber])
-      placemark.isVisible = (params["isVisible"] as! NSNumber).boolValue
+      if let point = params["point"] as? [String: NSNumber] {
+        placemark.geometry = Utils.pointFromJson(point)
+      }
+      if let isVisible = params["isVisible"] as? NSNumber {
+        placemark.isVisible = isVisible.boolValue
+      }
     }
 
-    placemark.zIndex = (params["zIndex"] as! NSNumber).floatValue
-    placemark.isDraggable = (params["isDraggable"] as! NSNumber).boolValue
-    placemark.opacity = (params["opacity"] as! NSNumber).floatValue
-    placemark.direction = (params["direction"] as! NSNumber).floatValue
+    if let zIndex = params["zIndex"] as? NSNumber {
+      placemark.zIndex = zIndex.floatValue
+    }
+    if let isDraggable = params["isDraggable"] as? NSNumber {
+      placemark.isDraggable = isDraggable.boolValue
+    }
+    if let opacity = params["opacity"] as? NSNumber {
+      placemark.opacity = opacity.floatValue
+    }
+    if let direction = params["direction"] as? NSNumber {
+      placemark.direction = direction.floatValue
+    }
 
-    setText(params["text"] as? [String: Any])
-    setIcon(params["icon"] as? [String: Any])
+    if params.keys.contains("text") {
+      setText(params["text"] as? [String: Any])
+    }
+    if params.keys.contains("icon") {
+      setIcon(params["icon"] as? [String: Any])
+    }
 
-    consumeTapEvents = (params["consumeTapEvents"] as! NSNumber).boolValue
+    if let consumeTapEvents = params["consumeTapEvents"] as? NSNumber {
+      self.consumeTapEvents = consumeTapEvents.boolValue
+    }
   }
 
   public func remove() {
