@@ -8,6 +8,8 @@ import 'package:flutter/foundation.dart'
         defaultTargetPlatform,
         kDebugMode,
         kIsWeb,
+        listEquals,
+        mapEquals,
         setEquals,
         visibleForTesting;
 import 'package:flutter/material.dart';
@@ -337,6 +339,11 @@ class _MapScreenState extends ConsumerState<MapScreen>
   final Map<ParkingClusterBitmapKey, Uint8List> _clusterLabelCache = {};
   final Set<ParkingClusterBitmapKey> _clusterBitmapRequests = {};
   Set<int> _candidateIds = const {};
+  List<Zone>? _cachedMergedZonesSource;
+  Map<int, Zone> _cachedMergedResultZones = const {};
+  List<int> _cachedMergedResultOrder = const [];
+  List<Zone> _cachedMergedZones = const [];
+  List<Zone>? _canonicalMapZones;
 
   @override
   void initState() {
@@ -1970,13 +1977,38 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
   List<Zone> _mergeResultZones(List<Zone> zones) {
     if (_resultZonesById.isEmpty) return zones;
+    final resultOrder = _resultZonesById.keys.toList(growable: false);
+    final hasSameSource =
+        identical(_cachedMergedZonesSource, zones) ||
+        (_cachedMergedZonesSource != null &&
+            listEquals(_cachedMergedZonesSource, zones));
+    if (hasSameSource &&
+        mapEquals(_cachedMergedResultZones, _resultZonesById) &&
+        listEquals(_cachedMergedResultOrder, resultOrder)) {
+      _cachedMergedZonesSource = zones;
+      return _cachedMergedZones;
+    }
     final visibleIds = zones.map((zone) => zone.zoneId).toSet();
-    return [
+    _cachedMergedZonesSource = zones;
+    _cachedMergedResultZones = Map<int, Zone>.unmodifiable(_resultZonesById);
+    _cachedMergedResultOrder = List<int>.unmodifiable(resultOrder);
+    _cachedMergedZones = List<Zone>.unmodifiable([
       ...zones,
       ..._resultZonesById.values.where(
         (zone) => !visibleIds.contains(zone.zoneId),
       ),
-    ];
+    ]);
+    return _cachedMergedZones;
+  }
+
+  List<Zone> _canonicalizeMapZones(List<Zone> zones) {
+    final previous = _canonicalMapZones;
+    if (previous != null &&
+        (identical(previous, zones) || listEquals(previous, zones))) {
+      return previous;
+    }
+    _canonicalMapZones = zones;
+    return zones;
   }
 
   Future<void> _prepareSearchResults(
@@ -2689,7 +2721,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
     final selectedMarkerZoneId =
         selectedMapZoneId ?? (routePreview != null ? _activeRouteZoneId : null);
 
-    final renderedZones = kIsWeb ? zones : _zonesInsideNativeViewport(zones);
+    final mapZones = _canonicalizeMapZones(zones);
+    final renderedZones = kIsWeb
+        ? mapZones
+        : _zonesInsideNativeViewport(mapZones);
     final clustering = kIsWeb
         ? ParkingClusteringResult(
             zoom: parkingClusterZoomBucket(_currentZoom),
