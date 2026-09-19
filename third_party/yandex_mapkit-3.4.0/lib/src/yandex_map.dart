@@ -19,6 +19,8 @@ class YandexMap extends StatefulWidget {
     Key? key,
     this.gestureRecognizers = const <Factory<OneSequenceGestureRecognizer>>{},
     this.mapObjects = const [],
+    this.liveMapObjectsListenable,
+    this.liveMapObjectsBuilder,
     this.tiltGesturesEnabled = true,
     this.zoomGesturesEnabled = true,
     this.rotateGesturesEnabled = true,
@@ -49,6 +51,14 @@ class YandexMap extends StatefulWidget {
 
   /// Map objects to show on map
   final List<MapObject> mapObjects;
+
+  /// A signal that a small, frequently changing set of map objects should be
+  /// synchronized without rebuilding the platform view widget.
+  final Listenable? liveMapObjectsListenable;
+
+  /// Builds the frequently changing map objects when
+  /// [liveMapObjectsListenable] notifies its listeners.
+  final List<MapObject> Function()? liveMapObjectsBuilder;
 
   /// Enable tilt gestures, such as parallel pan with two fingers.
   final bool tiltGesturesEnabled;
@@ -125,6 +135,8 @@ class YandexMap extends StatefulWidget {
 
 class _YandexMapState extends State<YandexMap> {
   late _YandexMapOptions _yandexMapOptions;
+  List<MapObject> _liveMapObjects = const [];
+  MapObjectCollection? _creationMapObjectCollection;
 
   /// Root object which contains all [MapObject] which were added to the map by user
   MapObjectCollection _mapObjectCollection = MapObjectCollection(
@@ -149,11 +161,16 @@ class _YandexMapState extends State<YandexMap> {
   void initState() {
     super.initState();
     _yandexMapOptions = _YandexMapOptions.fromWidget(widget);
-    _mapObjectCollection = _mapObjectCollection.copyWith(mapObjects: widget.mapObjects);
+    _liveMapObjects = _buildLiveMapObjects();
+    _mapObjectCollection = _mapObjectCollection.copyWith(
+      mapObjects: <MapObject>[...widget.mapObjects, ..._liveMapObjects]
+    );
+    widget.liveMapObjectsListenable?.addListener(_updateLiveMapObjects);
   }
 
   @override
   void dispose() async {
+    widget.liveMapObjectsListenable?.removeListener(_updateLiveMapObjects);
     super.dispose();
     final controller = await _controller.future;
 
@@ -163,6 +180,10 @@ class _YandexMapState extends State<YandexMap> {
   @override
   void didUpdateWidget(YandexMap oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.liveMapObjectsListenable != widget.liveMapObjectsListenable) {
+      oldWidget.liveMapObjectsListenable?.removeListener(_updateLiveMapObjects);
+      widget.liveMapObjectsListenable?.addListener(_updateLiveMapObjects);
+    }
     _updateMapOptions();
     _updateMapObjects();
   }
@@ -183,14 +204,72 @@ class _YandexMapState extends State<YandexMap> {
   }
 
   void _updateMapObjects() async {
-    final updatedMapObjectCollection = _mapObjectCollection.copyWith(mapObjects: widget.mapObjects);
+    final updatedLiveMapObjects = _buildLiveMapObjects();
+    final updatedMapObjectCollection = _mapObjectCollection.copyWith(
+      mapObjects: <MapObject>[...widget.mapObjects, ...updatedLiveMapObjects]
+    );
     final updates = MapObjectUpdates.from({_mapObjectCollection}, {updatedMapObjectCollection});
+    _liveMapObjects = updatedLiveMapObjects;
+    _mapObjectCollection = updatedMapObjectCollection;
+
+    if (!_hasChanges(updates) || !_controller.isCompleted) {
+      return;
+    }
 
     final controller = await _controller.future;
 
     // ignore: unawaited_futures
     controller._updateMapObjects(updates.toJson());
-    _mapObjectCollection = updatedMapObjectCollection;
+  }
+
+  List<MapObject> _buildLiveMapObjects() {
+    return List<MapObject>.unmodifiable(
+      widget.liveMapObjectsBuilder?.call() ?? const <MapObject>[]
+    );
+  }
+
+  void _updateLiveMapObjects() async {
+    final updatedLiveMapObjects = _buildLiveMapObjects();
+    final updates = MapObjectUpdates<MapObject>.from(
+      _liveMapObjects.toSet(),
+      updatedLiveMapObjects.toSet()
+    );
+    _liveMapObjects = updatedLiveMapObjects;
+    _mapObjectCollection = _mapObjectCollection.copyWith(
+      mapObjects: <MapObject>[...widget.mapObjects, ..._liveMapObjects]
+    );
+
+    if (!_hasChanges(updates) || !_controller.isCompleted) {
+      return;
+    }
+
+    final controller = await _controller.future;
+
+    // ignore: unawaited_futures
+    controller._updateMapObjects(_wrapRootMapObjectUpdates(updates));
+  }
+
+  bool _hasChanges<T extends MapObject>(MapObjectUpdates<T> updates) {
+    return updates.objectsToAdd.isNotEmpty ||
+      updates.objectsToChange.isNotEmpty ||
+      updates.objectsToRemove.isNotEmpty;
+  }
+
+  Map<String, dynamic> _wrapRootMapObjectUpdates(MapObjectUpdates updates) {
+    return <String, dynamic>{
+      'toAdd': const <Map<String, dynamic>>[],
+      'toChange': <Map<String, dynamic>>[
+        <String, dynamic>{
+          'id': _mapObjectCollection.mapId.value,
+          'type': MapObjectCollection._kType,
+          'mapObjects': updates.toJson(),
+          'zIndex': _mapObjectCollection.zIndex,
+          'consumeTapEvents': _mapObjectCollection.consumeTapEvents,
+          'isVisible': _mapObjectCollection.isVisible
+        }
+      ],
+      'toRemove': const <Map<String, dynamic>>[]
+    };
   }
 
   @override
@@ -245,12 +324,30 @@ class _YandexMapState extends State<YandexMap> {
 
     _controller.complete(controller);
 
+    final creationMapObjectCollection = _creationMapObjectCollection;
+    if (creationMapObjectCollection != null &&
+        creationMapObjectCollection != _mapObjectCollection) {
+      final updates = MapObjectUpdates.from(
+        {creationMapObjectCollection},
+        {_mapObjectCollection}
+      );
+      if (_hasChanges(updates)) {
+        // ignore: unawaited_futures
+        controller._updateMapObjects(updates.toJson());
+      }
+    }
+
     if (widget.onMapCreated != null) {
       widget.onMapCreated!(controller);
     }
   }
 
   Map<String, dynamic> _creationParams() {
+    _liveMapObjects = _buildLiveMapObjects();
+    _mapObjectCollection = _mapObjectCollection.copyWith(
+      mapObjects: <MapObject>[...widget.mapObjects, ..._liveMapObjects]
+    );
+    _creationMapObjectCollection = _mapObjectCollection;
     final mapOptions = _yandexMapOptions.toJson();
     final mapObjects = MapObjectUpdates.from(
       {_mapObjectCollection.copyWith(mapObjects: [])},

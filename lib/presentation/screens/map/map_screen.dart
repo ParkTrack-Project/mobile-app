@@ -286,9 +286,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
   ({double west, double south, double east, double north})?
   _cachedViewportBounds;
   List<Zone> _cachedViewportZones = const [];
-  Uint8List? _destinationPinBytes;
-  Uint8List? _navArrowBytes;
   UserLocationMarkerBitmaps? _userLocationMarkerBitmaps;
+  PlacemarkIcon? _destinationPinIcon;
+  PlacemarkIcon? _navArrowIcon;
+  PlacemarkIcon? _managedUserLocationIcon;
   double? _userLocationMarkerDpr;
   bool _markerBitmapsLoading = false;
   Future<void>? _markerBitmapsFuture;
@@ -377,10 +378,33 @@ class _MapScreenState extends ConsumerState<MapScreen>
         buildUserLocationMarkerBitmaps(devicePixelRatio: devicePixelRatio),
       ]);
       if (!mounted) return;
+      final destinationPinBytes = bitmaps[0] as Uint8List;
+      final navArrowBytes = bitmaps[1] as Uint8List;
+      final userLocationMarkerBitmaps = bitmaps[2] as UserLocationMarkerBitmaps;
       setState(() {
-        _destinationPinBytes = bitmaps[0] as Uint8List;
-        _navArrowBytes = bitmaps[1] as Uint8List;
-        _userLocationMarkerBitmaps = bitmaps[2] as UserLocationMarkerBitmaps;
+        _userLocationMarkerBitmaps = userLocationMarkerBitmaps;
+        _destinationPinIcon = PlacemarkIcon.single(
+          PlacemarkIconStyle(
+            image: BitmapDescriptor.fromBytes(destinationPinBytes),
+            anchor: destinationMarkerAnchor,
+            zIndex: 10,
+            scale: 1,
+          ),
+        );
+        _navArrowIcon = PlacemarkIcon.single(
+          PlacemarkIconStyle(
+            image: BitmapDescriptor.fromBytes(navArrowBytes),
+            scale: 1,
+          ),
+        );
+        _managedUserLocationIcon = PlacemarkIcon.single(
+          PlacemarkIconStyle(
+            image: BitmapDescriptor.fromBytes(userLocationMarkerBitmaps.arrow),
+            anchor: const Offset(0.5, 0.5),
+            scale: userLocationMarkerBitmaps.scale,
+            rotationType: RotationType.rotate,
+          ),
+        );
       });
     } catch (error, stackTrace) {
       debugPrint('Failed to prepare map marker bitmaps: $error\n$stackTrace');
@@ -2757,37 +2781,23 @@ class _MapScreenState extends ConsumerState<MapScreen>
             strokeWidth: userLocationAccuracyStrokeWidth,
             fillColor: userLocationAccuracyFillColor,
           ),
-        if (managedAndroidPoint != null && _userLocationMarkerBitmaps != null)
+        if (managedAndroidPoint != null && _managedUserLocationIcon != null)
           PlacemarkMapObject(
             mapId: const MapObjectId('android_user_location_marker'),
             point: managedAndroidPoint,
             zIndex: 50,
             opacity: userLocationMarkerOpacity(_userLocationFreshness),
             direction: managedAndroidHeading,
-            icon: PlacemarkIcon.single(
-              PlacemarkIconStyle(
-                image: BitmapDescriptor.fromBytes(
-                  _userLocationMarkerBitmaps!.arrow,
-                ),
-                anchor: const Offset(0.5, 0.5),
-                scale: _userLocationMarkerBitmaps!.scale,
-                rotationType: RotationType.rotate,
-              ),
-            ),
+            icon: _managedUserLocationIcon,
           ),
-        if (isNavigating && _navArrowBytes != null)
+        if (isNavigating && _navArrowIcon != null)
           PlacemarkMapObject(
             mapId: const MapObjectId('nav_arrow'),
             point: navState.currentPosition,
             opacity: 1.0,
-            icon: PlacemarkIcon.single(
-              PlacemarkIconStyle(
-                image: BitmapDescriptor.fromBytes(_navArrowBytes!),
-                scale: 1.0,
-              ),
-            ),
+            icon: _navArrowIcon,
           ),
-        if (destination != null && _destinationPinBytes != null)
+        if (destination != null && _destinationPinIcon != null)
           PlacemarkMapObject(
             mapId: const MapObjectId('destination_pin'),
             point: Point(
@@ -2795,14 +2805,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
               longitude: destination.longitude,
             ),
             opacity: 1.0,
-            icon: PlacemarkIcon.single(
-              PlacemarkIconStyle(
-                image: BitmapDescriptor.fromBytes(_destinationPinBytes!),
-                anchor: destinationMarkerAnchor,
-                zIndex: 10,
-                scale: 1.0,
-              ),
-            ),
+            icon: _destinationPinIcon,
           ),
       ];
     }
@@ -2981,51 +2984,50 @@ class _MapScreenState extends ConsumerState<MapScreen>
                 },
               )
             else
-              ValueListenableBuilder<int>(
-                valueListenable: _dynamicMapRevision,
-                builder: (context, _, _) => YandexMap(
-                  mapObjects: [...staticMapObjects, ...dynamicMapObjects()],
-                  nightModeEnabled: isDark,
-                  focusRect: nativeFocusRect,
-                  onMapCreated: (controller) async {
-                    _mapController = controller;
-                    const fallback = Point(
-                      latitude: 61.789114,
-                      longitude: 34.359757,
-                    );
-                    await (_markerBitmapsFuture ??
-                        _loadMarkerBitmaps(
-                          MediaQuery.devicePixelRatioOf(context),
-                        ));
-                    if (_usesManagedAndroidLocation) {
-                      await _syncNativeUserLayer(visible: false);
-                      unawaited(_startAndroidHeadingTracking());
-                      unawaited(_startAndroidLocationTracking());
-                    } else {
-                      await _syncNativeUserLayer(visible: true);
-                    }
-                    final readyDestination = ref.read(destinationProvider);
-                    final initialTarget = readyDestination == null
-                        ? fallback
-                        : Point(
-                            latitude: readyDestination.latitude,
-                            longitude: readyDestination.longitude,
-                          );
-                    _lastCameraTarget = initialTarget;
-                    await controller.moveCamera(
-                      CameraUpdate.newCameraPosition(
-                        CameraPosition(
-                          target: initialTarget,
-                          zoom: readyDestination == null ? 14 : 15,
-                        ),
+              YandexMap(
+                mapObjects: staticMapObjects,
+                liveMapObjectsListenable: _dynamicMapRevision,
+                liveMapObjectsBuilder: dynamicMapObjects,
+                nightModeEnabled: isDark,
+                focusRect: nativeFocusRect,
+                onMapCreated: (controller) async {
+                  _mapController = controller;
+                  const fallback = Point(
+                    latitude: 61.789114,
+                    longitude: 34.359757,
+                  );
+                  await (_markerBitmapsFuture ??
+                      _loadMarkerBitmaps(
+                        MediaQuery.devicePixelRatioOf(context),
+                      ));
+                  if (_usesManagedAndroidLocation) {
+                    await _syncNativeUserLayer(visible: false);
+                    unawaited(_startAndroidHeadingTracking());
+                    unawaited(_startAndroidLocationTracking());
+                  } else {
+                    await _syncNativeUserLayer(visible: true);
+                  }
+                  final readyDestination = ref.read(destinationProvider);
+                  final initialTarget = readyDestination == null
+                      ? fallback
+                      : Point(
+                          latitude: readyDestination.latitude,
+                          longitude: readyDestination.longitude,
+                        );
+                  _lastCameraTarget = initialTarget;
+                  await controller.moveCamera(
+                    CameraUpdate.newCameraPosition(
+                      CameraPosition(
+                        target: initialTarget,
+                        zoom: readyDestination == null ? 14 : 15,
                       ),
-                    );
-                    _fetchZones();
-                  },
-                  onCameraPositionChanged: _onCameraPositionChanged,
-                  onUserLocationAdded: _onUserLocationAdded,
-                  onMapTap: (_) => _onMapBackgroundTap(),
-                ),
+                    ),
+                  );
+                  _fetchZones();
+                },
+                onCameraPositionChanged: _onCameraPositionChanged,
+                onUserLocationAdded: _onUserLocationAdded,
+                onMapTap: (_) => _onMapBackgroundTap(),
               ),
             Positioned.fill(
               child: MapBottomPanelSwitcher(
