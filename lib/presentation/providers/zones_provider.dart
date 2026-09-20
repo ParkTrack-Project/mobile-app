@@ -29,7 +29,8 @@ class ZonesNotifier extends StateNotifier<AsyncValue<List<Zone>>> {
 
   Future<void> fetchZones(String bbox, {bool force = false}) async {
     final timeMode = _ref.read(timeSelectorProvider);
-    final requestKey = '$bbox|$timeMode';
+    final isActive = _ref.read(filtersProvider).hideInactive ? true : null;
+    final requestKey = '$bbox|$timeMode|isActive=$isActive';
     if (!force && requestKey == _lastRequestKey && state.hasValue) return;
 
     _lastBbox = bbox;
@@ -42,9 +43,23 @@ class ZonesNotifier extends StateNotifier<AsyncValue<List<Zone>>> {
     try {
       final repo = _ref.read(zonesRepositoryProvider);
       final zones = await timeMode.when(
-        now: () => repo.getZonesNow(bbox, cancelToken: cancelToken),
-        past: (at) => repo.getZonesPast(bbox, at, cancelToken: cancelToken),
-        future: (at) => repo.getZonesFuture(bbox, at, cancelToken: cancelToken),
+        now: () => repo.getZonesNow(
+          bbox,
+          isActive: isActive,
+          cancelToken: cancelToken,
+        ),
+        past: (at) => repo.getZonesPast(
+          bbox,
+          at,
+          isActive: isActive,
+          cancelToken: cancelToken,
+        ),
+        future: (at) => repo.getZonesFuture(
+          bbox,
+          at,
+          isActive: isActive,
+          cancelToken: cancelToken,
+        ),
       );
       if (generation != _requestGeneration || cancelToken.isCancelled) return;
       state = AsyncValue.data(zones);
@@ -63,12 +78,25 @@ class ZonesNotifier extends StateNotifier<AsyncValue<List<Zone>>> {
     if (_lastBbox != null) await fetchZones(_lastBbox!, force: true);
   }
 
-  void clearZones() {
+  void markAvailabilityPending() {
     _requestGeneration++;
-    _cancelToken?.cancel('Zone state cleared');
+    _cancelToken?.cancel('Parking time changed');
     _cancelToken = null;
     _lastRequestKey = null;
-    state = const AsyncValue.loading();
+    final zones = state.valueOrNull;
+    if (zones == null) {
+      state = const AsyncValue.loading();
+      return;
+    }
+    state = AsyncValue.data([
+      for (final zone in zones)
+        zone.copyWith(
+          hasForecast: false,
+          occupancyUpdatedAt: null,
+          forecastFor: null,
+          forecastGeneratedAt: null,
+        ),
+    ]);
   }
 
   void setErrorState(Object error, StackTrace stackTrace) {
@@ -91,9 +119,11 @@ final filteredZonesProvider = Provider<List<Zone>>((ref) {
 
   return zones.where((z) {
     if (filters.hideInactive && !z.isActive) return false;
-    if (filters.hideNoFreeSpots && z.freeCount == 0) return false;
-    if (filters.minFreeCount > 0 && z.freeCount < filters.minFreeCount) {
-      return false;
+    if (z.hasForecast) {
+      if (filters.hideNoFreeSpots && z.freeCount == 0) return false;
+      if (filters.minFreeCount > 0 && z.freeCount < filters.minFreeCount) {
+        return false;
+      }
     }
     if (z.confidence < filters.minConfidence) return false;
     if (filters.maxPayPerHour != null && z.pay > filters.maxPayPerHour!) {

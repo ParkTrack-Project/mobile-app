@@ -15,11 +15,13 @@ class ZonesRepository {
 
   Future<List<Zone>> getZonesNow(
     String bbox, {
+    bool? isActive,
     CancelToken? cancelToken,
   }) async {
     final dtos = await _zonesApi.getZones(
       bbox: bbox,
       view: 'map',
+      isActive: isActive,
       cancelToken: cancelToken,
     );
     return dtos.map(_mapZone).toList();
@@ -28,12 +30,14 @@ class ZonesRepository {
   Future<List<Zone>> getZonesPast(
     String bbox,
     DateTime at, {
+    bool? isActive,
     CancelToken? cancelToken,
   }) async {
     final atStr = at.toUtc().toIso8601String();
     final zonesFuture = _zonesApi.getZones(
       bbox: bbox,
       view: 'map',
+      isActive: isActive,
       cancelToken: cancelToken,
     );
     List<Map<String, dynamic>> items;
@@ -41,6 +45,7 @@ class ZonesRepository {
       items = await _occupancyApi.getOccupancyMap(
         bbox: bbox,
         at: atStr,
+        isActive: isActive,
         cancelToken: cancelToken,
       );
     } on DioException catch (error) {
@@ -87,17 +92,20 @@ class ZonesRepository {
   Future<List<Zone>> getZonesFuture(
     String bbox,
     DateTime at, {
+    bool? isActive,
     CancelToken? cancelToken,
   }) async {
     final atStr = at.toUtc().toIso8601String();
     final zonesFuture = _zonesApi.getZones(
       bbox: bbox,
       view: 'map',
+      isActive: isActive,
       cancelToken: cancelToken,
     );
     final forecastsFuture = _forecastsApi.getForecastsMap(
       bbox: bbox,
       at: atStr,
+      isActive: isActive,
       cancelToken: cancelToken,
     );
 

@@ -1,5 +1,37 @@
+enum DeepLinkAuthStatus { loading, authenticated, unauthenticated }
+
 class DeepLinkCoordinator {
   static const mobileHost = 'm.parktrack.live';
+
+  static const _authPaths = {'/login', '/register', '/password-reset'};
+
+  String? redirectLocation({
+    required Uri uri,
+    required DeepLinkAuthStatus authStatus,
+  }) {
+    if (uri.hasScheme || uri.hasAuthority) return safeLocation(uri);
+
+    final path = uri.path;
+    final isSplash = path == '/';
+    final isAuthRoute = _authPaths.contains(path);
+
+    if (authStatus == DeepLinkAuthStatus.loading) {
+      if (isSplash || isAuthRoute) return null;
+      return _locationWithFrom('/', safeLocation(uri));
+    }
+
+    if (authStatus == DeepLinkAuthStatus.unauthenticated) {
+      if (isAuthRoute) return null;
+      final from = isSplash ? _safeFrom(uri) : safeLocation(uri);
+      return from == null ? '/login' : _locationWithFrom('/login', from);
+    }
+
+    if (isSplash || path == '/login' || path == '/register') {
+      return _safeFrom(uri) ?? '/map';
+    }
+
+    return null;
+  }
 
   String safeLocation(Uri? uri) {
     final internal = _toInternalUri(uri);
@@ -73,6 +105,15 @@ class DeepLinkCoordinator {
         : uri.path;
     return Uri(path: path, query: uri.hasQuery ? uri.query : null);
   }
+
+  String? _safeFrom(Uri uri) {
+    final from = uri.queryParameters['from'];
+    if (from == null || from.isEmpty) return null;
+    return safeLocation(Uri.tryParse(from));
+  }
+
+  String _locationWithFrom(String path, String from) =>
+      Uri(path: path, queryParameters: {'from': from}).toString();
 
   Map<String, String>? _mapParameters(Uri uri) {
     final result = <String, String>{};

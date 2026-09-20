@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -14,18 +15,19 @@ import '../../presentation/screens/auth/password_reset_screen.dart';
 import 'deep_link_coordinator.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(authStateProvider);
   final deepLinks = DeepLinkCoordinator();
+  final refreshNotifier = _RouterRefreshNotifier();
+  ref.onDispose(refreshNotifier.dispose);
+  ref.listen<AuthState>(authStateProvider, (_, _) => refreshNotifier.refresh());
 
   return GoRouter(
     initialLocation: '/',
+    refreshListenable: refreshNotifier,
     onException: (_, state, router) {
       router.go(deepLinks.safeLocation(state.uri));
     },
     redirect: (context, state) {
-      if (state.uri.hasScheme || state.uri.hasAuthority) {
-        return deepLinks.safeLocation(state.uri);
-      }
+      final authState = ref.read(authStateProvider);
       final isLoading = authState.maybeWhen(
         loading: () => true,
         orElse: () => false,
@@ -38,32 +40,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         unauthenticated: () => true,
         orElse: () => false,
       );
-
-      if (isLoading) {
-        return state.matchedLocation == '/' ? null : '/';
-      }
-
-      final location = state.uri.path;
-      final isLoginRoute = location == '/login';
-      final isRegisterRoute = location == '/register';
-      final isPasswordResetRoute = location == '/password-reset';
-      final isSplashRoute = location == '/';
-
-      if (isUnauth) {
-        if (isSplashRoute) return '/login';
-        if (!isLoginRoute && !isRegisterRoute && !isPasswordResetRoute) {
-          final from = state.uri.toString();
-          return '/login?from=${Uri.encodeComponent(from)}';
-        }
-      }
-
-      if (isAuth && (isSplashRoute || isLoginRoute || isRegisterRoute)) {
-        final from = state.uri.queryParameters['from'];
-        if (from != null && from.isNotEmpty) return from;
-        return '/map';
-      }
-
-      return null;
+      final authStatus = isLoading
+          ? DeepLinkAuthStatus.loading
+          : isAuth
+          ? DeepLinkAuthStatus.authenticated
+          : isUnauth
+          ? DeepLinkAuthStatus.unauthenticated
+          : DeepLinkAuthStatus.loading;
+      return deepLinks.redirectLocation(uri: state.uri, authStatus: authStatus);
     },
     routes: [
       GoRoute(path: '/', builder: (_, _) => const SplashScreen()),
@@ -146,6 +130,10 @@ final routerProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+class _RouterRefreshNotifier extends ChangeNotifier {
+  void refresh() => notifyListeners();
+}
 
 Destination? destinationFromDeepLink(Uri uri) {
   final latitude = double.tryParse(uri.queryParameters['lat'] ?? '');

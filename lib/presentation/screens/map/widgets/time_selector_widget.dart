@@ -44,6 +44,7 @@ class TimeSelectorWidget extends ConsumerWidget {
       children: [
         if (!isNow) ...[
           _Chip(
+            key: const Key('time_selector_now_chip'),
             label: s.now,
             icon: Icons.restore,
             active: false,
@@ -52,6 +53,7 @@ class TimeSelectorWidget extends ConsumerWidget {
           const SizedBox(height: 6),
         ],
         _Chip(
+          key: const Key('time_selector_time_chip'),
           label: isNow ? s.time : _selectionLabel(selectedDt!, s),
           icon: Icons.access_time_outlined,
           active: !isNow,
@@ -286,6 +288,7 @@ class _TimePickerSheetState extends ConsumerState<_TimePickerSheet> {
 
 class _Chip extends StatelessWidget {
   const _Chip({
+    super.key,
     required this.label,
     required this.icon,
     required this.active,
@@ -299,9 +302,6 @@ class _Chip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final borderColor = active
-        ? AppColors.primary
-        : Theme.of(context).dividerColor;
     final textColor = active
         ? AppColors.primary
         : Theme.of(context).colorScheme.onSurface;
@@ -314,7 +314,9 @@ class _Chip extends StatelessWidget {
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: borderColor, width: active ? 1.5 : 1.0),
+          border: active
+              ? Border.all(color: AppColors.primary, width: 1.5)
+              : null,
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.1),

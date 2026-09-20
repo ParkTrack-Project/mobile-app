@@ -59,7 +59,12 @@ void main() {
 
     expect(source, contains("MapObjectId('android_user_location_marker')"));
     expect(source, contains("MapObjectId('android_user_location_accuracy')"));
-    expect(source, contains('_userLocationMarkerBitmaps!.arrow'));
+    expect(
+      source,
+      contains('BitmapDescriptor.fromBytes(userLocationMarkerBitmaps.arrow)'),
+    );
+    expect(source, contains('icon: _managedUserLocationIcon'));
+    expect(source, contains('liveMapObjectsListenable: _dynamicMapRevision'));
     expect(source, contains('rotationType: RotationType.rotate'));
     expect(source, contains('direction: managedAndroidHeading'));
     expect(source, contains('userLocationAccuracyFillColor'));

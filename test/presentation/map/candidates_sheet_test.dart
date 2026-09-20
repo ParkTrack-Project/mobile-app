@@ -7,6 +7,7 @@ import 'package:mobile/domain/models/route_result.dart';
 import 'package:mobile/domain/models/zone.dart';
 import 'package:mobile/presentation/providers/parking_address_provider.dart';
 import 'package:mobile/presentation/screens/map/widgets/candidates_sheet.dart';
+import 'package:mobile/presentation/providers/time_selector_provider.dart';
 import 'package:yandex_mapkit/yandex_mapkit.dart';
 
 void main() {
@@ -204,6 +205,57 @@ void main() {
           ?.color,
       errorColor,
     );
+  });
+
+  testWidgets('does not use current candidate count for a missing forecast', (
+    tester,
+  ) async {
+    final timeNotifier = TimeSelectorNotifier()
+      ..setFuture(DateTime(2042, 5, 10, 15));
+    const candidate = RouteCandidate(
+      zoneId: 7,
+      rank: 1,
+      freeCount: 7,
+      confidence: 0.8,
+      pay: 0,
+    );
+    const zone = Zone(
+      zoneId: 7,
+      zoneType: ZoneType.standard,
+      capacity: 10,
+      freeCount: 7,
+      confidence: 0.8,
+      pay: 0,
+      geometry: [],
+      hasForecast: false,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          l10nProvider.overrideWithValue(AppStrings.en),
+          timeSelectorProvider.overrideWith((ref) => timeNotifier),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: CandidatesSheet(
+              candidates: const [candidate],
+              zones: const [zone],
+              lastViewedZoneId: null,
+              initialScrollOffset: 0,
+              onSelect: (_) {},
+              onAction: (_, _, _) {},
+              onScrollOffsetChanged: (_) {},
+              onClose: () {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('No forecast'), findsOneWidget);
+    expect(find.text('7 spaces'), findsNothing);
   });
 
   test('assigns relative green, yellow, and red result tiers', () {

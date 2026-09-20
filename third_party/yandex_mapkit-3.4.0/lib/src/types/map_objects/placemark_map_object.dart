@@ -180,10 +180,23 @@ class PlacemarkMapObject extends Equatable implements MapObject {
   @override
   Map<String, dynamic> _updateJson(MapObject previous) {
     assert(mapId == previous.mapId);
+    final previousPlacemark = previous as PlacemarkMapObject;
 
-    return toJson()..addAll({
-      'type': _kType
-    });
+    return <String, dynamic>{
+      'id': mapId.value,
+      'type': _kType,
+      if (point != previousPlacemark.point) 'point': point.toJson(),
+      if (zIndex != previousPlacemark.zIndex) 'zIndex': zIndex,
+      if (consumeTapEvents != previousPlacemark.consumeTapEvents)
+        'consumeTapEvents': consumeTapEvents,
+      if (isVisible != previousPlacemark.isVisible) 'isVisible': isVisible,
+      if (isDraggable != previousPlacemark.isDraggable)
+        'isDraggable': isDraggable,
+      if (opacity != previousPlacemark.opacity) 'opacity': opacity,
+      if (direction != previousPlacemark.direction) 'direction': direction,
+      if (icon != previousPlacemark.icon) 'icon': icon?.toJson(),
+      if (text != previousPlacemark.text) 'text': text?.toJson()
+    };
   }
 
   @override

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/domain/models/route_result.dart';
 import 'package:mobile/domain/models/zone.dart';
@@ -62,4 +64,24 @@ void main() {
       expect(target?.longitude, destination.longitude);
     },
   );
+
+  test('reapplies a deep-link destination when each map becomes ready', () {
+    final source = File(
+      'lib/presentation/screens/map/map_screen.dart',
+    ).readAsStringSync();
+
+    final webReady = source.substring(
+      source.indexOf('onMapReady: ()'),
+      source.indexOf('onMapCreated: (controller) async'),
+    );
+    final nativeReady = source.substring(
+      source.indexOf('onMapCreated: (controller) async'),
+      source.indexOf('onCameraPositionChanged:'),
+    );
+
+    expect(webReady, contains('ref.read(destinationProvider)'));
+    expect(webReady, contains('_focusDestination(readyDestination'));
+    expect(nativeReady, contains('ref.read(destinationProvider)'));
+    expect(nativeReady, contains('target: initialTarget'));
+  });
 }

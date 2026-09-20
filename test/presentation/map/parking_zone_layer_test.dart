@@ -146,6 +146,7 @@ void main() {
 
   test('matches every light and dark semantic palette color', () {
     final inactive = _zone(1).copyWith(isActive: false);
+    final unavailable = _zone(6).copyWith(hasForecast: false);
     final full = _zone(2).copyWith(freeCount: 0);
     final one = _zone(3).copyWith(freeCount: 1);
     final lowConfidence = _zone(4).copyWith(freeCount: 2, confidence: 0.5);
@@ -165,6 +166,8 @@ void main() {
     expect(parkingZoneColors(lowConfidence).stroke, const Color(0xFF2D8714));
     expect(parkingZoneColors(highConfidence).fill, const Color(0xAA16A34A));
     expect(parkingZoneColors(highConfidence).stroke, const Color(0xFF155E2A));
+    expect(parkingZoneColors(unavailable).stroke, const Color(0xFF4B5563));
+    expect(unavailable.selectedTimeFreeCount, isNull);
 
     expect(
       parkingZoneColors(inactive, brightness: Brightness.dark).fill,

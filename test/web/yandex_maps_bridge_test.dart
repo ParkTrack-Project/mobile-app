@@ -132,6 +132,9 @@ void main() {
       contains('parkingClusterScaleFactor / parkingMarkerBaseScaleFactor'),
     );
     expect(bridge, contains('0 0 0 2px rgba(255,255,255,.7)'));
+    expect(bridge, contains('zones.filter(zone => zone.freeCount != null)'));
+    expect(bridge, contains('? zones[0].clusterUnknown'));
+    expect(bridge, contains("hasAvailability ? String(freeCount) : ''"));
     expect(bridge, isNot(contains('clusterByGrid')));
     expect(bridge, contains('parktrack-user-location__direction'));
     expect(bridge, contains('parktrack-user-location__point'));
@@ -184,7 +187,7 @@ void main() {
     expect(bridge, contains("fill: 'rgba(255, 59, 48, 0.14)'"));
     expect(webView, contains('final double? userAccuracy'));
     expect(webView, contains('widget.userAccuracy!.isFinite'));
-    expect(indexHtml, contains('yandex_maps.js?v=3.11'));
+    expect(indexHtml, contains('yandex_maps.js?v=3.12'));
   });
 
   test('updates moving markers without rebuilding parking zones', () {

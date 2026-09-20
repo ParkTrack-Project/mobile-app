@@ -3,18 +3,18 @@ part of yandex_mapkit;
 /// Update specification for a set of objects.
 class MapObjectUpdates<T extends MapObject> extends Equatable {
   MapObjectUpdates.from(this.previous, this.current) {
-    final previousObjects = Map<MapObjectId, T>.fromEntries(
+    _previousObjects = Map<MapObjectId, T>.fromEntries(
       previous.map((T object) => MapEntry(object.mapId, object))
     );
     final currentObjects = Map<MapObjectId, T>.fromEntries(
       current.map((T object) => MapEntry(object.mapId, object))
     );
-    final previousObjectIds = previousObjects.keys.toSet();
+    final previousObjectIds = _previousObjects.keys.toSet();
     final currentObjectIds = currentObjects.keys.toSet();
 
     _objectsToRemove = previousObjectIds
       .difference(currentObjectIds)
-      .map((MapObjectId id) => previousObjects[id]!).
+      .map((MapObjectId id) => _previousObjects[id]!).
       toSet();
 
     _objectsToAdd = currentObjectIds
@@ -25,9 +25,11 @@ class MapObjectUpdates<T extends MapObject> extends Equatable {
     _objectsToChange = currentObjectIds
       .intersection(previousObjectIds)
       .map((MapObjectId id) => currentObjects[id]!)
-      .where((T current) => current != previousObjects[current.mapId])
+      .where((T current) => current != _previousObjects[current.mapId])
       .toSet();
   }
+
+  late final Map<MapObjectId, T> _previousObjects;
 
   /// Set of objects to be added in this update.
   Set<T> get objectsToAdd => _objectsToAdd;
@@ -61,7 +63,7 @@ class MapObjectUpdates<T extends MapObject> extends Equatable {
     return {
       'toAdd': _objectsToAdd.map((MapObject el) => el._createJson()).toList(),
       'toChange': _objectsToChange.map((MapObject el) =>
-        el._updateJson(previous.firstWhere((MapObject prevEl) => prevEl.mapId == el.mapId))
+        el._updateJson(_previousObjects[el.mapId]!)
       ).toList(),
       'toRemove': _objectsToRemove.map((MapObject el) => el._removeJson()).toList(),
     };

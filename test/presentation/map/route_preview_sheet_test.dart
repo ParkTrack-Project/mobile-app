@@ -6,12 +6,37 @@ import 'package:mobile/domain/models/route_result.dart';
 import 'package:mobile/presentation/screens/map/widgets/route_preview_sheet.dart';
 
 void main() {
+  test('derives arrival from the same duration shown in the route facts', () {
+    expect(
+      resolveRouteArrivalText(
+        routeDurationSeconds: 360,
+        fallbackText: '18:17',
+        now: DateTime(2026, 9, 20, 11, 55),
+      ),
+      '12:01',
+    );
+    expect(
+      resolveRouteArrivalText(
+        routeDurationSeconds: 180,
+        fallbackText: null,
+        now: DateTime(2026, 9, 20, 23, 58),
+      ),
+      '00:01',
+    );
+    expect(
+      resolveRouteArrivalText(
+        routeDurationSeconds: null,
+        fallbackText: '18:17',
+      ),
+      '18:17',
+    );
+  });
+
   testWidgets('shows route preview actions without a modal map blocker', (
     tester,
   ) async {
     var goPressed = false;
     var closePressed = false;
-    var sharePressed = false;
     const route = ActiveRoute(
       routeId: 1,
       status: 'ready',
@@ -35,7 +60,6 @@ void main() {
                   zoneLat: 61,
                   zoneLon: 34,
                   onNavigateInApp: () => goPressed = true,
-                  onShare: () => sharePressed = true,
                   onClose: () => closePressed = true,
                 ),
               ),
@@ -48,9 +72,11 @@ void main() {
     expect(find.text('Route Ready'), findsOneWidget);
     expect(find.text('Go'), findsOneWidget);
     expect(find.text('Yandex Maps'), findsOneWidget);
+    expect(find.text('Arrival:'), findsOneWidget);
     expect(find.text('from you:'), findsOneWidget);
     expect(find.text('1.4 km • 6 min'), findsOneWidget);
     expect(find.byIcon(Icons.navigation_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.share_outlined), findsNothing);
     expect(
       find.descendant(
         of: find.byType(RoutePreviewSheet),
@@ -61,8 +87,6 @@ void main() {
 
     await tester.tap(find.text('Go'));
     expect(goPressed, isTrue);
-    await tester.tap(find.byKey(const Key('route_share')));
-    expect(sharePressed, isTrue);
     expect(find.text('Reset'), findsNothing);
     await tester.tap(find.byTooltip('Close'));
     expect(closePressed, isTrue);

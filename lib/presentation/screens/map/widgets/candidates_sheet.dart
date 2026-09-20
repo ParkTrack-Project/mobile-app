@@ -10,6 +10,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../domain/models/route_result.dart';
 import '../../../../domain/models/zone.dart';
 import '../../../providers/parking_address_provider.dart';
+import '../../../providers/time_selector_provider.dart';
 import 'parking_zone_layer.dart';
 import 'parking_result_formatter.dart';
 
@@ -393,10 +394,14 @@ class _CandidateTile extends ConsumerWidget {
       candidate.distanceToDestinationMeters,
       s,
     );
-    final displayedFreeCount = zone?.hasForecast == true
-        ? zone?.freeCount
-        : candidate.freeCount;
+    final isCurrentTime = ref
+        .watch(timeSelectorProvider)
+        .maybeWhen(now: () => true, orElse: () => false);
+    final displayedFreeCount =
+        zone?.selectedTimeFreeCount ??
+        (zone == null && isCurrentTime ? candidate.freeCount : null);
     final spacesText = formatParkingSpaces(displayedFreeCount, s);
+    final availabilityText = spacesText ?? s.noForecast;
     final pricePerHour = zone?.pay ?? candidate.pay;
     final priceText = formatParkingPrice(pricePerHour, s);
     final isPaid = pricePerHour > 0;
@@ -432,10 +437,10 @@ class _CandidateTile extends ConsumerWidget {
       _ => AppColors.primary,
     };
     final factWidgets = <Widget>[
-      if (!useAndroidCandidateLayout && spacesText != null)
+      if (!useAndroidCandidateLayout)
         _Fact(
           icon: Icons.local_parking,
-          text: spacesText,
+          text: availabilityText,
           color: switch (displayedFreeCount) {
             null => null,
             <= 0 => colors.error,
@@ -529,11 +534,11 @@ class _CandidateTile extends ConsumerWidget {
                       ],
                     ),
                   ),
-                if (useAndroidCandidateLayout && spacesText != null) ...[
+                if (useAndroidCandidateLayout) ...[
                   const SizedBox(height: 6),
                   _AvailabilityBadge(
                     key: Key('parking_candidate_spaces_${candidate.zoneId}'),
-                    text: spacesText,
+                    text: availabilityText,
                     freeCount: displayedFreeCount,
                   ),
                 ],
@@ -541,7 +546,7 @@ class _CandidateTile extends ConsumerWidget {
             ),
             if ((hasDestination && destinationDistanceText != null) ||
                 (!hasDestination && durationText != null) ||
-                (useAndroidCandidateLayout && spacesText != null))
+                useAndroidCandidateLayout)
               const SizedBox(width: 10),
             Expanded(
               child: Column(

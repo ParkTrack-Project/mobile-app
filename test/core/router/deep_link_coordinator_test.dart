@@ -23,6 +23,10 @@ void main() {
         coordinator.safeLocation(Uri.parse('parktrack://parking/42')),
         '/parking/42',
       );
+      expect(
+        coordinator.safeLocation(Uri.parse('parktrack:/parking/42')),
+        '/parking/42',
+      );
       expect(coordinator.safeLocation(Uri.parse('/parking/nope')), '/map');
     });
 
@@ -75,33 +79,47 @@ void main() {
       );
     });
 
-    test('supports every public app section for both link schemes', () {
-      const paths = [
-        '/map',
-        '/search?q=park',
-        '/route/7',
-        '/profile',
-        '/profile/edit',
-        '/login',
-        '/register',
-        '/password-reset',
-      ];
+    test('routes every canonical link form to its requested section', () {
+      const cases = <String, String>{
+        '/map': '/map',
+        '/parking/42': '/parking/42',
+        '/route/7': '/route/7',
+        '/destination?lat=59.926567&lon=30.339086&name=ITMO':
+            '/destination?lat=59.926567&lon=30.339086&name=ITMO',
+        '/search?q=station': '/search?q=station',
+        '/profile': '/profile',
+        '/profile/edit': '/profile/edit',
+        '/login': '/login',
+        '/register': '/register',
+        '/password-reset': '/password-reset',
+      };
 
-      for (final path in paths) {
+      for (final MapEntry(key: path, value: expected) in cases.entries) {
         expect(
           coordinator.safeLocation(Uri.parse('https://m.parktrack.live$path')),
-          coordinator.safeLocation(Uri.parse(path)),
+          expected,
         );
-        final uri = Uri.parse(path);
-        final custom = Uri(
-          scheme: 'parktrack',
-          host: uri.pathSegments.first,
-          pathSegments: uri.pathSegments.skip(1),
-          queryParameters: uri.queryParameters.isEmpty
-              ? null
-              : uri.queryParameters,
+        expect(
+          coordinator.safeLocation(
+            Uri.parse('parktrack://${path.substring(1)}'),
+          ),
+          expected,
         );
-        expect(coordinator.safeLocation(custom), coordinator.safeLocation(uri));
+        expect(
+          coordinator.safeLocation(Uri.parse('parktrack:$path')),
+          expected,
+        );
+      }
+    });
+
+    test('keeps supported legacy parking links compatible', () {
+      for (final link in const [
+        '/map/parking/42',
+        'https://m.parktrack.live/map/parking/42',
+        'parktrack://map/parking/42',
+        'parktrack:/map/parking/42',
+      ]) {
+        expect(coordinator.safeLocation(Uri.parse(link)), '/parking/42');
       }
     });
 
@@ -126,6 +144,100 @@ void main() {
         coordinator.safeLocation(Uri.parse('parktrack-other://map')),
         '/map',
       );
+    });
+
+    group('authentication redirects', () {
+      test('preserves an incoming link while the session is loading', () {
+        expect(
+          coordinator.redirectLocation(
+            uri: Uri.parse('/parking/42'),
+            authStatus: DeepLinkAuthStatus.loading,
+          ),
+          '/?from=%2Fparking%2F42',
+        );
+        expect(
+          coordinator.redirectLocation(
+            uri: Uri.parse('/?from=%2Fparking%2F42'),
+            authStatus: DeepLinkAuthStatus.loading,
+          ),
+          isNull,
+        );
+      });
+
+      test('restores a preserved link for an authenticated user', () {
+        expect(
+          coordinator.redirectLocation(
+            uri: Uri.parse('/?from=%2Froute%2F7'),
+            authStatus: DeepLinkAuthStatus.authenticated,
+          ),
+          '/route/7',
+        );
+        expect(
+          coordinator.redirectLocation(
+            uri: Uri.parse('/login?from=%2Fprofile%2Fedit'),
+            authStatus: DeepLinkAuthStatus.authenticated,
+          ),
+          '/profile/edit',
+        );
+      });
+
+      test('carries a preserved link through sign in', () {
+        expect(
+          coordinator.redirectLocation(
+            uri: Uri.parse('/?from=%2Fsearch%3Fq%3Dstation'),
+            authStatus: DeepLinkAuthStatus.unauthenticated,
+          ),
+          '/login?from=%2Fsearch%3Fq%3Dstation',
+        );
+        expect(
+          coordinator.redirectLocation(
+            uri: Uri.parse('/login?from=%2Fsearch%3Fq%3Dstation'),
+            authStatus: DeepLinkAuthStatus.unauthenticated,
+          ),
+          isNull,
+        );
+      });
+
+      test('keeps public authentication links available while loading', () {
+        for (final path in const ['/login', '/register', '/password-reset']) {
+          expect(
+            coordinator.redirectLocation(
+              uri: Uri.parse(path),
+              authStatus: DeepLinkAuthStatus.loading,
+            ),
+            isNull,
+          );
+        }
+      });
+
+      test('normalizes platform URLs before applying authentication', () {
+        expect(
+          coordinator.redirectLocation(
+            uri: Uri.parse('parktrack://destination?lat=61&lon=34'),
+            authStatus: DeepLinkAuthStatus.loading,
+          ),
+          '/destination?lat=61.0&lon=34.0',
+        );
+        expect(
+          coordinator.redirectLocation(
+            uri: Uri.parse('https://m.parktrack.live/parking/42'),
+            authStatus: DeepLinkAuthStatus.unauthenticated,
+          ),
+          '/parking/42',
+        );
+      });
+
+      test('sanitizes from parameters before restoring them', () {
+        expect(
+          coordinator.redirectLocation(
+            uri: Uri.parse(
+              '/login?from=${Uri.encodeComponent('https://example.com/profile')}',
+            ),
+            authStatus: DeepLinkAuthStatus.authenticated,
+          ),
+          '/map',
+        );
+      });
     });
   });
 }

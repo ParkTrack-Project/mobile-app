@@ -8,6 +8,8 @@ import 'package:flutter/foundation.dart'
         defaultTargetPlatform,
         kDebugMode,
         kIsWeb,
+        listEquals,
+        mapEquals,
         setEquals,
         visibleForTesting;
 import 'package:flutter/material.dart';
@@ -33,7 +35,6 @@ import '../../../core/localization/app_localizations.dart';
 import '../../../core/services/android_heading_source.dart';
 import '../../../core/services/preferred_location_service.dart';
 import '../../../core/services/yandex_web_route.dart';
-import '../../providers/parking_address_provider.dart';
 import 'my_location_camera_state.dart';
 import 'route_camera.dart';
 import 'widgets/candidates_sheet.dart';
@@ -287,9 +288,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
   ({double west, double south, double east, double north})?
   _cachedViewportBounds;
   List<Zone> _cachedViewportZones = const [];
-  Uint8List? _destinationPinBytes;
-  Uint8List? _navArrowBytes;
   UserLocationMarkerBitmaps? _userLocationMarkerBitmaps;
+  PlacemarkIcon? _destinationPinIcon;
+  PlacemarkIcon? _navArrowIcon;
+  PlacemarkIcon? _managedUserLocationIcon;
   double? _userLocationMarkerDpr;
   bool _markerBitmapsLoading = false;
   Future<void>? _markerBitmapsFuture;
@@ -337,6 +339,11 @@ class _MapScreenState extends ConsumerState<MapScreen>
   final Map<ParkingClusterBitmapKey, Uint8List> _clusterLabelCache = {};
   final Set<ParkingClusterBitmapKey> _clusterBitmapRequests = {};
   Set<int> _candidateIds = const {};
+  List<Zone>? _cachedMergedZonesSource;
+  Map<int, Zone> _cachedMergedResultZones = const {};
+  List<int> _cachedMergedResultOrder = const [];
+  List<Zone> _cachedMergedZones = const [];
+  List<Zone>? _canonicalMapZones;
 
   @override
   void initState() {
@@ -378,10 +385,33 @@ class _MapScreenState extends ConsumerState<MapScreen>
         buildUserLocationMarkerBitmaps(devicePixelRatio: devicePixelRatio),
       ]);
       if (!mounted) return;
+      final destinationPinBytes = bitmaps[0] as Uint8List;
+      final navArrowBytes = bitmaps[1] as Uint8List;
+      final userLocationMarkerBitmaps = bitmaps[2] as UserLocationMarkerBitmaps;
       setState(() {
-        _destinationPinBytes = bitmaps[0] as Uint8List;
-        _navArrowBytes = bitmaps[1] as Uint8List;
-        _userLocationMarkerBitmaps = bitmaps[2] as UserLocationMarkerBitmaps;
+        _userLocationMarkerBitmaps = userLocationMarkerBitmaps;
+        _destinationPinIcon = PlacemarkIcon.single(
+          PlacemarkIconStyle(
+            image: BitmapDescriptor.fromBytes(destinationPinBytes),
+            anchor: destinationMarkerAnchor,
+            zIndex: 10,
+            scale: 1,
+          ),
+        );
+        _navArrowIcon = PlacemarkIcon.single(
+          PlacemarkIconStyle(
+            image: BitmapDescriptor.fromBytes(navArrowBytes),
+            scale: 1,
+          ),
+        );
+        _managedUserLocationIcon = PlacemarkIcon.single(
+          PlacemarkIconStyle(
+            image: BitmapDescriptor.fromBytes(userLocationMarkerBitmaps.arrow),
+            anchor: const Offset(0.5, 0.5),
+            scale: userLocationMarkerBitmaps.scale,
+            rotationType: RotationType.rotate,
+          ),
+        );
       });
     } catch (error, stackTrace) {
       debugPrint('Failed to prepare map marker bitmaps: $error\n$stackTrace');
@@ -399,6 +429,30 @@ class _MapScreenState extends ConsumerState<MapScreen>
     } catch (e) {
       debugPrint('Failed to load deep-link zone $id: $e');
     }
+  }
+
+  Future<void> _focusDestination(
+    Destination? destination, {
+    bool animate = true,
+  }) async {
+    if (destination == null) return;
+    _resetMyLocationCameraMode();
+    if (kIsWeb) {
+      _webMapController.move(destination.latitude, destination.longitude, 15);
+      return;
+    }
+    await _mapController?.moveCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(
+          target: Point(
+            latitude: destination.latitude,
+            longitude: destination.longitude,
+          ),
+          zoom: 15,
+        ),
+      ),
+      animation: animate ? const MapAnimation(duration: 0.8) : null,
+    );
   }
 
   void _performSearch(String query) {
@@ -433,7 +487,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
     for (final zone in zones) {
       final color = zoneColor(zone, brightness: brightness);
       styles[zone.zoneId] = (
-        count: zone.freeCount,
+        count: zone.selectedTimeFreeCount,
         color: color.toARGB32(),
         textColor: textColor.toARGB32(),
       );
@@ -1261,50 +1315,6 @@ class _MapScreenState extends ConsumerState<MapScreen>
     return '$title\n$cleanAddress';
   }
 
-  Future<void> _shareRouteLink(ActiveRoute route, Point? target) async {
-    final destination = ref.read(destinationProvider);
-    if (route.selectedZoneId == destinationRouteZoneId && destination != null) {
-      final s = ref.read(l10nProvider);
-      await _shareLink(
-        destinationShareUri(
-          latitude: destination.latitude,
-          longitude: destination.longitude,
-          name: destination.name,
-        ),
-        s.routeReady,
-        text: destination.name ?? s.selectedPlace,
-      );
-      return;
-    }
-    String? address;
-    if (target != null) {
-      try {
-        address = await ref.read(
-          parkingAddressProvider((
-            latitude: target.latitude,
-            longitude: target.longitude,
-          )).future,
-        );
-      } catch (_) {
-        address = null;
-      }
-    }
-    if (!mounted) return;
-    final s = ref.read(l10nProvider);
-    final cleanAddress = address?.trim();
-    final ruText = cleanAddress == null || cleanAddress.isEmpty
-        ? 'Маршрут до парковки №${route.selectedZoneId}'
-        : 'Маршрут до парковки №${route.selectedZoneId} ($cleanAddress)';
-    final enText = cleanAddress == null || cleanAddress.isEmpty
-        ? 'Route to parking #${route.selectedZoneId}'
-        : 'Route to parking #${route.selectedZoneId} ($cleanAddress)';
-    await _shareLink(
-      routeShareUri(route.routeId),
-      s.routeReady,
-      text: identical(s, AppStrings.ru) ? ruText : enText,
-    );
-  }
-
   Future<void> _onClusterTap(ParkingCluster cluster) async {
     final controller = _mapController;
     if (controller == null) return;
@@ -1454,10 +1464,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
     return _cachedZoneLabels!;
   }
 
-  Future<void> _fetchZones({bool clearCache = false}) async {
-    if (clearCache) {
-      _zoneLabelCache.clear();
-      _zonesById.clear();
+  Future<void> _fetchZones({bool invalidateViewportCache = false}) async {
+    if (invalidateViewportCache) {
       _lastZoneFetchBbox = null;
       _zoneFetchInFlightBbox = null;
     }
@@ -1969,13 +1977,38 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
   List<Zone> _mergeResultZones(List<Zone> zones) {
     if (_resultZonesById.isEmpty) return zones;
+    final resultOrder = _resultZonesById.keys.toList(growable: false);
+    final hasSameSource =
+        identical(_cachedMergedZonesSource, zones) ||
+        (_cachedMergedZonesSource != null &&
+            listEquals(_cachedMergedZonesSource, zones));
+    if (hasSameSource &&
+        mapEquals(_cachedMergedResultZones, _resultZonesById) &&
+        listEquals(_cachedMergedResultOrder, resultOrder)) {
+      _cachedMergedZonesSource = zones;
+      return _cachedMergedZones;
+    }
     final visibleIds = zones.map((zone) => zone.zoneId).toSet();
-    return [
+    _cachedMergedZonesSource = zones;
+    _cachedMergedResultZones = Map<int, Zone>.unmodifiable(_resultZonesById);
+    _cachedMergedResultOrder = List<int>.unmodifiable(resultOrder);
+    _cachedMergedZones = List<Zone>.unmodifiable([
       ...zones,
       ..._resultZonesById.values.where(
         (zone) => !visibleIds.contains(zone.zoneId),
       ),
-    ];
+    ]);
+    return _cachedMergedZones;
+  }
+
+  List<Zone> _canonicalizeMapZones(List<Zone> zones) {
+    final previous = _canonicalMapZones;
+    if (previous != null &&
+        (identical(previous, zones) || listEquals(previous, zones))) {
+      return previous;
+    }
+    _canonicalMapZones = zones;
+    return zones;
   }
 
   Future<void> _prepareSearchResults(
@@ -2473,14 +2506,27 @@ class _MapScreenState extends ConsumerState<MapScreen>
     }
 
     ref.listen(timeSelectorProvider, (_, _) {
-      ref.read(rawZonesProvider.notifier).clearZones();
-      _zoneLabelCache.clear();
-      _zonesById.clear();
+      ref.read(rawZonesProvider.notifier).markAvailabilityPending();
+      _resultZonesById.updateAll(
+        (_, zone) => zone.copyWith(
+          hasForecast: false,
+          occupancyUpdatedAt: null,
+          forecastFor: null,
+          forecastGeneratedAt: null,
+        ),
+      );
       _timeDebounce?.cancel();
       _timeDebounce = Timer(
         const Duration(milliseconds: 600),
-        () => _fetchZones(clearCache: true),
+        () => _fetchZones(invalidateViewportCache: true),
       );
+    });
+    ref.listen(filtersProvider.select((filters) => filters.hideInactive), (
+      previous,
+      next,
+    ) {
+      if (previous == null || previous == next) return;
+      unawaited(_fetchZones(invalidateViewportCache: true));
     });
     ref.listen(
       filteredZonesProvider,
@@ -2581,26 +2627,13 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
     ref.listen(destinationProvider, (_, dest) {
       if (dest == null) return;
-      _resetMyLocationCameraMode();
       if (shouldDismissParkingDetailsForDestination(
         destination: dest,
         hasStandaloneParkingDetails: _standaloneSelectedZone != null,
       )) {
         setState(() => _standaloneSelectedZone = null);
       }
-      if (kIsWeb) {
-        _webMapController.move(dest.latitude, dest.longitude, 15);
-        return;
-      }
-      _mapController?.moveCamera(
-        CameraUpdate.newCameraPosition(
-          CameraPosition(
-            target: Point(latitude: dest.latitude, longitude: dest.longitude),
-            zoom: 15,
-          ),
-        ),
-        animation: const MapAnimation(duration: 0.8),
-      );
+      unawaited(_focusDestination(dest));
     });
 
     ref.listen(routingProvider, (_, next) async {
@@ -2688,7 +2721,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
     final selectedMarkerZoneId =
         selectedMapZoneId ?? (routePreview != null ? _activeRouteZoneId : null);
 
-    final renderedZones = kIsWeb ? zones : _zonesInsideNativeViewport(zones);
+    final mapZones = _canonicalizeMapZones(zones);
+    final renderedZones = kIsWeb
+        ? mapZones
+        : _zonesInsideNativeViewport(mapZones);
     final clustering = kIsWeb
         ? ParkingClusteringResult(
             zoom: parkingClusterZoomBucket(_currentZoom),
@@ -2780,37 +2816,23 @@ class _MapScreenState extends ConsumerState<MapScreen>
             strokeWidth: userLocationAccuracyStrokeWidth,
             fillColor: userLocationAccuracyFillColor,
           ),
-        if (managedAndroidPoint != null && _userLocationMarkerBitmaps != null)
+        if (managedAndroidPoint != null && _managedUserLocationIcon != null)
           PlacemarkMapObject(
             mapId: const MapObjectId('android_user_location_marker'),
             point: managedAndroidPoint,
             zIndex: 50,
             opacity: userLocationMarkerOpacity(_userLocationFreshness),
             direction: managedAndroidHeading,
-            icon: PlacemarkIcon.single(
-              PlacemarkIconStyle(
-                image: BitmapDescriptor.fromBytes(
-                  _userLocationMarkerBitmaps!.arrow,
-                ),
-                anchor: const Offset(0.5, 0.5),
-                scale: _userLocationMarkerBitmaps!.scale,
-                rotationType: RotationType.rotate,
-              ),
-            ),
+            icon: _managedUserLocationIcon,
           ),
-        if (isNavigating && _navArrowBytes != null)
+        if (isNavigating && _navArrowIcon != null)
           PlacemarkMapObject(
             mapId: const MapObjectId('nav_arrow'),
             point: navState.currentPosition,
             opacity: 1.0,
-            icon: PlacemarkIcon.single(
-              PlacemarkIconStyle(
-                image: BitmapDescriptor.fromBytes(_navArrowBytes!),
-                scale: 1.0,
-              ),
-            ),
+            icon: _navArrowIcon,
           ),
-        if (destination != null && _destinationPinBytes != null)
+        if (destination != null && _destinationPinIcon != null)
           PlacemarkMapObject(
             mapId: const MapObjectId('destination_pin'),
             point: Point(
@@ -2818,14 +2840,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
               longitude: destination.longitude,
             ),
             opacity: 1.0,
-            icon: PlacemarkIcon.single(
-              PlacemarkIconStyle(
-                image: BitmapDescriptor.fromBytes(_destinationPinBytes!),
-                anchor: destinationMarkerAnchor,
-                zIndex: 10,
-                scale: 1.0,
-              ),
-            ),
+            icon: _destinationPinIcon,
           ),
       ];
     }
@@ -2987,6 +3002,12 @@ class _MapScreenState extends ConsumerState<MapScreen>
                 },
                 onMapReady: () {
                   _webMapReady = true;
+                  final readyDestination = ref.read(destinationProvider);
+                  if (readyDestination != null) {
+                    unawaited(
+                      _focusDestination(readyDestination, animate: false),
+                    );
+                  }
                   final camera = _webMapController.camera;
                   if (camera != null) {
                     _lastCameraTarget = Point(
@@ -2998,41 +3019,50 @@ class _MapScreenState extends ConsumerState<MapScreen>
                 },
               )
             else
-              ValueListenableBuilder<int>(
-                valueListenable: _dynamicMapRevision,
-                builder: (context, _, _) => YandexMap(
-                  mapObjects: [...staticMapObjects, ...dynamicMapObjects()],
-                  nightModeEnabled: isDark,
-                  focusRect: nativeFocusRect,
-                  onMapCreated: (controller) async {
-                    _mapController = controller;
-                    const fallback = Point(
-                      latitude: 61.789114,
-                      longitude: 34.359757,
-                    );
-                    _lastCameraTarget = fallback;
-                    await (_markerBitmapsFuture ??
-                        _loadMarkerBitmaps(
-                          MediaQuery.devicePixelRatioOf(context),
-                        ));
-                    if (_usesManagedAndroidLocation) {
-                      await _syncNativeUserLayer(visible: false);
-                      unawaited(_startAndroidHeadingTracking());
-                      unawaited(_startAndroidLocationTracking());
-                    } else {
-                      await _syncNativeUserLayer(visible: true);
-                    }
-                    await controller.moveCamera(
-                      CameraUpdate.newCameraPosition(
-                        const CameraPosition(target: fallback, zoom: 14),
+              YandexMap(
+                mapObjects: staticMapObjects,
+                liveMapObjectsListenable: _dynamicMapRevision,
+                liveMapObjectsBuilder: dynamicMapObjects,
+                nightModeEnabled: isDark,
+                focusRect: nativeFocusRect,
+                onMapCreated: (controller) async {
+                  _mapController = controller;
+                  const fallback = Point(
+                    latitude: 61.789114,
+                    longitude: 34.359757,
+                  );
+                  await (_markerBitmapsFuture ??
+                      _loadMarkerBitmaps(
+                        MediaQuery.devicePixelRatioOf(context),
+                      ));
+                  if (_usesManagedAndroidLocation) {
+                    await _syncNativeUserLayer(visible: false);
+                    unawaited(_startAndroidHeadingTracking());
+                    unawaited(_startAndroidLocationTracking());
+                  } else {
+                    await _syncNativeUserLayer(visible: true);
+                  }
+                  final readyDestination = ref.read(destinationProvider);
+                  final initialTarget = readyDestination == null
+                      ? fallback
+                      : Point(
+                          latitude: readyDestination.latitude,
+                          longitude: readyDestination.longitude,
+                        );
+                  _lastCameraTarget = initialTarget;
+                  await controller.moveCamera(
+                    CameraUpdate.newCameraPosition(
+                      CameraPosition(
+                        target: initialTarget,
+                        zoom: readyDestination == null ? 14 : 15,
                       ),
-                    );
-                    _fetchZones();
-                  },
-                  onCameraPositionChanged: _onCameraPositionChanged,
-                  onUserLocationAdded: _onUserLocationAdded,
-                  onMapTap: (_) => _onMapBackgroundTap(),
-                ),
+                    ),
+                  );
+                  _fetchZones();
+                },
+                onCameraPositionChanged: _onCameraPositionChanged,
+                onUserLocationAdded: _onUserLocationAdded,
+                onMapTap: (_) => _onMapBackgroundTap(),
               ),
             Positioned.fill(
               child: MapBottomPanelSwitcher(
@@ -3212,12 +3242,6 @@ class _MapScreenState extends ConsumerState<MapScreen>
                               intercepting: kIsWeb,
                               child: RoutePreviewSheet(
                                 route: routePreview,
-                                onShare: () => unawaited(
-                                  _shareRouteLink(
-                                    routePreview,
-                                    routePreviewTarget,
-                                  ),
-                                ),
                                 zoneLat: routePreviewTarget?.latitude,
                                 zoneLon: routePreviewTarget?.longitude,
                                 onNavigateInApp: routePreviewTarget == null
