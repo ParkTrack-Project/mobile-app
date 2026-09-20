@@ -35,6 +35,9 @@ map performance across the Android and Web/PWA applications.
 - Calculated the route-preview arrival time from the same driving duration
   shown in the card, preventing stale server estimates from disagreeing with
   the selected route.
+- Replaced neutral outlines on the Time and Now map controls with the same
+  subtle shadow as the other controls, while retaining the green selected-time
+  outline.
 - Greatly reduced Android map work during live location, marker animation, and
   direction updates, eliminating redundant platform-view rebuilds and bitmap
   decoding.
@@ -53,3 +56,4 @@ map performance across the Android and Web/PWA applications.
   neutral unavailable state when temporal data is missing.
 - Removed the Share action from route previews.
 - Calculated route-preview arrival time from the displayed driving duration.
+- Softened the Time and Now controls while retaining the selected-time outline.
