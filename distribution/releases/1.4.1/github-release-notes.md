@@ -1,37 +1,51 @@
 # ParkTrack 1.4.1
 
-ParkTrack 1.4.1 fixes deep-link navigation and Android App Links association
-across Android and Web/PWA.
+ParkTrack 1.4.1 improves deep-link navigation, selected-time parking data, and
+map performance across the Android and Web/PWA applications.
+
+## What's new
+
+### Android
+
+- Added complete `parktrack://` and verified `https://m.parktrack.live` link
+  coverage for the map, parking, saved routes, destinations, search, profile,
+  profile editing, sign-in, registration, and password reset.
+- Added selected-time availability to parking zones and cards, with neutral
+  unavailable states when temporal data is missing.
+
+### Web/PWA
+
+- Added the same path-based deep-link coverage as Android, including direct
+  links to parking, routes, destinations, search, profile, and authentication.
+- Documented all supported URL forms, parameters, compatibility aliases, and
+  Android verification commands.
 
 ## Fixes and improvements
 
 ### Android
 
-- Fixed `parktrack://` and verified `https://m.parktrack.live` links so every
-  supported URL opens its requested map, parking, route, destination, search,
-  profile, or authentication section.
 - Preserved protected link destinations while the stored session is checked
   and through sign-in, including links received while the app is already open.
-- Kept the router instance stable across authentication changes and hardened
-  internal redirects against unsupported external URLs.
-- Centered the map on coordinates opened through destination links, including
-  links received during application startup.
-- Updated parking availability when a past or future time is selected and no
-  longer substitutes the current count when temporal data is unavailable.
-- Removed the Share action from the route preview card.
+- Kept the router instance stable across authentication changes and rejected
+  unsupported external redirect destinations.
+- Centered the map on coordinates opened through destination links.
+- Requested and displayed the correct current, historical, or forecast
+  availability for the active time selection.
+- Removed the Share action from route previews.
 - Greatly reduced Android map work during live location, marker animation, and
   direction updates, eliminating redundant platform-view rebuilds and bitmap
   decoding.
 
 ### Web/PWA
 
-- Fixed direct `m.parktrack.live` paths so their requested application section
-  survives session loading and authentication redirects.
-- Published `/.well-known/assetlinks.json` in the GitHub Pages artifact so
-  Android can verify the `m.parktrack.live` association.
-- Documented every supported deep link, parameter, compatibility form, and
-  local verification command.
+- Preserved requested paths through session loading and authentication.
+- Fixed GitHub Pages packaging so `/.well-known/assetlinks.json` remains in the
+  final deployment artifact and Android can verify `m.parktrack.live`.
+- Associated both the Google Play and GitHub release signing certificates so
+  verified links work with either Android distribution.
+- Kept a direct-path SPA fallback for browsers while packaging the association
+  document as a real root file with an HTTP 200 response.
 - Centered destination links after the Web map finishes loading.
-- Updated map markers and cards with availability for the selected time and
-  show a neutral unavailable state instead of the current count when needed.
-- Removed the Share action from the route preview card.
+- Updated map markers and cards with availability for the selected time and a
+  neutral unavailable state when temporal data is missing.
+- Removed the Share action from route previews.

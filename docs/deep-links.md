@@ -64,9 +64,23 @@ The Digital Asset Links document is stored at
 `https://m.parktrack.live/.well-known/assetlinks.json` with an HTTP 200 response.
 The Android manifest accepts HTTPS links only for the exact
 `m.parktrack.live` host and also registers the `parktrack` custom scheme.
+The document includes both the Google Play app-signing certificate and the
+ParkTrack release certificate used for the APK attached to GitHub releases, so
+verified links work for either supported distribution channel.
 
-GitHub Pages deployment uploads hidden files explicitly so the `.well-known`
-directory is retained in the published artifact.
+GitHub Pages deployment builds `artifact.tar` with
+`tool/prepare_pages_artifact.sh` and verifies the `.well-known` entry inside
+that final archive before uploading it. Do not replace this with an
+`include-hidden-files` input on `actions/upload-pages-artifact`: that action
+does not support the input and excludes dot-prefixed paths while creating its
+archive.
+
+GitHub Pages has no server-side rewrite rules. Direct application paths use a
+copy of `index.html` as `404.html`, so Flutter still starts and opens the
+requested section in a browser, although the initial document response for a
+dynamic path can have HTTP status 404. This limitation does not apply to
+`/.well-known/assetlinks.json`: Android verification requires that real file
+to return HTTP 200 without a redirect.
 
 ## Local Web verification
 
@@ -86,3 +100,33 @@ curl -i http://127.0.0.1:8080/parking/42
 
 Both requests should return HTTP 200. A release build also copies the document
 to `build/web/.well-known/assetlinks.json`.
+
+## Production verification
+
+After GitHub Pages deployment, verify that the association file is a real JSON
+response rather than the SPA fallback:
+
+```shell
+curl --fail --location --show-error \
+  https://m.parktrack.live/.well-known/assetlinks.json
+```
+
+On Android 12 or newer, request a new domain verification and inspect its
+result:
+
+```shell
+adb shell pm verify-app-links --re-verify com.parktrack.mobile
+adb shell pm get-app-links com.parktrack.mobile
+```
+
+The `m.parktrack.live` domain should be reported as verified. Opening any HTTPS
+link from the table then launches the installed Android app; without the app,
+the same URL remains in the Web application. The equivalent custom-scheme URL
+can be checked with, for example:
+
+```shell
+adb shell am start -W -a android.intent.action.VIEW \
+  -d 'https://m.parktrack.live/parking/42'
+adb shell am start -W -a android.intent.action.VIEW \
+  -d 'parktrack://parking/42'
+```

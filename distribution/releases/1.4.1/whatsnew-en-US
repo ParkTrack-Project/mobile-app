@@ -1,6 +1,6 @@
 • Fixed parktrack:// and m.parktrack.live links so they open the requested app section.
 • Preserved link destinations while the session is checked and through sign-in.
-• Improved verified Android App Links reliability.
+• Fixed verified Android App Links for m.parktrack.live.
 • Destination links now center the map on the shared point.
 • Parking availability now follows the selected time.
 • Removed the Share action from route previews.
