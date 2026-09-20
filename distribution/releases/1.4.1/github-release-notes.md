@@ -41,6 +41,8 @@ map performance across the Android and Web/PWA applications.
 - Greatly reduced Android map work during live location, marker animation, and
   direction updates, eliminating redundant platform-view rebuilds and bitmap
   decoding.
+- Pinned Android release builds to the tested Flutter toolchain so source
+  generation remains reproducible.
 
 ### Web/PWA
 
