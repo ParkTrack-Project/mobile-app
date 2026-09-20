@@ -79,33 +79,47 @@ void main() {
       );
     });
 
-    test('supports every public app section for both link schemes', () {
-      const paths = [
-        '/map',
-        '/search?q=park',
-        '/route/7',
-        '/profile',
-        '/profile/edit',
-        '/login',
-        '/register',
-        '/password-reset',
-      ];
+    test('routes every canonical link form to its requested section', () {
+      const cases = <String, String>{
+        '/map': '/map',
+        '/parking/42': '/parking/42',
+        '/route/7': '/route/7',
+        '/destination?lat=59.926567&lon=30.339086&name=ITMO':
+            '/destination?lat=59.926567&lon=30.339086&name=ITMO',
+        '/search?q=station': '/search?q=station',
+        '/profile': '/profile',
+        '/profile/edit': '/profile/edit',
+        '/login': '/login',
+        '/register': '/register',
+        '/password-reset': '/password-reset',
+      };
 
-      for (final path in paths) {
+      for (final MapEntry(key: path, value: expected) in cases.entries) {
         expect(
           coordinator.safeLocation(Uri.parse('https://m.parktrack.live$path')),
-          coordinator.safeLocation(Uri.parse(path)),
+          expected,
         );
-        final uri = Uri.parse(path);
-        final custom = Uri(
-          scheme: 'parktrack',
-          host: uri.pathSegments.first,
-          pathSegments: uri.pathSegments.skip(1),
-          queryParameters: uri.queryParameters.isEmpty
-              ? null
-              : uri.queryParameters,
+        expect(
+          coordinator.safeLocation(
+            Uri.parse('parktrack://${path.substring(1)}'),
+          ),
+          expected,
         );
-        expect(coordinator.safeLocation(custom), coordinator.safeLocation(uri));
+        expect(
+          coordinator.safeLocation(Uri.parse('parktrack:$path')),
+          expected,
+        );
+      }
+    });
+
+    test('keeps supported legacy parking links compatible', () {
+      for (final link in const [
+        '/map/parking/42',
+        'https://m.parktrack.live/map/parking/42',
+        'parktrack://map/parking/42',
+        'parktrack:/map/parking/42',
+      ]) {
+        expect(coordinator.safeLocation(Uri.parse(link)), '/parking/42');
       }
     });
 

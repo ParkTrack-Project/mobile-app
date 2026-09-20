@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mobile/core/router/app_router.dart';
 import 'package:mobile/core/storage/token_storage.dart';
 import 'package:mobile/presentation/providers/app_providers.dart';
@@ -15,6 +16,36 @@ class _DelayedTokenStorage extends TokenStorage {
 }
 
 void main() {
+  test('router registers every canonical deep-link destination', () {
+    final tokenStorage = _DelayedTokenStorage();
+    final container = ProviderContainer(
+      overrides: [tokenStorageProvider.overrideWithValue(tokenStorage)],
+    );
+    addTearDown(container.dispose);
+
+    final locations = _routeLocations(
+      container.read(routerProvider).configuration.routes,
+    );
+
+    expect(
+      locations,
+      containsAll(const {
+        '/',
+        '/map',
+        '/map/parking/:id',
+        '/parking/:id',
+        '/route/:id',
+        '/destination',
+        '/search',
+        '/profile',
+        '/profile/edit',
+        '/login',
+        '/register',
+        '/password-reset',
+      }),
+    );
+  });
+
   test('creates a destination from valid deep-link coordinates', () {
     final destination = destinationFromDeepLink(
       Uri.parse('/destination?lat=61.789114&lon=34.359757&name=Station'),
@@ -68,4 +99,16 @@ void main() {
       '/login?from=%2Fparking%2F42',
     );
   });
+}
+
+Set<String> _routeLocations(List<RouteBase> routes, [String parent = '']) {
+  final locations = <String>{};
+  for (final route in routes.whereType<GoRoute>()) {
+    final location = route.path.startsWith('/')
+        ? route.path
+        : '${parent == '/' ? '' : parent}/${route.path}';
+    locations.add(location);
+    locations.addAll(_routeLocations(route.routes, location));
+  }
+  return locations;
 }
