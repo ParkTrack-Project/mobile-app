@@ -32,6 +32,9 @@ map performance across the Android and Web/PWA applications.
 - Requested and displayed the correct current, historical, or forecast
   availability for the active time selection.
 - Removed the Share action from route previews.
+- Calculated the route-preview arrival time from the same driving duration
+  shown in the card, preventing stale server estimates from disagreeing with
+  the selected route.
 - Greatly reduced Android map work during live location, marker animation, and
   direction updates, eliminating redundant platform-view rebuilds and bitmap
   decoding.
@@ -49,3 +52,4 @@ map performance across the Android and Web/PWA applications.
 - Updated map markers and cards with availability for the selected time and a
   neutral unavailable state when temporal data is missing.
 - Removed the Share action from route previews.
+- Calculated route-preview arrival time from the displayed driving duration.

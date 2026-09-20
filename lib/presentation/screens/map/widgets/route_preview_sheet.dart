@@ -7,6 +7,23 @@ import '../../../../core/localization/app_localizations.dart';
 import '../../../../core/utils/nav_math.dart';
 import 'parking_result_formatter.dart';
 
+@visibleForTesting
+String? resolveRouteArrivalText({
+  required int? routeDurationSeconds,
+  required String? fallbackText,
+  DateTime? now,
+}) {
+  if (routeDurationSeconds == null || routeDurationSeconds <= 0) {
+    return fallbackText;
+  }
+  final arrival = (now ?? DateTime.now()).add(
+    Duration(seconds: routeDurationSeconds),
+  );
+  final hour = arrival.hour.toString().padLeft(2, '0');
+  final minute = arrival.minute.toString().padLeft(2, '0');
+  return '$hour:$minute';
+}
+
 class RoutePreviewSheet extends ConsumerStatefulWidget {
   const RoutePreviewSheet({
     super.key,
@@ -29,6 +46,21 @@ class RoutePreviewSheet extends ConsumerStatefulWidget {
 
 class _RoutePreviewSheetState extends ConsumerState<RoutePreviewSheet> {
   bool _launching = false;
+  late DateTime _arrivalCalculatedAt;
+
+  @override
+  void initState() {
+    super.initState();
+    _arrivalCalculatedAt = DateTime.now();
+  }
+
+  @override
+  void didUpdateWidget(covariant RoutePreviewSheet oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.route, widget.route)) {
+      _arrivalCalculatedAt = DateTime.now();
+    }
+  }
 
   String _formatArrival(String iso, AppStrings s) {
     final dt = DateTime.tryParse(iso)?.toLocal();
@@ -87,6 +119,14 @@ class _RoutePreviewSheetState extends ConsumerState<RoutePreviewSheet> {
         widget.route.routeDurationSeconds ??
         candidate?.durationFromOriginSeconds;
     final destinationDistance = candidate?.distanceToDestinationMeters;
+    final serverArrival = widget.route.arrivalTime;
+    final arrivalText = resolveRouteArrivalText(
+      routeDurationSeconds: routeDuration,
+      fallbackText: serverArrival == null
+          ? null
+          : _formatArrival(serverArrival, s),
+      now: _arrivalCalculatedAt,
+    );
     return Material(
       color: Colors.transparent,
       child: Container(
@@ -134,11 +174,11 @@ class _RoutePreviewSheetState extends ConsumerState<RoutePreviewSheet> {
                 ],
               ),
               const SizedBox(height: 8),
-              if (widget.route.arrivalTime != null)
+              if (arrivalText != null)
                 _RouteFact(
                   icon: Icons.schedule,
                   label: s.arrival,
-                  value: _formatArrival(widget.route.arrivalTime!, s),
+                  value: arrivalText,
                 ),
               if (routeDistance != null || routeDuration != null)
                 _RouteFact(

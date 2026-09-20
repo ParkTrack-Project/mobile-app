@@ -6,6 +6,32 @@ import 'package:mobile/domain/models/route_result.dart';
 import 'package:mobile/presentation/screens/map/widgets/route_preview_sheet.dart';
 
 void main() {
+  test('derives arrival from the same duration shown in the route facts', () {
+    expect(
+      resolveRouteArrivalText(
+        routeDurationSeconds: 360,
+        fallbackText: '18:17',
+        now: DateTime(2026, 9, 20, 11, 55),
+      ),
+      '12:01',
+    );
+    expect(
+      resolveRouteArrivalText(
+        routeDurationSeconds: 180,
+        fallbackText: null,
+        now: DateTime(2026, 9, 20, 23, 58),
+      ),
+      '00:01',
+    );
+    expect(
+      resolveRouteArrivalText(
+        routeDurationSeconds: null,
+        fallbackText: '18:17',
+      ),
+      '18:17',
+    );
+  });
+
   testWidgets('shows route preview actions without a modal map blocker', (
     tester,
   ) async {
@@ -46,6 +72,7 @@ void main() {
     expect(find.text('Route Ready'), findsOneWidget);
     expect(find.text('Go'), findsOneWidget);
     expect(find.text('Yandex Maps'), findsOneWidget);
+    expect(find.text('Arrival:'), findsOneWidget);
     expect(find.text('from you:'), findsOneWidget);
     expect(find.text('1.4 km • 6 min'), findsOneWidget);
     expect(find.byIcon(Icons.navigation_rounded), findsOneWidget);
