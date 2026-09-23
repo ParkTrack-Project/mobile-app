@@ -117,6 +117,25 @@ jobs:
           echo "Release version: $VERSION_NAME"
           echo "Android version code: $VERSION_CODE"
 
+      - name: Populate empty GitHub release description
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          RELEASE_BODY="$(gh release view "$RELEASE_TAG" --json body --jq '.body')"
+          if [[ "$RELEASE_BODY" =~ [^[:space:]] ]]; then
+            echo "GitHub release description is already populated"
+            exit 0
+          fi
+
+          VERSION="${RELEASE_TAG#v}"
+          NOTES_PATH="distribution/releases/$VERSION/github-release-notes.md"
+          test -s "$NOTES_PATH"
+
+          gh release edit "$RELEASE_TAG" --notes-file "$NOTES_PATH"
+          echo "Populated GitHub release description from $NOTES_PATH"
+
       - name: Restore Android signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
