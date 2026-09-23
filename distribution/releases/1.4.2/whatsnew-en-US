@@ -1,0 +1,8 @@
+• Fixed ParkTrack and web links to open the requested section.
+• Preserved link destinations during session checks and sign-in.
+• Fixed Android App Links verification for m.parktrack.live.
+• Destination links now center the map on the shared point.
+• Parking availability now follows the selected time.
+• Fixed an APK startup crash.
+• Made the map much smoother during live location and direction updates.
+• Route arrival now matches the displayed driving duration.
