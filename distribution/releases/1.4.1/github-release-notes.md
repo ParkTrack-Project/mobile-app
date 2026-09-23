@@ -43,6 +43,8 @@ map performance across the Android and Web/PWA applications.
   decoding.
 - Pinned Android release builds to the tested Flutter toolchain so source
   generation remains reproducible.
+- Fixed a release-only startup crash caused by R8 removing a constructor used
+  by Android WorkManager's database initialization.
 
 ### Web/PWA
 
