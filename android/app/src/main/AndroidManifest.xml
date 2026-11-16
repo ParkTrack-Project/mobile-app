@@ -28,12 +28,12 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
 
-            <!-- App Links for m.parktrack.live -->
+            <!-- App Links for m.parktrack.app -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="m.parktrack.live" />
+                <data android:scheme="https" android:host="m.parktrack.app" />
             </intent-filter>
 
             <!-- Custom scheme fallback: parktrack://parking/42 -->

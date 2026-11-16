@@ -7,7 +7,7 @@ map performance across the Android and Web/PWA applications.
 
 ### Android
 
-- Added complete `parktrack://` and verified `https://m.parktrack.live` link
+- Added complete `parktrack://` and verified `https://m.parktrack.app` link
   coverage for the map, parking, saved routes, destinations, search, profile,
   profile editing, sign-in, registration, and password reset.
 - Added selected-time availability to parking zones and cards, with neutral
@@ -50,7 +50,7 @@ map performance across the Android and Web/PWA applications.
 
 - Preserved requested paths through session loading and authentication.
 - Fixed GitHub Pages packaging so `/.well-known/assetlinks.json` remains in the
-  final deployment artifact and Android can verify `m.parktrack.live`.
+  final deployment artifact and Android can verify `m.parktrack.app`.
 - Associated both the Google Play and GitHub release signing certificates so
   verified links work with either Android distribution.
 - Kept a direct-path SPA fallback for browsers while packaging the association

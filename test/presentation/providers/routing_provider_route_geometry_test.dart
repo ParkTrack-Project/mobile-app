@@ -29,7 +29,7 @@ Map<String, dynamic> _routeResponse({required bool withGeometry}) => {
 };
 
 ProviderContainer _container({required bool withGeometry}) {
-  final dio = Dio(BaseOptions(baseUrl: 'https://api.parktrack.live/api/v1'));
+  final dio = Dio(BaseOptions(baseUrl: 'https://api.parktrack.app/api/v1'));
   dio.interceptors.add(
     InterceptorsWrapper(
       onRequest: (options, handler) {

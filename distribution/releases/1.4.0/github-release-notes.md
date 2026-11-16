@@ -33,7 +33,7 @@ location tracking, and smoother map interactions across Android and Web/PWA.
   Android. ParkTrack now prefers Wi-Fi/cellular location, falls back to GPS
   when needed, and keeps the last known position visible during temporary
   signal loss.
-- Added complete verified `m.parktrack.live` App Links and `parktrack://`
+- Added complete verified `m.parktrack.app` App Links and `parktrack://`
   links for the map, parking cards, destinations, search, profile, and
   authentication screens.
 

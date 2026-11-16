@@ -2,7 +2,7 @@ name: mobile
 description: "ParkTrack — мобильное приложение для поиска парковок"
 publish_to: 'none'
 
-version: 1.4.2+6
+version: 1.4.3+7
 
 environment:
   sdk: ^3.11.5
