@@ -25,9 +25,9 @@ void main() {
 
     expect(manifest, contains('android:autoVerify="true"'));
     expect(manifest, contains('android:scheme="https"'));
-    expect(manifest, contains('android:host="m.parktrack.live"'));
+    expect(manifest, contains('android:host="m.parktrack.app"'));
     expect(manifest, contains('android:scheme="parktrack"'));
-    expect(manifest, isNot(contains('android:host="*.parktrack.live"')));
+    expect(manifest, isNot(contains('android:host="*.parktrack.app"')));
   });
 
   test('local web root contains the production Android app identity', () {
@@ -135,7 +135,7 @@ void main() {
       '/register',
       '/password-reset',
     ]) {
-      expect(documentation, contains('https://m.parktrack.live$path'));
+      expect(documentation, contains('https://m.parktrack.app$path'));
     }
   });
 }

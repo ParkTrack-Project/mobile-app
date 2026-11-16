@@ -83,12 +83,12 @@ class ProfileScreen extends ConsumerWidget {
             ListTile(
               leading: const Icon(Icons.privacy_tip_outlined),
               title: Text(s.privacyPolicy),
-              onTap: () => _launchUrl('https://parktrack.live/privacy'),
+              onTap: () => _launchUrl('https://parktrack.app/privacy'),
             ),
             ListTile(
               leading: const Icon(Icons.delete_outline),
               title: Text(s.dataErasure),
-              onTap: () => _launchUrl('https://parktrack.live/data-erasure'),
+              onTap: () => _launchUrl('https://parktrack.app/data-erasure'),
             ),
             ListTile(
               leading: const Icon(Icons.code_outlined),

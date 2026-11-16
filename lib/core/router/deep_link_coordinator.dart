@@ -1,7 +1,7 @@
 enum DeepLinkAuthStatus { loading, authenticated, unauthenticated }
 
 class DeepLinkCoordinator {
-  static const mobileHost = 'm.parktrack.live';
+  static const mobileHost = 'm.parktrack.app';
 
   static const _authPaths = {'/login', '/register', '/password-reset'};
 

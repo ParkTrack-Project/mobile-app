@@ -5,7 +5,7 @@ This release brings the ParkTrack experience to the web and improves reliability
 ## What's new
 
 - Added full Yandex Maps support to the web app, including parking details, place search, route building, and navigation.
-- Added Android App Links for opening `m.parktrack.live` URLs directly in the app.
+- Added Android App Links for opening `m.parktrack.app` URLs directly in the app.
 - Added language selection to the sign-in, registration, and password reset screens.
 - Added a guide for installing the web app on an iPhone.
 

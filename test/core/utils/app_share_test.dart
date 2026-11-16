@@ -6,16 +6,16 @@ void main() {
   test('builds canonical ParkTrack share links', () {
     expect(
       parkingShareUri(42).toString(),
-      'https://m.parktrack.live/parking/42',
+      'https://m.parktrack.app/parking/42',
     );
-    expect(routeShareUri(7).toString(), 'https://m.parktrack.live/route/7');
+    expect(routeShareUri(7).toString(), 'https://m.parktrack.app/route/7');
     expect(
       destinationShareUri(
         latitude: 61.789114,
         longitude: 34.359757,
         name: 'Railway station',
       ).toString(),
-      'https://m.parktrack.live/destination'
+      'https://m.parktrack.app/destination'
       '?lat=61.789114&lon=34.359757&name=Railway+station',
     );
   });
@@ -32,7 +32,7 @@ void main() {
     expect(params.subject, isNull);
     expect(
       params.text,
-      'Route to parking #42\nhttps://m.parktrack.live/route/7',
+      'Route to parking #42\nhttps://m.parktrack.app/route/7',
     );
   });
 
@@ -48,7 +48,7 @@ void main() {
     expect(params.subject, 'Parking #42');
     expect(
       params.text,
-      'Parking #42\n42 Test Street\nhttps://m.parktrack.live/parking/42',
+      'Parking #42\n42 Test Street\nhttps://m.parktrack.app/parking/42',
     );
   });
 
@@ -66,7 +66,7 @@ void main() {
     expect(fallback.queryParameters['subject'], isNull);
     expect(
       fallback.queryParameters['body'],
-      'Route to parking #42\nhttps://m.parktrack.live/route/7',
+      'Route to parking #42\nhttps://m.parktrack.app/route/7',
     );
   });
 }

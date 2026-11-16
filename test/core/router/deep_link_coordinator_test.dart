@@ -15,7 +15,7 @@ void main() {
       expect(coordinator.safeLocation(Uri.parse('/parking/42')), '/parking/42');
       expect(
         coordinator.safeLocation(
-          Uri.parse('https://m.parktrack.live/parking/42'),
+          Uri.parse('https://m.parktrack.app/parking/42'),
         ),
         '/parking/42',
       );
@@ -33,7 +33,7 @@ void main() {
     test('accepts route URLs with a positive route id', () {
       expect(coordinator.safeLocation(Uri.parse('/route/7')), '/route/7');
       expect(
-        coordinator.safeLocation(Uri.parse('https://m.parktrack.live/route/7')),
+        coordinator.safeLocation(Uri.parse('https://m.parktrack.app/route/7')),
         '/route/7',
       );
       expect(
@@ -96,7 +96,7 @@ void main() {
 
       for (final MapEntry(key: path, value: expected) in cases.entries) {
         expect(
-          coordinator.safeLocation(Uri.parse('https://m.parktrack.live$path')),
+          coordinator.safeLocation(Uri.parse('https://m.parktrack.app$path')),
           expected,
         );
         expect(
@@ -115,7 +115,7 @@ void main() {
     test('keeps supported legacy parking links compatible', () {
       for (final link in const [
         '/map/parking/42',
-        'https://m.parktrack.live/map/parking/42',
+        'https://m.parktrack.app/map/parking/42',
         'parktrack://map/parking/42',
         'parktrack:/map/parking/42',
       ]) {
@@ -220,7 +220,7 @@ void main() {
         );
         expect(
           coordinator.redirectLocation(
-            uri: Uri.parse('https://m.parktrack.live/parking/42'),
+            uri: Uri.parse('https://m.parktrack.app/parking/42'),
             authStatus: DeepLinkAuthStatus.unauthenticated,
           ),
           '/parking/42',

@@ -1,22 +1,22 @@
 # ParkTrack deep links
 
-ParkTrack supports verified Android App Links on `m.parktrack.live`, Web URLs,
+ParkTrack supports verified Android App Links on `m.parktrack.app`, Web URLs,
 and the `parktrack://` custom scheme. All forms resolve to the same application
 sections on Android and Web. HTTPS is the preferred public format; the custom
 scheme is a fallback for clients that cannot use Android App Links.
 
 | Section | HTTPS App Link | Custom scheme |
 | --- | --- | --- |
-| Map | `https://m.parktrack.live/map` | `parktrack://map` |
-| Parking card | `https://m.parktrack.live/parking/42` | `parktrack://parking/42` |
-| Saved route | `https://m.parktrack.live/route/7` | `parktrack://route/7` |
-| Destination | `https://m.parktrack.live/destination?lat=59.926567&lon=30.339086&name=Itmo%20University` | `parktrack://destination?lat=59.926567&lon=30.339086&name=Itmo%20University` |
-| Search | `https://m.parktrack.live/search?q=station` | `parktrack://search?q=station` |
-| Profile | `https://m.parktrack.live/profile` | `parktrack://profile` |
-| Edit profile | `https://m.parktrack.live/profile/edit` | `parktrack://profile/edit` |
-| Sign in | `https://m.parktrack.live/login` | `parktrack://login` |
-| Registration | `https://m.parktrack.live/register` | `parktrack://register` |
-| Password reset | `https://m.parktrack.live/password-reset` | `parktrack://password-reset` |
+| Map | `https://m.parktrack.app/map` | `parktrack://map` |
+| Parking card | `https://m.parktrack.app/parking/42` | `parktrack://parking/42` |
+| Saved route | `https://m.parktrack.app/route/7` | `parktrack://route/7` |
+| Destination | `https://m.parktrack.app/destination?lat=59.926567&lon=30.339086&name=Itmo%20University` | `parktrack://destination?lat=59.926567&lon=30.339086&name=Itmo%20University` |
+| Search | `https://m.parktrack.app/search?q=station` | `parktrack://search?q=station` |
+| Profile | `https://m.parktrack.app/profile` | `parktrack://profile` |
+| Edit profile | `https://m.parktrack.app/profile/edit` | `parktrack://profile/edit` |
+| Sign in | `https://m.parktrack.app/login` | `parktrack://login` |
+| Registration | `https://m.parktrack.app/register` | `parktrack://register` |
+| Password reset | `https://m.parktrack.app/password-reset` | `parktrack://password-reset` |
 
 ## Parameters
 
@@ -29,7 +29,7 @@ scheme is a fallback for clients that cannot use Android App Links.
 | `/search` | optional `q` | Opens search and pre-fills a non-empty query. |
 
 URL-encode parameter values when constructing links. For example,
-`https://m.parktrack.live/search?q=Lenina%20Street`.
+`https://m.parktrack.app/search?q=Lenina%20Street`.
 
 Opening `/destination` places a destination marker at the supplied coordinates
 and centers the map on it after the map engine is ready on Android and Web.
@@ -38,10 +38,10 @@ and centers the map on it after the map engine is ready on Android and Web.
 
 The following map links are also accepted:
 
-- `https://m.parktrack.live/map?id=42`;
-- `https://m.parktrack.live/map?zoneId=42`;
-- `https://m.parktrack.live/map?q=station`;
-- `https://m.parktrack.live/map/parking/42`;
+- `https://m.parktrack.app/map?id=42`;
+- `https://m.parktrack.app/map?zoneId=42`;
+- `https://m.parktrack.app/map?q=station`;
+- `https://m.parktrack.app/map/parking/42`;
 - the corresponding `parktrack://map?...` links.
 
 Both authority-style (`parktrack://parking/42`) and path-style
@@ -49,7 +49,7 @@ Both authority-style (`parktrack://parking/42`) and path-style
 
 ## Authentication and fallback behavior
 
-Only exact `https://m.parktrack.live` links, `parktrack://` links, and internal
+Only exact `https://m.parktrack.app` links, `parktrack://` links, and internal
 relative paths are accepted as application destinations. Unknown or malformed
 links safely fall back to `/map`. Protected sections preserve their destination
 while the stored session is checked and through sign-in. The public `/login`,
@@ -61,9 +61,9 @@ sanitized and cannot be used as open redirects.
 
 The Digital Asset Links document is stored at
 `web/.well-known/assetlinks.json` and must be available as
-`https://m.parktrack.live/.well-known/assetlinks.json` with an HTTP 200 response.
+`https://m.parktrack.app/.well-known/assetlinks.json` with an HTTP 200 response.
 The Android manifest accepts HTTPS links only for the exact
-`m.parktrack.live` host and also registers the `parktrack` custom scheme.
+`m.parktrack.app` host and also registers the `parktrack` custom scheme.
 The document includes both the Google Play app-signing certificate and the
 ParkTrack release certificate used for the APK attached to GitHub releases, so
 verified links work for either supported distribution channel.
@@ -108,7 +108,7 @@ response rather than the SPA fallback:
 
 ```shell
 curl --fail --location --show-error \
-  https://m.parktrack.live/.well-known/assetlinks.json
+  https://m.parktrack.app/.well-known/assetlinks.json
 ```
 
 On Android 12 or newer, request a new domain verification and inspect its
@@ -119,14 +119,14 @@ adb shell pm verify-app-links --re-verify com.parktrack.mobile
 adb shell pm get-app-links com.parktrack.mobile
 ```
 
-The `m.parktrack.live` domain should be reported as verified. Opening any HTTPS
+The `m.parktrack.app` domain should be reported as verified. Opening any HTTPS
 link from the table then launches the installed Android app; without the app,
 the same URL remains in the Web application. The equivalent custom-scheme URL
 can be checked with, for example:
 
 ```shell
 adb shell am start -W -a android.intent.action.VIEW \
-  -d 'https://m.parktrack.live/parking/42'
+  -d 'https://m.parktrack.app/parking/42'
 adb shell am start -W -a android.intent.action.VIEW \
   -d 'parktrack://parking/42'
 ```

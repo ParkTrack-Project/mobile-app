@@ -5,7 +5,7 @@ import 'package:share_plus/share_plus.dart';
 import 'app_share_platform.dart'
     if (dart.library.js_interop) 'app_share_platform_web.dart';
 
-const parkTrackMobileHost = 'm.parktrack.live';
+const parkTrackMobileHost = 'm.parktrack.app';
 
 Uri parkingShareUri(int zoneId) =>
     Uri.https(parkTrackMobileHost, '/parking/$zoneId');
